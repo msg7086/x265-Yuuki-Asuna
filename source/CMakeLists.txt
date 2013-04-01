@@ -19,7 +19,7 @@ if(MSVC)
     include_directories(compat/msvc)
 endif(MSVC)
 if(CMAKE_COMPILER_IS_GNUCXX)
-    add_definitions(-Wall -Wextra -Werror -Wshadow)
+    add_definitions(-Wall -Wextra -Werror -Wshadow -march=i686)
 endif(CMAKE_COMPILER_IS_GNUCXX)
 
 # Add some multithreaded build support
@@ -31,6 +31,17 @@ if(MULTITHREADED_BUILD)
         add_definitions(/MP${MULTITHREADED_BUILD})
     endif()
 endif()
+
+# Allow performance primitives to be disabled
+option(ENABLE_PRIMITIVES "Enable use of optimized encoder primitives" ON)
+if(ENABLE_PRIMITIVES)
+    add_definitions(-DENABLE_PRIMITIVES)
+endif(ENABLE_PRIMITIVES)
+
+option(HIGH_BIT_DEPTH "Use 16bit pixels internally" ON)
+if(HIGH_BIT_DEPTH)
+    add_definitions(-DHIGH_BIT_DEPTH)
+endif(HIGH_BIT_DEPTH)
 
 option(ENABLE_PPA "Enable PPA profiling instrumentation" OFF)
 if(ENABLE_PPA)
@@ -55,7 +66,7 @@ if(ENABLE_CLI)
         add_definitions(-Wno-unused-parameter)
     endif(CMAKE_COMPILER_IS_GNUCXX)
 
-    add_executable(x265-cli x265main.cpp x265cfg.cpp x265top.cpp x265cfg.h x265top.h)
+    add_executable(x265-cli x265main.cpp)
 
     target_link_libraries(x265-cli HM x265)
     if(ENABLE_PPA)
