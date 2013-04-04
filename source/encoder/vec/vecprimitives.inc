@@ -26,8 +26,8 @@
 
 #include "primitives.h"
 
-#define PASTER(name,val) name ## _ ## val
-#define EVALUATOR(x,y)   PASTER(x,y)
+#define PASTER(name, val) name ## _ ## val
+#define EVALUATOR(x, y)   PASTER(x, y)
 #define NAME(fun)        EVALUATOR(fun, ARCH)
 
 namespace {
@@ -35,7 +35,7 @@ namespace {
 
 #if HIGH_BIT_DEPTH /* 16-bit pixels */
 
-int CDECL NAME(sad_8x8)(pixel *piOrg, intptr_t strideOrg, pixel *piCur, intptr_t strideCur)
+int CDECL NAME(sad_8x8) (pixel * piOrg, intptr_t strideOrg, pixel * piCur, intptr_t strideCur)
 {
     // NOTE: This is completely untested, and ignores alignment issues
     int uiSum = 0;
@@ -56,87 +56,68 @@ int CDECL NAME(sad_8x8)(pixel *piOrg, intptr_t strideOrg, pixel *piCur, intptr_t
     return uiSum;
 }
 
-int CDECL NAME(satd_4x4)(pixel *piOrg, intptr_t strideOrg, pixel *piCur, intptr_t strideCur)
+int CDECL NAME(satd_4x4) (pixel * piCur, intptr_t iStrideCur, pixel * piOrg, intptr_t iStrideOrg)
 {
     int satd = 0;
 
-    /*Assertion istep==1 removed*/
+    Vec8s v1, v2, m1, m2;
 
-    Vec8s temp1, temp2, temp3, temp4;
-    Vec4i v1, v2, v3, v4, m0, m4, m8, m12, diff_v, piOrg_v, piCur_v;
-    int satd1, satd2, satd3, satd4;
+    {
+        Vec8s temp1, temp2, temp3, temp4, piOrg_v, piCur_v;
+        temp1.load(piOrg);
+        temp2.load(piCur);
+        piCur += iStrideCur;
+        piOrg += iStrideOrg;
 
-    temp1.load(piOrg);
-    temp2.load(piCur);
-    piCur += strideCur;
-    piOrg += strideOrg;
+        temp3.load(piOrg);
+        temp4.load(piCur);
+        piCur += iStrideCur;
+        piOrg += iStrideOrg;
 
-    temp3.load(piOrg);
-    temp4.load(piCur);
+        piOrg_v = blend2q<0, 2>((Vec2q)temp1, (Vec2q)temp3);
+        piCur_v = blend2q<0, 2>((Vec2q)temp2, (Vec2q)temp4);
 
-    piOrg_v = extend_low(temp1);
-    piCur_v = extend_low(temp2);
-    v1 = piOrg_v - piCur_v;
+        temp1.load(piOrg);
+        temp2.load(piCur);
+        piCur += iStrideCur;
+        piOrg += iStrideOrg;
 
-    piOrg_v = extend_low(temp3);
-    piCur_v = extend_low(temp4);
-    v2 = piOrg_v - piCur_v;
+        temp3.load(piOrg);
+        temp4.load(piCur);
+        piCur += iStrideCur;
+        piOrg += iStrideOrg;
 
-    piCur += strideCur;
-    piOrg += strideOrg;
+        v1 = piOrg_v - piCur_v; //diff
 
-    temp1.load(piOrg);
-    temp2.load(piCur);
-    piCur += strideCur;
-    piOrg += strideOrg;
+        piOrg_v = blend2q<0, 2>((Vec2q)temp3, (Vec2q)temp1);
+        piCur_v = blend2q<0, 2>((Vec2q)temp4, (Vec2q)temp2);
+        v2 = piOrg_v - piCur_v; //diff
+    }
 
-    temp3.load(piOrg);
-    temp4.load(piCur);
+    for (int i = 0; i < 2; i++)
+    {
+        m1 = v1 + v2;
+        m2 = v1 - v2;
 
-    piOrg_v = extend_low(temp1);
-    piCur_v = extend_low(temp2);
-    v3 = piOrg_v - piCur_v;
+        v1 = blend8s<0, 8, 1, 9, 2, 10, 3, 11>(m1, m2);
+        v2 = blend8s<4, 12, 5, 13, 6, 14, 7, 15>(m1, m2);
+    }
 
-    piOrg_v = extend_low(temp3);
-    piCur_v = extend_low(temp4);
-    v4 = piOrg_v - piCur_v;
+    v2 = permute2q<1, 0>((Vec2q)v2);
 
-    m4 = v2 + v3;
-    m8 = v2 - v3;
+    m1 = v1 + v2;
+    m2 = v1 - v2;
 
-    m0 = v1 + v4;
-    m12 = v1 - v4;
+    v1 = blend8s<0, 8, 1, 9, 2, 10, 3, 11>(m1, m2);
+    v2 = blend8s<4, 12, 5, 13, 6, 14, 7, 15>(m1, m2);
 
-    v1 = m0 + m4;
-    v2 = m8 + m12;
-    v3 = m0 - m4;
-    v4 = m12 - m8;
+    m1 = v1 + v2;
+    m2 = v1 - v2;
 
-    Vec4i tv1(v1[0], v1[1], v2[0], v2[1]);
-    Vec4i tv2(v1[3], v1[2], v2[3], v2[2]);
-    v1 = tv1 + tv2;
-    v2 = tv1 - tv2;
-
-    Vec4i tv3(v3[0], v3[1], v4[0], v4[1]);
-    Vec4i tv4(v3[3], v3[2], v4[3], v4[2]);
-    v3 = tv3 + tv4;
-    v4 = tv3 - tv4;
-
-    Vec4i tm1(v1[0], v2[1], v1[2], v2[3]);
-    Vec4i tm2(v1[1], v2[0], v1[3], v2[2]);
-    v1 = abs(tm1 + tm2);
-    v2 = abs(tm1 - tm2);
-    satd1 = horizontal_add_x(v1);
-    satd2 = horizontal_add_x(v2);
-
-    Vec4i tm3(v3[0], v4[1], v3[2], v4[3]);
-    Vec4i tm4(v3[1], v4[0], v3[3], v4[2]);
-    v3 = abs(tm3 + tm4);
-    v4 = abs(tm3 - tm4);
-    satd3 = horizontal_add_x(v3);
-    satd4 = horizontal_add_x(v4);
-
-    satd = satd1 + satd2 + satd3 + satd4;
+    v1 = abs(m1);
+    v2 = abs(m2);
+    v1 = v1 + v2;
+    satd = horizontal_add_x(v1);
 
     satd = ((satd + 1) >> 1);
 
@@ -145,7 +126,7 @@ int CDECL NAME(satd_4x4)(pixel *piOrg, intptr_t strideOrg, pixel *piCur, intptr_
 
 #else /* 8-bit pixels */
 
-int CDECL NAME(sad_8x8)(pixel *piOrg, intptr_t strideOrg, pixel *piCur, intptr_t strideCur)
+int CDECL NAME(sad_8x8) (pixel * piOrg, intptr_t strideOrg, pixel * piCur, intptr_t strideCur)
 {
     // NOTE: This is completely untested, likely broken, and ignores alignment issues
     int uiSum = 0;
@@ -166,15 +147,14 @@ int CDECL NAME(sad_8x8)(pixel *piOrg, intptr_t strideOrg, pixel *piCur, intptr_t
     return uiSum;
 }
 
-#endif
-
+#endif /* if HIGH_BIT_DEPTH */
 }  // end anonymous namespace
 
 namespace x265 {
 // private x265 namespace
 
 /* It should initialize the function table for this vector architecture.  */
-void NAME(Setup_Vec_Primitives)(EncoderPrimitives& p)
+void NAME(Setup_Vec_Primitives) (EncoderPrimitives & p)
 {
 #if HIGH_BIT_DEPTH /* 16-bit pixels */
     p.sad[PARTITION_8x8] = NAME(sad_8x8);
@@ -183,5 +163,4 @@ void NAME(Setup_Vec_Primitives)(EncoderPrimitives& p)
     p.sad[PARTITION_8x8] = NAME(sad_8x8);
 #endif
 }
-
 };
