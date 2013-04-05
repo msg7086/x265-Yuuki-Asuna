@@ -40,12 +40,10 @@
 
 using namespace x265;
 
-/* pbuf1, pbuf2: initialised to random pixel data and shouldn't write into them. */
+/* pbuf1, pbuf2: initialized to random pixel data and shouldn't write into them. */
 pixel *pbuf1, *pbuf2;
-uint16_t quiet = 0;
-uint16_t do_bench = 0;
 uint16_t do_singleprimitivecheck = 0;
-uint16_t numofprim = 0;
+uint16_t curpar = 0;
 uint16_t cpuid = 0;
 
 #define BENCH_ALIGNS 16
@@ -59,107 +57,103 @@ uint16_t cpuid = 0;
 #pragma warning(disable: 4505)
 #endif
 
-//Sample Testing for satdx*x
-static int check_pixelprimitives(void)
+// test all implemented pixel comparison primitives
+static int check_pixelprimitives(const EncoderPrimitives& cprimitives, const EncoderPrimitives& vectorprimitives)
 {
-    uint32_t ret = 0;
     uint32_t j = 0, i = 0;
-    uint32_t var_v[100], var_c[100];
-    EncoderPrimitives cprimitives;
-    EncoderPrimitives vectorprimitives;
 
-    cpuid = CpuIDDetect();
-    memset(&vectorprimitives, 0, sizeof(vectorprimitives));
-
-#if defined(__GNUC__) || defined(_MSC_VER)
-    if (cpuid > 1) Setup_Vec_Primitives_sse2(vectorprimitives);
-
-    if (cpuid > 2) Setup_Vec_Primitives_sse3(vectorprimitives);
-
-    if (cpuid > 3) Setup_Vec_Primitives_ssse3(vectorprimitives);
-
-    if (cpuid > 4) Setup_Vec_Primitives_sse41(vectorprimitives);
-
-    if (cpuid > 5) Setup_Vec_Primitives_sse42(vectorprimitives);
-
-#endif // if defined(__GNUC__) || defined(_MSC_VER)
-#if (defined(_MSC_VER) && _MSC_VER >= 1600) || defined(__GNUC__)
-    if (cpuid > 6) Setup_Vec_Primitives_avx(vectorprimitives);
-
-#endif
-#if defined(_MSC_VER) && _MSC_VER >= 1700
-    if (cpuid > 7) Setup_Vec_Primitives_avx2(vectorprimitives);
-
-#endif
-
-    //Initialise the default c_Primitives
-    Setup_C_PixelPrimitives(cprimitives);
-
-    //Do the bench for 16 - Number of Partions
-    while (numofprim < NUM_PARTITIONS)
+    for (; curpar < NUM_PARTITIONS; curpar++)
     {
-        //if the satd is not available for vector no need to testbench
-        if (vectorprimitives.satd[tprimitives[numofprim]])
+        // if the satd is not available for vector no need to test
+        if (vectorprimitives.satd[curpar])
         {
-            //run the Vectorised primitives 100 times and store the output
             j = 0;
             for (i = 0; i <= 100; i++)
             {
-                var_v[i] = vectorprimitives.satd[tprimitives[numofprim]](pbuf1 + j, 16, pbuf2, 16);
-                j += 16;
-            }
-
-            //run the c primitives 100 times and store the output
-            j = 0;
-            for (i = 0; i <= 100; i++)
-            {
-                var_c[i] = cprimitives.satd[tprimitives[numofprim]](pbuf1 + j, 16, pbuf2, 16);
-                j += 16;
-            }
-
-            //compare both the output
-            i = 0;
-            while (i != 100)
-            {
-                if (var_c[i] != var_v[i])
+                int vres = vectorprimitives.satd[curpar](pbuf1 + j, 16, pbuf2, 16);
+                int cres = cprimitives.satd[curpar](pbuf1 + j, 16, pbuf2, 16);
+                if (vres != cres)
                 {
-                    printf("FAILED COMPARISON for Primitives - %d \n", numofprim);
+                    printf("FAILED COMPARISON for SATD partition - %d \n", curpar);
                     return -1;
                 }
-
-                i++;
+                j += 16;
             }
-
-            numofprim++;
         }
-        else //if there is no vectorised function for satd then need not to do testbench
-            numofprim++;
+        // if the satd is not available for vector no need to test
+        if (vectorprimitives.sad[curpar])
+        {
+            j = 0;
+            for (i = 0; i <= 100; i++)
+            {
+                int vres = vectorprimitives.sad[curpar](pbuf1 + j, 16, pbuf2, 16);
+                int cres = cprimitives.sad[curpar](pbuf1 + j, 16, pbuf2, 16);
+                if (vres != cres)
+                {
+                    printf("FAILED COMPARISON for SATD partition - %d \n", curpar);
+                    return -1;
+                }
+                j += 16;
+            }
+        }
 
         if (do_singleprimitivecheck == 1)
-            break;
+            return 0;
+    }
+    if (vectorprimitives.sa8d_8x8)
+    {
+        j = 0;
+        for (i = 0; i <= 100; i++)
+        {
+            int vres = vectorprimitives.sa8d_8x8(pbuf1 + j, 16, pbuf2, 16);
+            int cres = cprimitives.sa8d_8x8(pbuf1 + j, 16, pbuf2, 16);
+            if (vres != cres)
+            {
+                printf("FAILED COMPARISON for sa8d_8x8\n");
+                return -1;
+            }
+            j += 16;
+        }
+    }
+    if (vectorprimitives.sa8d_16x16)
+    {
+        j = 0;
+        for (i = 0; i <= 100; i++)
+        {
+            int vres = vectorprimitives.sa8d_16x16(pbuf1 + j, 16, pbuf2, 16);
+            int cres = cprimitives.sa8d_16x16(pbuf1 + j, 16, pbuf2, 16);
+            if (vres != cres)
+            {
+                printf("FAILED COMPARISON for sa8d_8x8\n");
+                return -1;
+            }
+            j += 16;
+        }
     }
 
-    return ret;
+    return 0;
 }
 
-static int check_all_funcs()
+static int check_all_funcs(const EncoderPrimitives& cprimitives, const EncoderPrimitives& vectorprimitives)
 {
-    return check_pixelprimitives();
+    return check_pixelprimitives(cprimitives, vectorprimitives);
 }
 
 int main(int argc, char *argv[])
 {
     int ret = 0;
 
-    if (argc > 1 && !strncmp(argv[1], "--bench", 7))
+    for (int i = 1; i < argc-1; i+=2)
     {
-        do_bench = 1;
-    }
-
-    if (argc > 1 && !strncmp(argv[1], "--primitive", 11))
-    {
-        do_singleprimitivecheck = 1;
-        numofprim = atoi(argv[2]);
+        if (!strcmp(argv[i], "--primitive"))
+        {
+            do_singleprimitivecheck = 1;
+            curpar = atoi(argv[i+1]);
+        }
+        else if (!strcmp(argv[i], "--cpuid"))
+        {
+            cpuid = atoi(argv[i+1]);
+        }
     }
 
     pbuf1 = (pixel*)malloc(0x1e00 * sizeof(pixel) + 16 * BENCH_ALIGNS);
@@ -177,7 +171,34 @@ int main(int argc, char *argv[])
         pbuf2[i] = rand() & PIXEL_MAX;
     }
 
-    ret = check_all_funcs(); //do the output validation for c and vector primitives
+    EncoderPrimitives cprim;
+    Setup_C_Primitives(cprim);
+
+    EncoderPrimitives vecprim;
+    memset(&vecprim, 0, sizeof(vecprim));
+    if (cpuid == 0)
+        cpuid = CpuIDDetect();
+
+#if defined(__GNUC__) || defined(_MSC_VER)
+    if (cpuid > 1) Setup_Vec_Primitives_sse2(vecprim);
+
+    if (cpuid > 2) Setup_Vec_Primitives_sse3(vecprim);
+
+    if (cpuid > 3) Setup_Vec_Primitives_ssse3(vecprim);
+
+    if (cpuid > 4) Setup_Vec_Primitives_sse41(vecprim);
+
+    if (cpuid > 5) Setup_Vec_Primitives_sse42(vecprim);
+
+#endif // if defined(__GNUC__) || defined(_MSC_VER)
+#if (defined(_MSC_VER) && _MSC_VER >= 1600) || defined(__GNUC__)
+    if (cpuid > 6) Setup_Vec_Primitives_avx(vecprim);
+#endif
+#if defined(_MSC_VER) && _MSC_VER >= 1700
+    if (cpuid > 7) Setup_Vec_Primitives_avx2(vecprim);
+#endif
+
+    ret = check_all_funcs(cprim, vecprim); //do the output validation for c and vector primitives
     if (ret)
     {
         fprintf(stderr, "x265: at least one test has failed. Go and fix that Right Now!\n");
