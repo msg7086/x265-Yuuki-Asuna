@@ -48,6 +48,7 @@ struct RowData
 {
     RowData() : active(false), curCol(0) {}
 
+    Lock          lock;
     volatile bool active;
     volatile int  curCol;
 };
@@ -161,23 +162,28 @@ void MD5Frame::ProcessRow(int rownum)
         PPAStopCpuEventFunc(encode_block);
 
         curRow.curCol++;
-        if (curRow.curCol > 2 && rownum < this->numrows - 1)
+
+        if (curRow.curCol >= 2 && rownum < this->numrows - 1)
         {
-            if (this->row[rownum + 1].active == 0)
+            ScopedLock below(this->row[rownum + 1].lock);
+
+            if (this->row[rownum + 1].active == false)
             {
                 // set active indicator so row is only enqueued once
                 // row stays marked active until blocked or done
-                this->row[rownum + 1].active = 1;
+                this->row[rownum + 1].active = true;
                 this->QueueFrame::EnqueueRow(rownum + 1);
             }
         }
+
+        ScopedLock self(curRow.lock);
 
         if (rownum > 0 &&
             curRow.curCol < this->numcols - 1 &&
             this->row[rownum - 1].curCol < curRow.curCol + 2)
         {
             // row is blocked, quit job
-            curRow.active = 0;
+            curRow.active = false;
             return;
         }
     }
@@ -190,34 +196,40 @@ void MD5Frame::ProcessRow(int rownum)
 
 int main(int, char **)
 {
+    ThreadPool *pool;
+
     PPA_INIT();
 
+    pool = ThreadPool::AllocThreadPool(1);
     {
-        ThreadPool *pool = ThreadPool::AllocThreadPool(1);
         MD5Frame frame(pool);
         frame.Initialize(60, 40);
+        printf("1 "); fflush(stdout);
         frame.Encode();
-        pool->Release();
     }
+    pool->Release();
+    pool = ThreadPool::AllocThreadPool(2);
     {
-        ThreadPool *pool = ThreadPool::AllocThreadPool(2);
         MD5Frame frame(pool);
         frame.Initialize(60, 40);
+        printf("2 "); fflush(stdout);
         frame.Encode();
-        pool->Release();
     }
+    pool->Release();
+    pool = ThreadPool::AllocThreadPool(4);
     {
-        ThreadPool *pool = ThreadPool::AllocThreadPool(4);
         MD5Frame frame(pool);
         frame.Initialize(60, 40);
+        printf("4 "); fflush(stdout);
         frame.Encode();
-        pool->Release();
     }
+    pool->Release();
+    pool = ThreadPool::AllocThreadPool(8);
     {
-        ThreadPool *pool = ThreadPool::AllocThreadPool(8);
         MD5Frame frame(pool);
         frame.Initialize(60, 40);
+        printf("8 "); fflush(stdout);
         frame.Encode();
-        pool->Release();
     }
+    pool->Release();
 }
