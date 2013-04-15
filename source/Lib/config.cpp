@@ -708,6 +708,7 @@ Bool TAppEncCfg::parseCfg(Int argc, Char *argv[])
     /*
      * Set any derived parameters
      */
+
     /* convert std::string to c string for compatability */
     m_pchInputFile = cfg_InputFile.empty() ? NULL : strdup(cfg_InputFile.c_str());
     m_pchBitstreamFile = cfg_BitstreamFile.empty() ? NULL : strdup(cfg_BitstreamFile.c_str());
@@ -723,7 +724,7 @@ Bool TAppEncCfg::parseCfg(Int argc, Char *argv[])
     {
         m_cTVideoIOInputFile = new TVideoIOY4m();
         m_cTVideoIOReconFile = new TVideoIOY4m();
-		/* get the video information like width,height,framerate */
+        /* get the video information like width,height,framerate */
         m_cTVideoIOInputFile->open(m_pchInputFile,
                                    false,
                                    m_inputBitDepthY,
@@ -744,29 +745,6 @@ Bool TAppEncCfg::parseCfg(Int argc, Char *argv[])
         m_cTVideoIOReconFile = new TVideoIOYuv();
     }
 
-#if 0
-    if ((m_iSourceWidth == 0) && (m_iSourceHeight == 0))
-    {
-        FILE *hFile = fopen(m_pchInputFile, "rb");
-        Char source[5];
-        Int bytesRead;
-        Int width = 0;
-        Int height = 0;
-        Int rateNumerator = 0;
-        Int rateDenominator = 0;
-        Double rate = 30.0;
-
-#if defined(_MSC_VER)
-// Allow this warning temporarily until this code is moved into a cleaner location
-#pragma warning(disable: 4127) // conditional expression is constant
-#endif
-
-        m_iSourceWidth = width;
-        m_iSourceHeight = height;
-        m_iFrameRate = ceil(rate);
-    }
-
-#endif // if 0
     Char *pColumnWidth = cfg_ColumnWidth.empty() ? NULL : strdup(cfg_ColumnWidth.c_str());
     Char *pRowHeight = cfg_RowHeight.empty() ? NULL : strdup(cfg_RowHeight.c_str());
     if (m_iUniformSpacingIdr == 0 && m_iNumColumnsMinus1 > 0)

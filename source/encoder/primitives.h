@@ -2,6 +2,10 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Steve Borho <steve@borho.org>
+ *          Mandar Gurav <mandar@multicorewareinc.com>
+ *          Deepthi Devaki Akkoorath <deepthidevaki@multicorewareinc.com>
+ *          Mahesh Pittala <mahesh@multicorewareinc.com>
+ *          Rajesh Paulraj <rajesh@multicorewareinc.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
