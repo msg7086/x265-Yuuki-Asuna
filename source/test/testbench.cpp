@@ -2,6 +2,8 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Gopu Govindaswamy <gopu@govindaswamy.org>
+ *          Mandar Gurav <mandar@multicorewareinc.com>
+ *          Mahesh Pittala <mahesh@multicorewareinc.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -84,22 +86,72 @@ __inline int gettimeofday(struct timeval *tv,  struct timezone *tz)
 
 using namespace x265;
 
+/* Used for filter */
+#define IF_INTERNAL_PREC 14 ///< Number of bits for internal precision
+#define IF_FILTER_PREC    6 ///< Log2 of sum of filter taps
+#define IF_INTERNAL_OFFS (1 << (IF_INTERNAL_PREC - 1)) ///< Offset used internally
+#define NTAPS_LUMA       8 ///< Number of taps for luma
+const short m_lumaFilter[4][NTAPS_LUMA] =
+{
+{
+    0, 0,   0, 64,  0,   0, 0,  0
+},
+{
+    -1, 4, -10, 58, 17,  -5, 1,  0
+},
+{
+    -1, 4, -11, 40, 40, -11, 4, -1
+},
+{
+    0, 1,  -5, 17, 58, -10, 4, -1
+}
+};
+char FilterConf_names[16][40] =
+{
+    //Naming convention used is - isVertical_N_isFirst_isLast
+    "Hor_N=4_isFirst=0_isLast=0",
+    "Hor_N=4_isFirst=0_isLast=1",
+    "Hor_N=4_isFirst=1_isLast=0",
+    "Hor_N=4_isFirst=1_isLast=1",
+
+    "Hor_N=8_isFirst=0_isLast=0",
+    "Hor_N=8_isFirst=0_isLast=1",
+    "Hor_N=8_isFirst=1_isLast=0",
+    "Hor_N=8_isFirst=1_isLast=1",
+
+    "Ver_N=4_isFirst=0_isLast=0",
+    "Ver_N=4_isFirst=0_isLast=1",
+    "Ver_N=4_isFirst=1_isLast=0",
+    "Ver_N=4_isFirst=1_isLast=1",
+
+    "Ver_N=8_isFirst=0_isLast=0",
+    "Ver_N=8_isFirst=0_isLast=1",
+    "Ver_N=8_isFirst=1_isLast=0",
+    "Ver_N=8_isFirst=1_isLast=1"
+};
+pixel *pixel_buff;
+short *IPF_vec_output, *IPF_C_output;
+int t_size;
+
 /* pbuf1, pbuf2: initialized to random pixel data and shouldn't write into them. */
 pixel *pbuf1, *pbuf2;
 short *mbuf1, *mbuf2, *mbuf3;
 #define BENCH_ALIGNS 16
 
 // Initialize the Func Names for all the Pixel Comp
-static const char *FuncNames[NUM_PARTITIONS] = {
-"4x4", "8x4", "4x8", "8x8", "4x16", "16x4", "8x16", "16x8", "16x16", "4x32", "32x4", "8x32",
-"32x8", "16x32", "32x16", "32x32", "4x64", "64x4", "8x64", "64x8", "16x64", "64x16", "32x64", "64x32", "64x64"
+static const char *FuncNames[NUM_PARTITIONS] =
+{
+    "4x4", "8x4", "4x8", "8x8", "4x16", "16x4", "8x16", "16x8", "16x16", "4x32", "32x4", "8x32",
+    "32x8", "16x32", "32x16", "32x32", "4x64", "64x4", "8x64", "64x8", "16x64", "64x16", "32x64", "64x32", "64x64"
 };
 
 #if HIGH_BIT_DEPTH
-#define PIXEL_MAX ((1 << 10) - 1)
+#define BIT_DEPTH 10
 #else
-#define PIXEL_MAX ((1 << 8) - 1)
+#define BIT_DEPTH 8
 #endif
+
+#define PIXEL_MAX ((1 << BIT_DEPTH) - 1)
 
 /* To-do List: Generate the stride values at run time in each run
  *
@@ -232,6 +284,41 @@ static void check_cycle_count(const EncoderPrimitives& cprim, const EncoderPrimi
     }
 
     /* Add logic here for testing performance of your new primitive*/
+    int rand_height = rand() % 100;                 // Randomly generated Height
+    int rand_width = rand() % 100;                  // Randomly generated Width
+    short rand_val, rand_srcStride, rand_dstStride;
+
+    rand_val = rand() % 24;                     // Random offset in the filter
+    rand_srcStride = rand() % 100;              // Randomly generated srcStride
+    rand_dstStride = rand() % 100;              // Randomly generated dstStride
+
+    for (int value = 4; value < 8; value++)
+    {
+        memset(IPF_vec_output, 0, t_size);      // Initialize output buffer to zero
+        memset(IPF_C_output, 0, t_size);        // Initialize output buffer to zero
+        if (vecprim.filter[value])
+        {
+            gettimeofday(&ts, NULL);
+            for (int j = 0; j < NUM_ITERATIONS_CYCLE; j++)
+            {
+                vecprim.filter[value]((short*)(m_lumaFilter + rand_val), pixel_buff, rand_srcStride, (pixel*)IPF_vec_output,
+                                      rand_dstStride, rand_height, rand_width, BIT_DEPTH);
+            }
+
+            gettimeofday(&te, NULL);
+            printf("\nfilter[%s] vectorized primitive: (%1.4f ms) ", FilterConf_names[value], timevaldiff(&ts, &te));
+
+            gettimeofday(&ts, NULL);
+            for (int j = 0; j < NUM_ITERATIONS_CYCLE; j++)
+            {
+                cprim.filter[value]((short*)(m_lumaFilter + rand_val), pixel_buff, rand_srcStride, (pixel*)IPF_vec_output,
+                                    rand_dstStride, rand_height, rand_width, BIT_DEPTH);
+            }
+
+            gettimeofday(&te, NULL);
+            printf("\tC primitive: (%1.4f ms) ", timevaldiff(&ts, &te));
+        }
+    }
 }
 
 static int check_pixel_primitive(pixelcmp ref, pixelcmp opt)
@@ -240,8 +327,8 @@ static int check_pixel_primitive(pixelcmp ref, pixelcmp opt)
 
     for (int i = 0; i <= 100; i++)
     {
-        int vres = opt(pbuf1 + j, STRIDE, pbuf2, STRIDE);
-        int cres = ref(pbuf1 + j, STRIDE, pbuf2, STRIDE);
+        int vres = opt(pbuf1, STRIDE, pbuf2 + j, STRIDE);
+        int cres = ref(pbuf1, STRIDE, pbuf2 + j, STRIDE);
         if (vres != cres)
             return -1;
 
@@ -273,6 +360,49 @@ static int check_mbdst_primitive(mbdst ref, mbdst opt)
     return 0;
 }
 
+static int check_IPFilter_primitive(IPFilter ref, IPFilter opt)
+{
+    int rand_height = rand() & 100;                 // Randomly generated Height
+    int rand_width = rand() & 100;                  // Randomly generated Width
+    int flag = 0;                                   // Return value
+    short rand_val, rand_srcStride, rand_dstStride;
+
+    for (int i = 0; i <= 100; i++)
+    {
+        memset(IPF_vec_output, 0, t_size);          // Initialize output buffer to zero
+        memset(IPF_C_output, 0, t_size);            // Initialize output buffer to zero
+
+        rand_val = rand() & 24;                     // Random offset in the filter
+        rand_srcStride = rand() & 100;              // Randomly generated srcStride
+        rand_dstStride = rand() & 100;              // Randomly generated dstStride
+
+        opt((short*)(m_lumaFilter + rand_val),
+            pixel_buff,
+            rand_srcStride,
+            (pixel*)IPF_vec_output,
+            rand_dstStride,
+            rand_height,
+            rand_width,
+            BIT_DEPTH);
+        ref((short*)(m_lumaFilter + rand_val),
+            pixel_buff,
+            rand_srcStride,
+            (pixel*)IPF_C_output,
+            rand_dstStride,
+            rand_height,
+            rand_width,
+            BIT_DEPTH);
+
+        if (memcmp(IPF_vec_output, IPF_C_output, t_size))
+        {
+            flag = -1;                                          // Test Failed
+            break;
+        }
+    }
+
+    return flag;
+}
+
 int init_pixelcmp_buffers()
 {
     pbuf1 = (pixel*)malloc(0x1e00 * sizeof(pixel) + 16 * BENCH_ALIGNS);
@@ -293,10 +423,41 @@ int init_pixelcmp_buffers()
     return 0;
 }
 
+int init_IPFilter_buffers()
+{
+    t_size = 200 * 200;
+    pixel_buff = (pixel*)malloc(t_size * sizeof(pixel));     // Assuming max_height = max_width = max_srcStride = max_dstStride = 100
+    IPF_vec_output = (short*)malloc(t_size * sizeof(short));      // Output Buffer1
+    IPF_C_output = (short*)malloc(t_size * sizeof(short));      // Output Buffer2
+
+    if (!pixel_buff || !IPF_vec_output || !IPF_C_output)
+    {
+        fprintf(stderr, "init_IPFilter_buffers: malloc failed, unable to initiate tests!\n");
+        return -1;
+    }
+
+    for (int i = 0; i < t_size; i++)                                    // Initialize input buffer
+    {
+        int isPositive = rand() & 1;                                    // To randomly generate Positive and Negative values
+        isPositive = (isPositive) ? 1 : -1;
+        pixel_buff[i] = isPositive * (rand() & PIXEL_MAX);
+    }
+
+    return 0;
+}
+
 int clean_pixelcmp_buffers()
 {
     free(pbuf1);
     free(pbuf2);
+    return 0;
+}
+
+int clean_IPFilter_buffers()
+{
+    free(IPF_vec_output);
+    free(IPF_C_output);
+    free(pixel_buff);
     return 0;
 }
 
@@ -384,6 +545,24 @@ static int check_all_primitives(const EncoderPrimitives& cprimitives, const Enco
         printf("\nsa8d_16x16: passed ");
     }
 
+    /********** Run Filter Primitives *******************/
+    if (init_IPFilter_buffers() < 0)
+        return -1;
+
+    for (int value = 4; value < 8; value++)
+    {
+        if (vectorprimitives.filter[value])
+        {
+            if (check_IPFilter_primitive(cprimitives.filter[value], vectorprimitives.filter[value]) < 0)
+            {
+                printf("\nfilter: Failed!\n");
+                return -1;
+            }
+
+            printf("\nFilter[%s]: passed ", FilterConf_names[value]);
+        }
+    }
+
     /********** Initialise and run mbdst Primitives *******************/
 
     if (init_mbdst_buffers() < 0)
@@ -408,7 +587,7 @@ static int check_all_primitives(const EncoderPrimitives& cprimitives, const Enco
     /********************* Clean all buffers *****************************/
     clean_pixelcmp_buffers();
     clean_mbdst_buffers();
-
+    clean_IPFilter_buffers();
     return 0;
 }
 
