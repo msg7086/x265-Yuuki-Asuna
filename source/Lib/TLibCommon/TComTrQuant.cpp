@@ -863,8 +863,13 @@ void xTrMxN(Int bitDepth, Short *block, Short *coeff, Int iWidth, Int iHeight, U
     }
     else if (iWidth == 16 && iHeight == 16)
     {
+#ifdef ENABLE_PRIMITIVES
+        x265::primitives.partial_butterfly[x265::BUTTERFLY_16](block, tmp, shift_1st, iHeight);
+        x265::primitives.partial_butterfly[x265::BUTTERFLY_16](tmp, coeff, shift_2nd, iWidth);
+#else
         partialButterfly16(block, tmp, shift_1st, iHeight);
         partialButterfly16(tmp, coeff, shift_2nd, iWidth);
+#endif
     }
     else if (iWidth == 32 && iHeight == 32)
     {
@@ -883,8 +888,11 @@ void xITrMxN(Int bitDepth, Short *coeff, Short *block, Int iWidth, Int iHeight, 
 {
     Int shift_1st = SHIFT_INV_1ST;
     Int shift_2nd = SHIFT_INV_2ND - (bitDepth - 8);
-
-    Short tmp[64 * 64];
+#ifdef _WIN32
+    __declspec(align(32))Short tmp[64 * 64];
+#else
+    Short tmp[64 * 64] __attribute__((aligned(32)));
+#endif
 
     if (iWidth == 4 && iHeight == 4)
     {
@@ -1519,8 +1527,13 @@ Void TComTrQuant::xIT(Int bitDepth, UInt uiMode, Int* plCoef, Pel* pResidual, UI
 #else
     Int j;
     {
-        Short block[64 * 64];
-        Short coeff[64 * 64];
+#ifdef _WIN32
+        __declspec(align(32)) Short block[64 * 64];
+        __declspec(align(32)) Short coeff[64 * 64];
+#else
+        Short block[64 * 64] __attribute__((aligned(32)));
+        Short coeff[64 * 64] __attribute__((aligned(32)));
+#endif
         for (j = 0; j < iHeight * iWidth; j++)
         {
             coeff[j] = (Short)plCoef[j];
