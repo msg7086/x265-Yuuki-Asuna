@@ -26,6 +26,7 @@
 
 #include "input.h"
 #include <stdio.h>
+#include <stdint.h>
 
 namespace x265 {
 
@@ -41,7 +42,9 @@ protected:
 
     int height;
 
-    FILE *fp;
+    uint8_t* buf;
+
+    FILE* fp;
 
     bool eof;
 
@@ -59,17 +62,19 @@ public:
 
     void setBitDepth(int bitDepth)                { /* ignore, warn */ }
 
-    float getRate() const                         { return ((float) rateNum)/rateDenom; }
+    float getRate() const                         { return ((float)rateNum) / rateDenom;}
 
-    int getWidth() const                          { return width; }
+    int getWidth() const                          { return width;}
 
-    int getHeight() const                         { return height; }
+    int getHeight() const                         { return height;}
 
-    bool isEof() const                            { return eof; }
+    int getBitDepth() const                       { return 8;}
 
-    bool isFail() const                           { return !!fp; }
+    bool isEof() const                            { return !!feof(fp);}
 
-    void release()                                { delete this; }
+    bool isFail() const                           { return !!fp;}
+
+    void release()                                { delete this;}
 
     int  guessFrameCount() const;
 
@@ -77,7 +82,6 @@ public:
 
     bool readPicture(Picture&);
 };
-
 }
 
 #endif // _Y4M_H_

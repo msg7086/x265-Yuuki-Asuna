@@ -26,9 +26,9 @@
 
 #include "input.h"
 #include <stdio.h>
+#include <stdint.h>
 
 namespace x265 {
-
 class YUVInput : public Input
 {
 protected:
@@ -43,6 +43,10 @@ protected:
 
     int depth;
 
+    int LumaMarginX;
+
+    uint8_t* buf;
+
     FILE *fp;
 
     bool eof;
@@ -53,23 +57,31 @@ public:
 
     virtual ~YUVInput();
 
-    void setDimensions(int w, int h)              { width = w; height = h; }
+    void setDimensions(int w, int h)              { width = w; height = h;}
 
-    void setRate(int numerator, int denominator)  { rateNum = numerator; rateDenom = denominator; }
+    void setRate(int numerator, int denominator)  { rateNum = numerator; rateDenom = denominator;}
 
-    void setBitDepth(int bitDepth)                { depth = bitDepth; }
+    void setBitDepth(int bitDepth)                { depth = bitDepth;}
 
-    float getRate() const                         { return ((float) rateNum)/rateDenom; }
+    float getRate() const                         { return ((float)rateNum) / rateDenom;}
 
-    int getWidth() const                          { return width; }
+    int getWidth() const                          { return width;}
 
-    int getHeight() const                         { return height; }
+    int getHeight() const                         { return height;}
 
-    bool isEof() const                            { return eof; }
+    int getBitDepth() const                       { return depth;}
 
-    bool isFail() const                           { return !!fp; }
+    bool isEof() const                            { return !!feof(fp);}
 
-    void release()                                { if (fp) fclose(fp); delete this; }
+    bool isFail() const                           { return !!fp;}
+
+    void release()
+    {
+        if (fp)
+            fclose(fp);
+
+        delete this;
+    }
 
     int  guessFrameCount() const;
 
@@ -77,7 +89,6 @@ public:
 
     bool readPicture(Picture&);
 };
-
 }
 
 #endif // _YUV_H_

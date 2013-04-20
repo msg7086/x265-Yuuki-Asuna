@@ -25,10 +25,10 @@
 #define _INPUT_H_
 
 #include <stdint.h>
+#include <iostream>
 #include <TLibCommon/TypeDef.h>
 
 namespace x265 {
-
 struct Picture
 {
     void *planes[3];
@@ -76,7 +76,6 @@ public:
 
     virtual int  guessFrameCount() const = 0;
 };
-
 }
 
 #endif // _INPUT_H_

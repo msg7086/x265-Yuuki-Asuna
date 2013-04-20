@@ -21,10 +21,6 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
-#include <fcntl.h>
-#include <assert.h>
-#include <sys/stat.h>
-
 #include "input.h"
 #include "yuv.h"
 
@@ -33,24 +29,55 @@ using namespace x265;
 YUVInput::YUVInput(const char *filename)
 {
     fp = fopen(filename, "rb");
+    width = height = 0;
+    depth = 8;
+    buf = NULL;
 }
 
 YUVInput::~YUVInput()
 {
-    if (fp) fclose(fp); 
+    if (fp) fclose(fp);
+    if (buf) delete[] buf;
 }
 
 int  YUVInput::guessFrameCount() const
 {
+    /* TODO: Get file size, divide by bufsize */
     return 0;
 }
 
 void YUVInput::skipFrames(int numFrames)
 {
+    int pixelbytes = depth > 8 ? 2 : 1;
 
+    int framesize = (width * height * 3 / 2) * pixelbytes;
+
+    fseek(fp, framesize * numFrames, SEEK_CUR);
 }
 
+// TODO: only supports 4:2:0 chroma sampling
 bool YUVInput::readPicture(Picture& pic)
 {
-    return false;
+    int pixelbytes = depth > 8 ? 2 : 1;
+
+    int bufsize = (width * height * 3 / 2) * pixelbytes;
+
+    if (!buf)
+    {
+        buf = new uint8_t[bufsize];
+    }
+
+    pic.planes[0] = buf;
+
+    pic.planes[1] = (char*)(pic.planes[0]) + width * height * pixelbytes;
+
+    pic.planes[2] = (char*)(pic.planes[1]) + ((width * height * pixelbytes) >> 2);
+
+    pic.bitDepth = depth;
+
+    pic.stride[0] = width * pixelbytes;
+
+    pic.stride[1] = pic.stride[2] = pic.stride[0] >> 1;
+
+    return fread(buf, 1, bufsize, fp) == (size_t) bufsize;
 }
