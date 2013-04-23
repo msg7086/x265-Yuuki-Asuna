@@ -35,13 +35,13 @@ using namespace x265;
 
 const char *ButterflyConf_names[] =
 {
-    "4",
+    "4\t",
     "Inverse4",
-    "8",
+    "8\t",
     "Inverse8",
-    "16",
+    "16\t",
     "Inverse16",
-    "32",
+    "32\t",
     "Inverse32"
 };
 
@@ -182,6 +182,48 @@ bool MBDstHarness::check_butterfly8_primitive(butterfly ref, butterfly opt)
     return true;
 }
 
+bool MBDstHarness::check_butterfly4_inverse_primitive(butterfly ref, butterfly opt)
+{
+    int j = 0;
+    int mem_cmp_size = 80; // 2*4*10 -> sizeof(short)*number of elements*number of lines
+
+    for (int i = 0; i <= 100; i++)
+    {
+        opt(mbuf1 + j, mbuf2, 3, 10);
+        ref(mbuf1 + j, mbuf3, 3, 10);
+
+        if (memcmp(mbuf2, mbuf3, mem_cmp_size))
+            return false;
+
+        j += 16;
+        memset(mbuf2, 0, mem_cmp_size);
+        memset(mbuf3, 0, mem_cmp_size);
+    }
+
+    return true;
+}
+
+bool MBDstHarness::check_butterfly8_inverse_primitive(butterfly ref, butterfly opt)
+{
+    int j = 0;
+    int mem_cmp_size = 160; // 2*8*10 -> sizeof(short)*number of elements*number of lines
+
+    for (int i = 0; i <= 100; i++)
+    {
+        opt(mbuf1 + j, mbuf2, 3, 10);
+        ref(mbuf1 + j, mbuf3, 3, 10);
+
+        if (memcmp(mbuf2, mbuf3, mem_cmp_size))
+            return false;
+
+        j += 16;
+        memset(mbuf2, 0, mem_cmp_size);
+        memset(mbuf3, 0, mem_cmp_size);
+    }
+
+    return true;
+}
+
 bool MBDstHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPrimitives& opt)
 {
     if (opt.inversedst)
@@ -220,10 +262,28 @@ bool MBDstHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
         }
     }
 
+    if (opt.partial_butterfly[butterfly_inverse_4])
+    {
+        if (!check_butterfly4_inverse_primitive(ref.partial_butterfly[butterfly_inverse_4], opt.partial_butterfly[butterfly_inverse_4]))
+        {
+            printf("\npartialButterfly%s failed\n", ButterflyConf_names[butterfly_inverse_4]);
+            return false;
+        }
+    }
+
+    if (opt.partial_butterfly[butterfly_inverse_8])
+    {
+        if (!check_butterfly8_inverse_primitive(ref.partial_butterfly[butterfly_inverse_8], opt.partial_butterfly[butterfly_inverse_8]))
+        {
+            printf("\npartialButterfly%s failed\n", ButterflyConf_names[butterfly_inverse_8]);
+            return false;
+        }
+    }
+
     return true;
 }
 
-#define MBDST_ITERATIONS 4000000
+#define MBDST_ITERATIONS 100000
 
 void MBDstHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimitives& opt)
 {
@@ -231,23 +291,10 @@ void MBDstHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
 
     if (opt.inversedst)
     {
-        t->Start();
-        for (int j = 0; j < MBDST_ITERATIONS; j++)
-        {
-            opt.inversedst(mbuf1, mbuf2, 16);
-        }
-
-        t->Stop();
-        printf("\nInverseDST\tVec: (%1.2f ms) ", t->ElapsedMS());
-
-        t->Start();
-        for (int j = 0; j < MBDST_ITERATIONS; j++)
-        {
-            ref.inversedst(mbuf1, mbuf2, 16);
-        }
-
-        t->Stop();
-        printf("\tC: (%1.2f ms) ", t->ElapsedMS());
+        printf("InverseDST");
+        REPORT_SPEEDUP(MBDST_ITERATIONS,
+            opt.inversedst(mbuf1, mbuf2, 16),
+            ref.inversedst(mbuf1, mbuf2, 16));
     }
 
     for (int value = 0; value < 8; value++)
@@ -256,23 +303,10 @@ void MBDstHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
         memset(mbuf3, 0, mb_t_size); // Initialize output buffer to zero
         if (opt.partial_butterfly[value])
         {
-            t->Start();
-            for (int j = 0; j < MBDST_ITERATIONS; j++)
-            {
-                opt.partial_butterfly[value](mbuf1, mbuf2, 3, 10);
-            }
-
-            t->Stop();
-            printf("\npartialButterfly%s\tVec: (%1.2f ms) ", ButterflyConf_names[value], t->ElapsedMS());
-
-            t->Start();
-            for (int j = 0; j < MBDST_ITERATIONS; j++)
-            {
-                ref.partial_butterfly[value](mbuf1, mbuf2, 3, 10);
-            }
-
-            t->Stop();
-            printf("\tC: (%1.2f ms) ", t->ElapsedMS());
+            printf("partialButterfly%s", ButterflyConf_names[value]);
+            REPORT_SPEEDUP(MBDST_ITERATIONS,
+                opt.partial_butterfly[value](mbuf1, mbuf2, 3, 10),
+                ref.partial_butterfly[value](mbuf1, mbuf2, 3, 10));
         }
     }
 

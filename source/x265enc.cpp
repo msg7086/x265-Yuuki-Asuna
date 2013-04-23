@@ -42,7 +42,7 @@
 #include <fcntl.h>
 #include <assert.h>
 
-#include "encoder.h"
+#include "x265enc.h"
 #include "TLibEncoder/AnnexBwrite.h"
 #include "PPA/ppa.h"
 
@@ -391,19 +391,12 @@ Void TAppEncTop::xInitLibCfg()
 
 Void TAppEncTop::xCreateLib()
 {
-    // Video I/O
-    m_cTVideoIOInputFile->open(m_pchInputFile,
-                               false,
-                               m_inputBitDepthY,
-                               m_inputBitDepthC,
-                               m_internalBitDepthY,
-                               m_internalBitDepthC,
-                               handler_input,
-                               video_info,
-                               m_aiPad);                                                                      // read  mode
-    m_cTVideoIOInputFile->skipFrames(m_FrameSkip, m_iSourceWidth - m_aiPad[0], m_iSourceHeight - m_aiPad[1], handler_input);
+    if (m_FrameSkip && m_input)
+        m_input->skipFrames(m_FrameSkip);
 
     if (m_pchReconFile)
+    {
+        m_cTVideoIOReconFile = new TVideoIOYuv();
         m_cTVideoIOReconFile->open(m_pchReconFile,
                                    true,
                                    m_outputBitDepthY,
@@ -413,6 +406,7 @@ Void TAppEncTop::xCreateLib()
                                    handler_recon,
                                    video_info,
                                    m_aiPad); // write mode
+    }
 
     // Neo Decoder
     m_cTEncTop.create();
@@ -421,7 +415,8 @@ Void TAppEncTop::xCreateLib()
 Void TAppEncTop::xDestroyLib()
 {
     // Video I/O
-    m_cTVideoIOInputFile->close(handler_input);
+    if (m_input)
+        m_input->release();
     if (m_pchReconFile)
         m_cTVideoIOReconFile->close(handler_recon);
 
@@ -479,9 +474,8 @@ Void TAppEncTop::encode()
         xGetBuffer(pcPicYuvRec);
 
         // read input YUV file
-        PPAStartCpuEventFunc(read_yuv);
-        m_cTVideoIOInputFile->read(pcPicYuvOrg, handler_input);
-        PPAStopCpuEventFunc(read_yuv);
+        x265_picture pic;
+        m_input->readPicture(pic);
 
         // increase number of received frames
         m_iFrameRcvd++;
@@ -490,7 +484,7 @@ Void TAppEncTop::encode()
 
         Bool flush = 0;
         // if end of file (which is only detected on a read failure) flush the encoder of any queued pictures
-        if (m_cTVideoIOInputFile->isEof(handler_input))
+        if (m_input->isEof())
         {
             flush = true;
             bEos = true;
@@ -500,7 +494,7 @@ Void TAppEncTop::encode()
 
         // call encoding function for one frame
         PPAStartCpuEventFunc(encode_frame);
-        m_cTEncTop.encode(bEos, flush ? 0 : pcPicYuvOrg, m_cListPicYuvRec, outputAccessUnits, iNumEncoded);
+        m_cTEncTop.encode(bEos, flush ? 0 : &pic, m_cListPicYuvRec, outputAccessUnits, iNumEncoded);
         PPAStopCpuEventFunc(encode_frame);
 
         // write bistream to file if necessary

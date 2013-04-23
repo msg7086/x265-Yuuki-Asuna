@@ -22,6 +22,7 @@
  *****************************************************************************/
 
 #include "y4m.h"
+#include "PPA/ppa.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -48,11 +49,11 @@ Y4MInput::~Y4MInput()
 #endif
 void Y4MInput::parseHeader()
 {
-    Char source[5];
-    Int t_width = 0;
-    Int t_height = 0;
-    Int t_rateNumerator = 0;
-    Int t_rateDenominator = 0;
+    char source[5];
+    int t_width = 0;
+    int t_height = 0;
+    int t_rateNumerator = 0;
+    int t_rateDenominator = 0;
 
     while (1)
     {
@@ -189,7 +190,7 @@ int  Y4MInput::guessFrameCount() const
 
 void Y4MInput::skipFrames(int numFrames)
 {
-    Picture pic;
+    x265_picture pic;
 
     for (int i = 0; i < numFrames; i++)
     {
@@ -197,8 +198,10 @@ void Y4MInput::skipFrames(int numFrames)
     }
 }
 
-bool Y4MInput::readPicture(Picture& pic)
+bool Y4MInput::readPicture(x265_picture& pic)
 {
+    PPAStartCpuEventFunc(read_yuv);
+
     /* strip off the FRAME header */
     char header[Y4M_FRAME_MAGIC];
 
@@ -234,5 +237,8 @@ bool Y4MInput::readPicture(Picture& pic)
 
     pic.stride[1] = pic.stride[2] = pic.stride[0] >> 1;
 
-    return fread(buf, 1, count, fp) == count;
+    size_t bytes = fread(buf, 1, count, fp);
+    PPAStopCpuEventFunc(read_yuv);
+
+    return bytes == count;
 }

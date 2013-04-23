@@ -35,17 +35,11 @@ class YUVInput : public Input
 {
 protected:
 
-    int rateNum;
-
-    int rateDenom;
-
     int width;
 
     int height;
 
     int depth;
-
-    int LumaMarginX;
 
     uint8_t* buf;
 
@@ -61,21 +55,17 @@ public:
 
     void setDimensions(int w, int h)              { width = w; height = h; }
 
-    void setRate(int numerator, int denominator)  { rateNum = numerator; rateDenom = denominator; }
-
     void setBitDepth(int bitDepth)                { depth = bitDepth; }
 
-    float getRate() const                         { return ((float)rateNum) / rateDenom; }
+    float getRate() const                         { return 0.0f; }
 
     int getWidth() const                          { return width; }
 
     int getHeight() const                         { return height; }
 
-    int getBitDepth() const                       { return depth; }
-
     bool isEof() const                            { return !!feof(fp); }
 
-    bool isFail() const                           { return !!fp; }
+    bool isFail() const                           { return !fp; }
 
     void release()
     {
@@ -89,7 +79,7 @@ public:
 
     void skipFrames(int numFrames);
 
-    bool readPicture(Picture&);
+    bool readPicture(x265_picture&);
 };
 }
 

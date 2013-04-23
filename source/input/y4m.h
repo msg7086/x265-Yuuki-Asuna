@@ -59,8 +59,6 @@ public:
 
     void setDimensions(int w, int h)              { /* ignore, warn */ }
 
-    void setRate(int numerator, int denominator)  { /* ignore, warn */ }
-
     void setBitDepth(int bitDepth)                { /* ignore, warn */ }
 
     float getRate() const                         { return ((float)rateNum) / rateDenom; }
@@ -69,11 +67,9 @@ public:
 
     int getHeight() const                         { return height; }
 
-    int getBitDepth() const                       { return 8; }
-
     bool isEof() const                            { return !!feof(fp); }
 
-    bool isFail() const                           { return !!fp; }
+    bool isFail() const                           { return !fp; }
 
     void release()                                { delete this; }
 
@@ -81,7 +77,7 @@ public:
 
     void skipFrames(int numFrames);
 
-    bool readPicture(Picture&);
+    bool readPicture(x265_picture&);
 };
 }
 

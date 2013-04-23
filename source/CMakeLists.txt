@@ -82,10 +82,14 @@ if(ENABLE_CLI)
         add_definitions(-Wno-sign-compare)
         add_definitions(-Wno-unused-parameter)
     endif(GCC)
+    set_source_files_properties(x265cfg.cpp  PROPERTIES COMPILE_FLAGS -D_CRT_NONSTDC_NO_DEPRECATE)
     set_source_files_properties(x265main.cpp PROPERTIES COMPILE_FLAGS -DX265_VERSION=${X265_VERSION})
 
     add_subdirectory(input)
-    add_executable(x265-cli x265main.cpp x265cfg.cpp x265cfg.h ${EXTRAS})
+    add_executable(x265-cli
+        x265main.cpp ${EXTRAS}
+        x265cfg.cpp x265cfg.h
+        x265enc.cpp x265enc.h)
 
     target_link_libraries(x265-cli HM x265 InputFiles)
     if(ENABLE_PPA)
