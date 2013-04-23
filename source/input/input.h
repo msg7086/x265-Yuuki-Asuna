@@ -24,21 +24,12 @@
 #ifndef _INPUT_H_
 #define _INPUT_H_
 
+#include "x265.h"
 #include <stdint.h>
-#include <TLibCommon/TypeDef.h>
+#include <iostream>
 
 namespace x265 {
-
-struct Picture
-{
-    void *planes[3];
-
-    int   stride[3];
-
-    int   bitDepth;
-
-    ChromaFormat csp;
-};
+// private x265 namespace
 
 class Input
 {
@@ -54,8 +45,6 @@ public:
 
     virtual void setDimensions(int width, int height) = 0;
 
-    virtual void setRate(int numerator, int denominator) = 0;
-
     virtual void setBitDepth(int bitDepth) = 0;
 
     virtual float getRate() const = 0;
@@ -68,7 +57,7 @@ public:
 
     virtual void skipFrames(int numFrames) = 0;
 
-    virtual bool readPicture(Picture& pic) = 0;
+    virtual bool readPicture(x265_picture& pic) = 0;
 
     virtual bool isEof() const = 0;
 
@@ -76,7 +65,6 @@ public:
 
     virtual int  guessFrameCount() const = 0;
 };
-
 }
 
 #endif // _INPUT_H_

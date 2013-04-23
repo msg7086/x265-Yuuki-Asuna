@@ -34,6 +34,10 @@
 #define IF_FILTER_PREC    6 ///< Log2 of sum of filter taps
 #define IF_INTERNAL_OFFS (1 << (IF_INTERNAL_PREC - 1)) ///< Offset used internally
 
+#if _MSC_VER
+#pragma warning(disable: 4127) // conditional expression is constant, typical for templated functions
+#endif
+
 namespace {
 // anonymous file-static namespace
 
@@ -57,19 +61,15 @@ void CDECL inversedst(short *tmp, short *block, int shift)  // input tmp, output
     }
 }
 
-#if _MSC_VER
-#pragma warning(disable: 4127) // conditional expression is constant
-#endif
-
 template<int N, bool isFirst, bool isLast>
-void CDECL filter_8_nonvertical(const short *coeff,
-                                pixel *      src,
-                                int          srcStride,
-                                pixel *      dst,
-                                int          dstStride,
-                                int          block_width,
-                                int          block_height,
-                                int          bitDepth)
+void CDECL filter_Horizontal(const short *coeff,
+                             short *      src,
+                             int          srcStride,
+                             short *      dst,
+                             int          dstStride,
+                             int          block_width,
+                             int          block_height,
+                             int          bitDepth)
 {
     int row, col;
     short c[8];
@@ -140,7 +140,7 @@ void CDECL filter_8_nonvertical(const short *coeff,
                 sum += src[col + 7] * c[7];
             }
 
-            short val = (short)((sum + offset) >> shift);
+            short val = (short)(sum + offset) >> shift;
             if (isLast)
             {
                 val = (val < 0) ? 0 : val;
@@ -157,18 +157,19 @@ void CDECL filter_8_nonvertical(const short *coeff,
 
 template<int N, int isFirst, int isLast>
 void CDECL filter_Vertical(const short *coeff,
-                           pixel *      src,
+                           short *      src,
                            int          srcStride,
-                           pixel *      dst,
+                           short *      dst,
                            int          dstStride,
                            int          block_width,
                            int          block_height,
                            int          bitDepth)
 {
-    short * srcShort = (short*) src;
-    short * dstShort = (short*) dst;
-    
+    short * srcShort = (short*)src;
+    short * dstShort = (short*)dst;
+
     int cStride = srcStride;
+
     srcShort -= (N / 2 - 1) * cStride;
 
     int offset;
@@ -231,10 +232,6 @@ void CDECL filter_Vertical(const short *coeff,
     }
 }
 
-#if _MSC_VER
-#pragma warning(default: 4127) // conditional expression is constant
-#endif
-
 void CDECL partialButterfly16(short *src, short *dst, int shift, int line)
 {
     int j, k;
@@ -287,7 +284,174 @@ void CDECL partialButterfly16(short *src, short *dst, int shift, int line)
         dst++;
     }
 }
+
+void CDECL partialButterfly32(short *src, short *dst, int shift, int line)
+{
+    int j, k;
+    int E[16], O[16];
+    int EE[8], EO[8];
+    int EEE[4], EEO[4];
+    int EEEE[2], EEEO[2];
+    int add = 1 << (shift - 1);
+
+    for (j = 0; j < line; j++)
+    {
+        /* E and O*/
+        for (k = 0; k < 16; k++)
+        {
+            E[k] = src[k] + src[31 - k];
+            O[k] = src[k] - src[31 - k];
+        }
+
+        /* EE and EO */
+        for (k = 0; k < 8; k++)
+        {
+            EE[k] = E[k] + E[15 - k];
+            EO[k] = E[k] - E[15 - k];
+        }
+
+        /* EEE and EEO */
+        for (k = 0; k < 4; k++)
+        {
+            EEE[k] = EE[k] + EE[7 - k];
+            EEO[k] = EE[k] - EE[7 - k];
+        }
+
+        /* EEEE and EEEO */
+        EEEE[0] = EEE[0] + EEE[3];
+        EEEO[0] = EEE[0] - EEE[3];
+        EEEE[1] = EEE[1] + EEE[2];
+        EEEO[1] = EEE[1] - EEE[2];
+
+        dst[0] = (short)((g_aiT32[0][0] * EEEE[0] + g_aiT32[0][1] * EEEE[1] + add) >> shift);
+        dst[16 * line] = (short)((g_aiT32[16][0] * EEEE[0] + g_aiT32[16][1] * EEEE[1] + add) >> shift);
+        dst[8 * line] = (short)((g_aiT32[8][0] * EEEO[0] + g_aiT32[8][1] * EEEO[1] + add) >> shift);
+        dst[24 * line] = (short)((g_aiT32[24][0] * EEEO[0] + g_aiT32[24][1] * EEEO[1] + add) >> shift);
+        for (k = 4; k < 32; k += 8)
+        {
+            dst[k * line] = (short)((g_aiT32[k][0] * EEO[0] + g_aiT32[k][1] * EEO[1] + g_aiT32[k][2] * EEO[2] +
+                                     g_aiT32[k][3] * EEO[3] + add) >> shift);
+        }
+
+        for (k = 2; k < 32; k += 4)
+        {
+            dst[k * line] = (short)((g_aiT32[k][0] * EO[0] + g_aiT32[k][1] * EO[1] + g_aiT32[k][2] * EO[2] +
+                                     g_aiT32[k][3] * EO[3] + g_aiT32[k][4] * EO[4] + g_aiT32[k][5] * EO[5] +
+                                     g_aiT32[k][6] * EO[6] + g_aiT32[k][7] * EO[7] + add) >> shift);
+        }
+
+        for (k = 1; k < 32; k += 2)
+        {
+            dst[k * line] = (short)((g_aiT32[k][0] * O[0] + g_aiT32[k][1] * O[1] + g_aiT32[k][2] * O[2] + g_aiT32[k][3] * O[3] +
+                                     g_aiT32[k][4] * O[4] + g_aiT32[k][5] * O[5] + g_aiT32[k][6] * O[6] + g_aiT32[k][7] * O[7] +
+                                     g_aiT32[k][8] * O[8] + g_aiT32[k][9] * O[9] + g_aiT32[k][10] * O[10] + g_aiT32[k][11] *
+                                     O[11] + g_aiT32[k][12] * O[12] + g_aiT32[k][13] * O[13] + g_aiT32[k][14] * O[14] +
+                                     g_aiT32[k][15] * O[15] + add) >> shift);
+        }
+
+        src += 32;
+        dst++;
+    }
 }
+
+void CDECL partialButterfly8(Short *src, Short *dst, Int shift, Int line)
+{
+    Int j, k;
+    Int E[4], O[4];
+    Int EE[2], EO[2];
+    Int add = 1 << (shift - 1);
+
+    for (j = 0; j < line; j++)
+    {
+        /* E and O*/
+        for (k = 0; k < 4; k++)
+        {
+            E[k] = src[k] + src[7 - k];
+            O[k] = src[k] - src[7 - k];
+        }
+
+        /* EE and EO */
+        EE[0] = E[0] + E[3];
+        EO[0] = E[0] - E[3];
+        EE[1] = E[1] + E[2];
+        EO[1] = E[1] - E[2];
+
+        dst[0] = (short)((g_aiT8[0][0] * EE[0] + g_aiT8[0][1] * EE[1] + add) >> shift);
+        dst[4 * line] = (short)((g_aiT8[4][0] * EE[0] + g_aiT8[4][1] * EE[1] + add) >> shift);
+        dst[2 * line] = (short)((g_aiT8[2][0] * EO[0] + g_aiT8[2][1] * EO[1] + add) >> shift);
+        dst[6 * line] = (short)((g_aiT8[6][0] * EO[0] + g_aiT8[6][1] * EO[1] + add) >> shift);
+
+        dst[line] = (short)((g_aiT8[1][0] * O[0] + g_aiT8[1][1] * O[1] + g_aiT8[1][2] * O[2] + g_aiT8[1][3] * O[3] + add) >> shift);
+        dst[3 * line] = (short)((g_aiT8[3][0] * O[0] + g_aiT8[3][1] * O[1] + g_aiT8[3][2] * O[2] + g_aiT8[3][3] * O[3] + add) >> shift);
+        dst[5 * line] = (short)((g_aiT8[5][0] * O[0] + g_aiT8[5][1] * O[1] + g_aiT8[5][2] * O[2] + g_aiT8[5][3] * O[3] + add) >> shift);
+        dst[7 * line] = (short)((g_aiT8[7][0] * O[0] + g_aiT8[7][1] * O[1] + g_aiT8[7][2] * O[2] + g_aiT8[7][3] * O[3] + add) >> shift);
+
+        src += 8;
+        dst++;
+    }
+}
+
+void CDECL partialButterflyInverse4(Short *src, Short *dst, Int shift, Int line)
+{
+    Int j;
+    Int E[2], O[2];
+    Int add = 1 << (shift - 1);
+
+    for (j = 0; j < line; j++)
+    {
+        /* Utilizing symmetry properties to the maximum to minimize the number of multiplications */
+        O[0] = g_aiT4[1][0] * src[line] + g_aiT4[3][0] * src[3 * line];
+        O[1] = g_aiT4[1][1] * src[line] + g_aiT4[3][1] * src[3 * line];
+        E[0] = g_aiT4[0][0] * src[0] + g_aiT4[2][0] * src[2 * line];
+        E[1] = g_aiT4[0][1] * src[0] + g_aiT4[2][1] * src[2 * line];
+
+        /* Combining even and odd terms at each hierarchy levels to calculate the final spatial domain vector */
+        dst[0] = (short)(Clip3(-32768, 32767, (E[0] + O[0] + add) >> shift));
+        dst[1] = (short)(Clip3(-32768, 32767, (E[1] + O[1] + add) >> shift));
+        dst[2] = (short)(Clip3(-32768, 32767, (E[1] - O[1] + add) >> shift));
+        dst[3] = (short)(Clip3(-32768, 32767, (E[0] - O[0] + add) >> shift));
+
+        src++;
+        dst += 4;
+    }
+}
+
+void CDECL partialButterflyInverse8(Short *src, Short *dst, Int shift, Int line)
+{
+    Int j, k;
+    Int E[4], O[4];
+    Int EE[2], EO[2];
+    Int add = 1 << (shift - 1);
+
+    for (j = 0; j < line; j++)
+    {
+        /* Utilizing symmetry properties to the maximum to minimize the number of multiplications */
+        for (k = 0; k < 4; k++)
+        {
+            O[k] = g_aiT8[1][k] * src[line] + g_aiT8[3][k] * src[3 * line] + g_aiT8[5][k] * src[5 * line] + g_aiT8[7][k] * src[7 * line];
+        }
+
+        EO[0] = g_aiT8[2][0] * src[2 * line] + g_aiT8[6][0] * src[6 * line];
+        EO[1] = g_aiT8[2][1] * src[2 * line] + g_aiT8[6][1] * src[6 * line];
+        EE[0] = g_aiT8[0][0] * src[0] + g_aiT8[4][0] * src[4 * line];
+        EE[1] = g_aiT8[0][1] * src[0] + g_aiT8[4][1] * src[4 * line];
+
+        /* Combining even and odd terms at each hierarchy levels to calculate the final spatial domain vector */
+        E[0] = EE[0] + EO[0];
+        E[3] = EE[0] - EO[0];
+        E[1] = EE[1] + EO[1];
+        E[2] = EE[1] - EO[1];
+        for (k = 0; k < 4; k++)
+        {
+            dst[k] = (short)Clip3(-32768, 32767, (E[k] + O[k] + add) >> shift);
+            dst[k + 4] = (short)Clip3(-32768, 32767, (E[3 - k] - O[3 - k] + add) >> shift);
+        }
+
+        src++;
+        dst += 8;
+    }
+}
+}  // closing - anonymous file-static namespace
 
 namespace x265 {
 // x265 private namespace
@@ -296,26 +460,30 @@ void Setup_C_MacroblockPrimitives(EncoderPrimitives& p)
 {
     p.inversedst = inversedst;
 
-    p.filter[FILTER_H_4_0_0] = filter_8_nonvertical<4, 0, 0>;
-    p.filter[FILTER_H_4_0_1] = filter_8_nonvertical<4, 0, 1>;
-    p.filter[FILTER_H_4_1_0] = filter_8_nonvertical<4, 1, 0>;
-    p.filter[FILTER_H_4_1_1] = filter_8_nonvertical<4, 1, 1>;
+    p.filter[FILTER_H_4_0_0] = filter_Horizontal<4, 0, 0>;
+    p.filter[FILTER_H_4_0_1] = filter_Horizontal<4, 0, 1>;
+    p.filter[FILTER_H_4_1_0] = filter_Horizontal<4, 1, 0>;
+    p.filter[FILTER_H_4_1_1] = filter_Horizontal<4, 1, 1>;
 
-    p.filter[FILTER_H_8_0_0] = filter_8_nonvertical<8, 0, 0>;
-    p.filter[FILTER_H_8_0_1] = filter_8_nonvertical<8, 0, 1>;
-    p.filter[FILTER_H_8_1_0] = filter_8_nonvertical<8, 1, 0>;
-    p.filter[FILTER_H_8_1_1] = filter_8_nonvertical<8, 1, 1>;
+    p.filter[FILTER_H_8_0_0] = filter_Horizontal<8, 0, 0>;
+    p.filter[FILTER_H_8_0_1] = filter_Horizontal<8, 0, 1>;
+    p.filter[FILTER_H_8_1_0] = filter_Horizontal<8, 1, 0>;
+    p.filter[FILTER_H_8_1_1] = filter_Horizontal<8, 1, 1>;
 
-    p.filter[FILTER_V_4_0_0] = filter_Vertical<4,0,0>;
-    p.filter[FILTER_V_4_0_1] = filter_Vertical<4,0,1>;
-    p.filter[FILTER_V_4_1_0] = filter_Vertical<4,1,0>;
-    p.filter[FILTER_V_4_1_1] = filter_Vertical<4,1,1>;
+    p.filter[FILTER_V_4_0_0] = filter_Vertical<4, 0, 0>;
+    p.filter[FILTER_V_4_0_1] = filter_Vertical<4, 0, 1>;
+    p.filter[FILTER_V_4_1_0] = filter_Vertical<4, 1, 0>;
+    p.filter[FILTER_V_4_1_1] = filter_Vertical<4, 1, 1>;
 
-    p.filter[FILTER_V_8_0_0] = filter_Vertical<8,0,0>;
-    p.filter[FILTER_V_8_0_1] = filter_Vertical<8,0,1>;
-    p.filter[FILTER_V_8_1_0] = filter_Vertical<8,1,0>;
-    p.filter[FILTER_V_8_1_1] = filter_Vertical<8,1,1>;
+    p.filter[FILTER_V_8_0_0] = filter_Vertical<8, 0, 0>;
+    p.filter[FILTER_V_8_0_1] = filter_Vertical<8, 0, 1>;
+    p.filter[FILTER_V_8_1_0] = filter_Vertical<8, 1, 0>;
+    p.filter[FILTER_V_8_1_1] = filter_Vertical<8, 1, 1>;
 
     p.partial_butterfly[BUTTERFLY_16] = partialButterfly16;
+    p.partial_butterfly[BUTTERFLY_32] = partialButterfly32;
+    p.partial_butterfly[BUTTERFLY_8] = partialButterfly8;
+    p.partial_butterfly[BUTTERFLY_INVERSE_4] = partialButterflyInverse4;
+    p.partial_butterfly[BUTTERFLY_INVERSE_8] = partialButterflyInverse8;
 }
 }

@@ -102,8 +102,6 @@ int main(int argc, char *argv[])
 #endif // if ENABLE_ASM_PRIMITIVES
     }
 
-    fprintf(stderr, "\nx265: All tests passed Yeah :)\n");
-
     /******************* Cycle count for all primitives **********************/
 
     EncoderPrimitives optprim;
@@ -115,14 +113,16 @@ int main(int argc, char *argv[])
     Setup_Assembly_Primitives(optprim, cpuid);
 #endif
 
+    fprintf(stderr, "\nTest performance improvement with full optimizations\n");
+
     for (int h = 0; h < sizeof(harness) / sizeof(TestHarness*); h++)
     {
         harness[h]->measureSpeed(cprim, optprim);
     }
 
     printf("\n");
-#else
+#else // if ENABLE_PRIMITIVES
     printf("x265 is configured without performance primitives, nothing to test\n");
-#endif
+#endif // if ENABLE_PRIMITIVES
     return 0;
 }

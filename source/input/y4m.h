@@ -26,8 +26,10 @@
 
 #include "input.h"
 #include <stdio.h>
+#include <stdint.h>
 
 namespace x265 {
+// x265 private namespace
 
 class Y4MInput : public Input
 {
@@ -41,7 +43,9 @@ protected:
 
     int height;
 
-    FILE *fp;
+    uint8_t* buf;
+
+    FILE* fp;
 
     bool eof;
 
@@ -55,19 +59,17 @@ public:
 
     void setDimensions(int w, int h)              { /* ignore, warn */ }
 
-    void setRate(int numerator, int denominator)  { /* ignore, warn */ }
-
     void setBitDepth(int bitDepth)                { /* ignore, warn */ }
 
-    float getRate() const                         { return ((float) rateNum)/rateDenom; }
+    float getRate() const                         { return ((float)rateNum) / rateDenom; }
 
     int getWidth() const                          { return width; }
 
     int getHeight() const                         { return height; }
 
-    bool isEof() const                            { return eof; }
+    bool isEof() const                            { return !!feof(fp); }
 
-    bool isFail() const                           { return !!fp; }
+    bool isFail() const                           { return !fp; }
 
     void release()                                { delete this; }
 
@@ -75,9 +77,8 @@ public:
 
     void skipFrames(int numFrames);
 
-    bool readPicture(Picture&);
+    bool readPicture(x265_picture&);
 };
-
 }
 
 #endif // _Y4M_H_

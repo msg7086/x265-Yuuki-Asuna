@@ -26,22 +26,22 @@
 
 #include "input.h"
 #include <stdio.h>
+#include <stdint.h>
 
 namespace x265 {
+// private x265 namespace
 
 class YUVInput : public Input
 {
 protected:
-
-    int rateNum;
-
-    int rateDenom;
 
     int width;
 
     int height;
 
     int depth;
+
+    uint8_t* buf;
 
     FILE *fp;
 
@@ -55,29 +55,32 @@ public:
 
     void setDimensions(int w, int h)              { width = w; height = h; }
 
-    void setRate(int numerator, int denominator)  { rateNum = numerator; rateDenom = denominator; }
-
     void setBitDepth(int bitDepth)                { depth = bitDepth; }
 
-    float getRate() const                         { return ((float) rateNum)/rateDenom; }
+    float getRate() const                         { return 0.0f; }
 
     int getWidth() const                          { return width; }
 
     int getHeight() const                         { return height; }
 
-    bool isEof() const                            { return eof; }
+    bool isEof() const                            { return !!feof(fp); }
 
-    bool isFail() const                           { return !!fp; }
+    bool isFail() const                           { return !fp; }
 
-    void release()                                { if (fp) fclose(fp); delete this; }
+    void release()
+    {
+        if (fp)
+            fclose(fp);
+
+        delete this;
+    }
 
     int  guessFrameCount() const;
 
     void skipFrames(int numFrames);
 
-    bool readPicture(Picture&);
+    bool readPicture(x265_picture&);
 };
-
 }
 
 #endif // _YUV_H_

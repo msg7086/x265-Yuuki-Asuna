@@ -4,8 +4,11 @@ else()
     add_definitions(-DHAVE_ALIGNED_STACK=0)
 endif()
 
-set(ASMS pixel-a.asm const-a.asm)
-if (NOT X64)
+set(ASMS pixel-a.asm const-a.asm cpu-a.asm sad-a.asm)
+if (X64)
+    add_definitions(-DARCH_X86_64=1)
+else()
+    add_definitions(-DARCH_X86_64=0)
     set(ASMS ${ASMS} pixel-32.asm)
 endif()
 
@@ -16,7 +19,7 @@ if(MSVC)
     if (X64)
         set(FLAGS -f win64 -m amd64 -DARCH_X86_64=1 -DHAVE_ALIGNED_STACK=0)
     else()
-        set(FLAGS -f win32 -DARCH_X86_64=0 -DHAVE_ALIGNED_STACK=0)
+        set(FLAGS -f win32 -DARCH_X86_64=0 -DHAVE_ALIGNED_STACK=0 -DPREFIX)
     endif()
     if (HIGH_BIT_DEPTH)
         set(FLAGS ${FLAGS} -DHIGH_BIT_DEPTH=1 -DBIT_DEPTH=10)
@@ -24,10 +27,10 @@ if(MSVC)
         set(FLAGS ${FLAGS} -DHIGH_BIT_DEPTH=0 -DBIT_DEPTH=8)
     endif()
     foreach(ASM ${ASMS})
-        set(OBJS ${OBJS} ${ASM}.o)
+        set(OBJS ${OBJS} ${ASM}.obj)
         add_custom_command(
-            OUTPUT ${ASM}.o
-            COMMAND ${YASM_EXECUTABLE} ARGS ${FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/${ASM} -o ${ASM}.o
+            OUTPUT ${ASM}.obj
+            COMMAND ${YASM_EXECUTABLE} ARGS ${FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/${ASM} -o ${ASM}.obj
             DEPENDS ${ASM})
     endforeach()
     add_library(PrimitivesASM asm-primitives.cpp ${OBJS})

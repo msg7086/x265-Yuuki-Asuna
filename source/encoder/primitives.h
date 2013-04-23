@@ -30,6 +30,12 @@
 
 #include <stdint.h>
 
+#if ENABLE_ASM_PRIMITIVES
+extern "C" void x264_cpu_emms(void);
+#else
+#define x264_cpu_emms()
+#endif
+
 #if defined(__GNUC__)
 #define ALIGN_VAR_8(T, var)  T var __attribute__((aligned(8)))
 #define ALIGN_VAR_16(T, var) T var __attribute__((aligned(16)))
@@ -131,7 +137,7 @@ int PartitionFromSizes(int Width, int Height);
 
 typedef int (CDECL * pixelcmp)(pixel *fenc, intptr_t fencstride, pixel *fref, intptr_t frefstride);
 typedef void (CDECL * mbdst)(short *block, short *coeff, int shift);
-typedef void (CDECL * IPFilter)(const short *coeff, pixel *src, int srcStride, pixel *dst, int dstStride, int block_width,
+typedef void (CDECL * IPFilter)(const short *coeff, short *src, int srcStride, short *dst, int dstStride, int block_width,
                                 int block_height, int bitDepth);
 typedef void (CDECL * butterfly)(short *src, short *dst, int shift, int line);
 

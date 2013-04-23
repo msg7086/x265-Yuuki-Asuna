@@ -21,29 +21,19 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
-#ifndef _PIXELHARNESS_H_1
-#define _PIXELHARNESS_H_1 1
+#ifndef _X265_H_
+#define _X265_H_
 
-#include "testharness.h"
-#include "primitives.h"
+/* Public C interface to x265 encoder */
 
-class PixelHarness : public TestHarness
+typedef struct
 {
-protected:
+    void *planes[3];
 
-    pixel *pbuf1, *pbuf2;
+    int   stride[3];
 
-    bool check_pixel_primitive(x265::pixelcmp ref, x265::pixelcmp opt);
+    int   bitDepth;
+}
+x265_picture;
 
-public:
-
-    PixelHarness();
-
-    virtual ~PixelHarness();
-
-    bool testCorrectness(const x265::EncoderPrimitives& ref, const x265::EncoderPrimitives& opt);
-
-    void measureSpeed(const x265::EncoderPrimitives& ref, const x265::EncoderPrimitives& opt);
-};
-
-#endif // ifndef _PIXELHARNESS_H_1
+#endif // _X265_H_

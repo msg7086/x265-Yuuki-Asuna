@@ -31,7 +31,7 @@ class FilterHarness : public TestHarness
 {
 protected:
 
-    pixel *pixel_buff;
+    short *pixel_buff;
 
     short *IPF_vec_output, *IPF_C_output;
 
@@ -50,4 +50,4 @@ public:
     void measureSpeed(const x265::EncoderPrimitives& ref, const x265::EncoderPrimitives& opt);
 };
 
-#endif
+#endif // ifndef _FILTERHARNESS_H_1

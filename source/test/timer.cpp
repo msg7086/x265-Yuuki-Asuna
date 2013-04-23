@@ -22,6 +22,7 @@
  *****************************************************************************/
 
 #include "testharness.h"
+#include "primitives.h"
 
 #if _WIN32
 
@@ -43,36 +44,38 @@ public:
 
     void Stop()         { QueryPerformanceCounter(&finish); }
 
-    float ElapsedMS()
-    {
-        return ((float)(finish.QuadPart - start.QuadPart) / freq.QuadPart) * 1000.0f;
-    }
+    uint64_t Elapsed()  { x264_cpu_emms(); return finish.QuadPart - start.QuadPart; }
 
     void Release()      { delete this; }
 };
 
-#else
+#else // if _WIN32
 
-#include <sys/types.h>
-#include <sys/timeb.h>
-#include <sys/time.h>
+#include <time.h>
 
 class TimerImpl : public Timer
 {
 protected:
 
-    timeval start, finish;
+    timespec start, finish;
 
 public:
 
-    void Start()        { gettimeofday(&start, 0); }
-
-    void Stop()         { gettimeofday(&finish, 0); }
-
-    float ElapsedMS()
+    void Start()
     {
-        return (finish.tv_sec - start.tv_sec) * 1000 +
-        (float)(finish.tv_usec - start.tv_usec) / 1000;
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &start);
+    }
+
+    void Stop()
+    {
+        clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &finish);
+    }
+
+    uint64_t Elapsed()
+    {
+        x264_cpu_emms();
+        return (uint64_t)(finish.tv_sec - start.tv_sec) * 1000000000 + 
+               (finish.tv_nsec - start.tv_nsec);
     }
 
     void Release()      { delete this; }
