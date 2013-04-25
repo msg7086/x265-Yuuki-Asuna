@@ -5888,7 +5888,7 @@ Void TEncSearch::xExtDIFUpSamplingH(TComPattern* pattern, Bool biPred)
     Int filterSize = NTAPS_LUMA;
     Int halfFilterSize = (filterSize >> 1);
 
-    srcPtr = (Short*)pattern->getROIY() - halfFilterSize * srcStride - 1;
+    srcPtr = (Pel*)pattern->getROIY() - halfFilterSize * srcStride - 1;
 
     dstPtr = m_filteredBlock[0][0].getLumaAddr();
     filterCopy(srcPtr + halfFilterSize * srcStride + 1, srcStride, dstPtr, dstStride, width, height);
@@ -6057,7 +6057,7 @@ Void TEncSearch::xExtDIFUpSamplingQ(TComPattern* pattern, TComMv halfPelRef, Boo
 
         // Generate @ 3,0
         intPtr = filteredBlockTmp[0].getLumaAddr() + (halfFilterSize - 1) * intStride + 1;
-        dstPtr = (Short*)m_filteredBlock[3][0].getLumaAddr();
+        dstPtr = (Pel*)m_filteredBlock[3][0].getLumaAddr();
         if (halfPelRef.getVer() > 0)
         {
             intPtr += intStride;
