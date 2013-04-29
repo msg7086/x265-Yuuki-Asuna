@@ -39,6 +39,7 @@
 #include "TEncTop.h"
 #include "TEncCu.h"
 #include "TEncAnalyze.h"
+#include "PPA/ppa.h"
 
 #include <cmath>
 #include <algorithm>
@@ -366,6 +367,8 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, UInt ui
 {
     TComPic* pcPic = rpcBestCU->getPic();
 
+    PPAScopeEvent(TEncCu_xCompressCU);
+
     // get Original YUV data from picture
     m_ppcOrigYuv[uiDepth]->copyFromPicYuv(pcPic->getPicYuvOrg(), rpcBestCU->getAddr(), rpcBestCU->getZorderIdxInCU());
 
@@ -378,10 +381,10 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, UInt ui
     Bool    bSubBranch = true;
 
     // variable for Cbf fast mode PU decision
-    Bool    doNotBlockPu = true;
+    Bool doNotBlockPu = true;
     Bool earlyDetectionSkipMode = false;
 
-    Bool    bTrySplitDQP  = true;
+    Bool bTrySplitDQP  = true;
 
     static  Double  afCost[MAX_CU_DEPTH];
     static  Int      aiNum[MAX_CU_DEPTH];
@@ -455,7 +458,7 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, UInt ui
                 if (m_pcEncCfg->getUseEarlySkipDetection())
                 {
                     xCheckRDCostInter(rpcBestCU, rpcTempCU, SIZE_2Nx2N);
-                    rpcTempCU->initEstData(uiDepth, iQP);                                                //by Competition for inter_2Nx2N
+                    rpcTempCU->initEstData(uiDepth, iQP);                              //by Competition for inter_2Nx2N
                 }
                 // SKIP
                 xCheckRDCostMerge2Nx2N(rpcBestCU, rpcTempCU, &earlyDetectionSkipMode); //by Merge for inter_2Nx2N
@@ -724,7 +727,7 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, UInt ui
         m_addSADDepth++;
     }
 
-    // copy orginal YUV samples to PCM buffer
+    // copy original YUV samples to PCM buffer
     if (rpcBestCU->isLosslessCoded(0) && (rpcBestCU->getIPCMFlag(0) == false))
     {
         xFillPCMBuffer(rpcBestCU, m_ppcOrigYuv[uiDepth]);
@@ -1296,6 +1299,7 @@ Void TEncCu::xCheckRDCostInter(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, P
 Void TEncCu::xCheckRDCostIntra(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, PartSize eSize)
 {
     UInt uiDepth = rpcTempCU->getDepth(0);
+    PPAScopeEvent(TEncCU_xCheckRDCostIntra);
 
     rpcTempCU->setSkipFlagSubParts(false, 0, uiDepth);
 
@@ -1318,7 +1322,7 @@ Void TEncCu::xCheckRDCostIntra(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, P
     m_pcEntropyCoder->resetBits();
     if (rpcTempCU->getSlice()->getPPS()->getTransquantBypassEnableFlag())
     {
-        m_pcEntropyCoder->encodeCUTransquantBypassFlag(rpcTempCU, 0,          true);
+        m_pcEntropyCoder->encodeCUTransquantBypassFlag(rpcTempCU, 0, true);
     }
     m_pcEntropyCoder->encodeSkipFlag(rpcTempCU, 0,          true);
     m_pcEntropyCoder->encodePredMode(rpcTempCU, 0,          true);
@@ -1354,6 +1358,7 @@ Void TEncCu::xCheckRDCostIntra(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, P
 Void TEncCu::xCheckIntraPCM(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU)
 {
     UInt uiDepth = rpcTempCU->getDepth(0);
+    PPAScopeEvent(TEncCU_xCheckIntraPCM);
 
     rpcTempCU->setSkipFlagSubParts(false, 0, uiDepth);
 

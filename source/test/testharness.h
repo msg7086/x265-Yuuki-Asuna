@@ -25,7 +25,7 @@
 #define _TESTHARNESS_H_ 1
 
 #include "primitives.h"
-#include <stdint.h>
+#include <stddef.h>
 
 #if HIGH_BIT_DEPTH
 #define BIT_DEPTH 10
@@ -45,6 +45,10 @@ public:
     virtual bool testCorrectness(const x265::EncoderPrimitives& ref, const x265::EncoderPrimitives& opt) = 0;
 
     virtual void measureSpeed(const x265::EncoderPrimitives& ref, const x265::EncoderPrimitives& opt) = 0;
+
+    static void *alignedMalloc(size_t size, int count, int alignment);
+
+    static void alignedFree(void *ptr);
 };
 
 class Timer

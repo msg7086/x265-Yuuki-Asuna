@@ -41,6 +41,7 @@
 #include "TEncSearch.h"
 #include "primitives.h"
 #include "InterpolationFilter.h"
+#include "PPA/ppa.h"
 #include <math.h>
 
 using namespace x265;
@@ -205,10 +206,6 @@ void TEncSearch::init(TEncCfg*     pcEncCfg,
     m_puiDFilter = s_auiDFilter + 4;
 
     // initialize motion cost
-#if !FIX203
-    m_pcRdCost->initRateDistortionModel(m_iSearchRange << 2);
-#endif
-
     for (Int iNum = 0; iNum < AMVP_MAX_NUM_CANDS + 1; iNum++)
     {
         for (Int iIdx = 0; iIdx < AMVP_MAX_NUM_CANDS; iIdx++)
@@ -344,7 +341,7 @@ __inline Void TEncSearch::xTZSearchHelp(TComPattern* pcPatternKey, IntTZSearchSt
     x264_cpu_emms();
 #else
     FpDistFunc  *m_afpDistortFunc;
-    m_afpDistortFunc =  m_pcRdCost->GetsadFunctions();
+    m_afpDistortFunc =  m_pcRdCost->getSadFunctions();
     m_cDistParam.DistFunc = m_afpDistortFunc[DF_SAD + g_aucConvertToBit[m_cDistParam.iCols] + 1];
     if (m_cDistParam.iCols == 12)
     {
@@ -3843,6 +3840,8 @@ Void TEncSearch::xMotionEstimation(TComDataCU* pcCU, TComYuv* pcYuvOrg, Int iPar
 
     TComYuv*      pcYuv = pcYuvOrg;
 
+    PPAScopeEvent(TEncSearch_xMotionEstimation);
+
     m_iSearchRange = m_aaiAdaptSR[eRefPicList][iRefIdxPred];
 
     Int           iSrchRng      = (bBi ? m_bipredSearchRange : m_iSearchRange);
@@ -3901,11 +3900,7 @@ Void TEncSearch::xMotionEstimation(TComDataCU* pcCU, TComYuv* pcYuvOrg, Int iPar
     m_pcRdCost->getMotionCost(1, 0);
     m_pcRdCost->setCostScale(1);
 
-    {
-        xPatternSearchFracDIF(pcCU, pcPatternKey, piRefY, iRefStride, &rcMv, cMvHalf, cMvQter, ruiCost
-                              , bBi
-                              );
-    }
+    xPatternSearchFracDIF(pcCU, pcPatternKey, piRefY, iRefStride, &rcMv, cMvHalf, cMvQter, ruiCost, bBi);
 
     m_pcRdCost->setCostScale(0);
     rcMv <<= 2;
