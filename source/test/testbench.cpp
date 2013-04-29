@@ -27,6 +27,7 @@
 #include "pixelharness.h"
 #include "filterharness.h"
 #include "mbdstharness.h"
+#include "ipfilterharness.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +35,31 @@
 #include <time.h>
 
 using namespace x265;
+
+#ifdef __MINGW32__
+#define _aligned_malloc __mingw_aligned_malloc
+#define _aligned_free  __mingw_aligned_free
+#endif
+
+void *TestHarness::alignedMalloc(size_t size, int count, int alignment)
+{
+#if _WIN32
+    return _aligned_malloc(count * size, alignment);
+#else
+    void *ptr;
+    posix_memalign((void**)&ptr, alignment, count * size);
+    return ptr;
+#endif
+}
+
+void TestHarness::alignedFree(void *ptr)
+{
+#if _WIN32
+    _aligned_free(ptr);
+#else
+    free(ptr);
+#endif
+}
 
 int main(int argc, char *argv[])
 {
@@ -49,19 +75,22 @@ int main(int argc, char *argv[])
     }
 
     int seed = (int)time(NULL);
-    printf("Using random seed %X\n", seed);
+    const char *bpp[] = { "8bpp", "16bpp" };
+    printf("Using random seed %X %s\n", seed, bpp[HIGH_BIT_DEPTH]);
     srand(seed);
 
     PixelHarness  HPixel;
     FilterHarness HFilter;
     MBDstHarness  HMBDist;
+    IPFilterHarness HIPFilter;
 
     // To disable classes of tests, simply comment them out in this list
     TestHarness *harness[] =
     {
         &HPixel,
         &HFilter,
-        &HMBDist
+        &HMBDist,
+        &HIPFilter
     };
 
     EncoderPrimitives cprim;

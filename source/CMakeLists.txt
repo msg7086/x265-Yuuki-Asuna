@@ -39,33 +39,36 @@ endif()
 option(HIGH_BIT_DEPTH "Use 16bit pixels internally" ON)
 if(HIGH_BIT_DEPTH)
     add_definitions(-DHIGH_BIT_DEPTH=1)
+else(HIGH_BIT_DEPTH)
+    add_definitions(-DHIGH_BIT_DEPTH=0)
 endif(HIGH_BIT_DEPTH)
 
 option(ENABLE_PRIMITIVES "Enable use of optimized encoder primitives" ON)
 if(ENABLE_PRIMITIVES)
     add_definitions(-DENABLE_PRIMITIVES)
-
     option(ENABLE_PRIMITIVES_VEC "Enable use of SIMD vector class primitives" ON)
-    if(ENABLE_PRIMITIVES_VEC)
-        add_definitions(-DENABLE_VECTOR_PRIMITIVES=1)
-    endif(ENABLE_PRIMITIVES_VEC)
 
     find_package(Yasm)
     if(YASM_FOUND)
         option(ENABLE_PRIMITIVES_ASM "Enable use of assembly coded primitives" ON)
-        if(ENABLE_PRIMITIVES_ASM)
-            add_definitions(-DENABLE_ASM_PRIMITIVES=1)
-        endif(ENABLE_PRIMITIVES_ASM)
     endif(YASM_FOUND)
 endif(ENABLE_PRIMITIVES)
+
+if(UNIX)
+    SET(PLATFORM_LIBS pthread rt)
+endif(UNIX)
 
 option(ENABLE_PPA "Enable PPA profiling instrumentation" OFF)
 if(ENABLE_PPA)
     add_definitions(-DENABLE_PPA)
     add_subdirectory(PPA)
+    SET(PLATFORM_LIBS ${PLATFORM_LIBS} PPA)
+    if(UNIX)
+        SET(PLATFORM_LIBS ${PLATFORM_LIBS} dl)
+    endif(UNIX)
 endif(ENABLE_PPA)
 
-include_directories(. Lib VectorClass encoder)
+include_directories(. Lib encoder)
 add_subdirectory(Lib)
 add_subdirectory(encoder)
 
@@ -76,7 +79,6 @@ if(ENABLE_CLI)
         add_definitions(/wd4100) # unreferenced formal parameter
         add_definitions(/wd4244) # type conversion, possible loss of data
         add_definitions(/wd4512) # assignment operator could not be generated
-        SET(EXTRAS compat/msvc/getopt.c compat/msvc/getopt.h)
     endif(MSVC)
     if(GCC)
         add_definitions(-Wno-sign-compare)
@@ -88,18 +90,14 @@ if(ENABLE_CLI)
     add_subdirectory(input)
     add_subdirectory(output)
 
+    file(GLOB APPCOMMON  Lib/TAppCommon/*.h Lib/TAppCommon/*.cpp)
+
     add_executable(x265-cli
-        x265main.cpp ${EXTRAS}
+        x265main.cpp ${EXTRAS} ${APPCOMMON}
         x265cfg.cpp x265cfg.h
         x265enc.cpp x265enc.h)
 
-    target_link_libraries(x265-cli HM x265 InputFiles OutputFiles)
-    if(ENABLE_PPA)
-        target_link_libraries(x265-cli PPA)
-        if(UNIX)
-            target_link_libraries(x265-cli dl)
-        endif(UNIX)
-    endif(ENABLE_PPA)
+    target_link_libraries(x265-cli HM x265 InputFiles OutputFiles ${PLATFORM_LIBS})
 endif(ENABLE_CLI)
 
 # Test applications

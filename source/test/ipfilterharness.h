@@ -1,7 +1,8 @@
 /*****************************************************************************
  * Copyright (C) 2013 x265 project
  *
- * Authors: Steve Borho <steve@borho.org>
+ * Authors: Deepthi Devaki <deepthidevaki@multicorewareinc.com>,
+ *          Rajesh Paulraj <rajesh@multicorewareinc.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,38 +22,39 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
-#ifndef _MBDSTHARNESS_H_1
-#define _MBDSTHARNESS_H_1 1
+#ifndef _IPFILTERHARNESS_H_1
+#define _IPFILTERHARNESS_H_1 1
 
 #include "testharness.h"
 #include "primitives.h"
 
-class MBDstHarness : public TestHarness
+class IPFilterHarness : public TestHarness
 {
 protected:
 
-    short *mbuf1, *mbuf2, *mbuf3;
+    pixel *pixel_buff;
+    short *short_buff;
 
-    int mb_t_size;
+    pixel *IPF_vec_output_p, *IPF_C_output_p;
+    short *IPF_vec_output_s, *IPF_C_output_s;
 
-    bool check_mbdst_primitive(x265::mbdst ref, x265::mbdst opt);
-    bool check_butterfly16_primitive(x265::butterfly ref, x265::butterfly opt);
-    bool check_butterfly32_primitive(x265::butterfly ref, x265::butterfly opt);
-    bool check_butterfly8_primitive(x265::butterfly ref, x265::butterfly opt);
-    bool check_butterfly4_inverse_primitive(x265::butterfly ref, x265::butterfly opt);
-    bool check_butterfly8_inverse_primitive(x265::butterfly ref, x265::butterfly opt);
-    bool check_butterfly16_inverse_primitive(x265::butterfly ref, x265::butterfly opt);
-    bool check_butterfly32_inverse_primitive(x265::butterfly ref, x265::butterfly opt);
+    int ipf_t_size;
+
+    bool check_IPFilter_primitive(x265::IPFilter_p_p ref, x265::IPFilter_p_p opt);
+    bool check_IPFilter_primitive(x265::IPFilter_p_s ref, x265::IPFilter_p_s opt);
+    bool check_IPFilter_primitive(x265::IPFilter_s_p ref, x265::IPFilter_s_p opt);
+    bool check_IPFilter_primitive(x265::IPFilterConvert_p_s ref, x265::IPFilterConvert_p_s opt);
+    bool check_IPFilter_primitive(x265::IPFilterConvert_s_p ref, x265::IPFilterConvert_s_p opt);
 
 public:
 
-    MBDstHarness();
+    IPFilterHarness();
 
-    virtual ~MBDstHarness();
+    virtual ~IPFilterHarness();
 
     bool testCorrectness(const x265::EncoderPrimitives& ref, const x265::EncoderPrimitives& opt);
 
     void measureSpeed(const x265::EncoderPrimitives& ref, const x265::EncoderPrimitives& opt);
 };
 
-#endif // ifndef _MBDSTHARNESS_H_1
+#endif // ifndef _FILTERHARNESS_H_1
