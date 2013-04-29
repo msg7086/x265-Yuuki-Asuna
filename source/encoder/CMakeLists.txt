@@ -17,14 +17,15 @@ endif(ENABLE_PRIMITIVES)
 
 include_directories(../VectorClass)
 
-add_library(x265 ../../COPYING
+add_library(x265 ../../COPYING ../x265.h
     ${CPRIMITIVES}
     primitives.cpp primitives.h
     ../VectorClass/instrset_detect.cpp
     threading.cpp threading.h
     threadpool.cpp threadpool.h
     md5.cpp md5.h
-    InterpolationFilter.h)
+    InterpolationFilter.h
+    TShortYUV.cpp TShortYUV.h)
 
 if(ENABLE_PRIMITIVES)
     if(ENABLE_PRIMITIVES_VEC)

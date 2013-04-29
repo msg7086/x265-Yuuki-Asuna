@@ -38,17 +38,42 @@ typedef struct
 }
 x265_picture;
 
+/***
+ * Pass cpuid 0 to auto-detect.  If not called, first encoder allocated will
+ * auto-detect the CPU and initialize performance primitives */
+void x265_init_primitives( int cpuid );
+
+/***
+ * Call to explicitly set the number of threads x265 allocates for its thread pool.
+ * The thread pool is a singleton resource for the process and the first time an
+ * encoder is created it will allocate a default thread pool if necessary.  Default
+ * is one thread per CPU core (counting hyperthreading). */
+void x265_init_threading( int threadcount );
 
 ///TODO: this list needs to be pruned substantially to just the settings we want
 //       end users to have control over.
 typedef struct
 {
+    // coding tools (bit-depth)
+    int       m_internalBitDepth;                 ///< bit-depth codec operates at
+
     // source specification
     int       m_iFrameRate;                       ///< source frame-rates (Hz)
-    uint32_t  m_FrameSkip;                        ///< number of skipped frames from the beginning
     int       m_iSourceWidth;                     ///< source width in pixel
     int       m_iSourceHeight;                    ///< source height in pixel
-    int       m_framesToBeEncoded;                ///< number of encoded frames
+    int       m_maxTempLayer;                     ///< Max temporal layer
+
+    // coding unit (CU) definition
+    uint32_t  m_uiMaxCUWidth;                     ///< max. CU width in pixel
+    uint32_t  m_uiMaxCUHeight;                    ///< max. CU height in pixel
+    uint32_t  m_uiMaxCUDepth;                     ///< max. CU depth
+
+    // transform unit (TU) definition
+    uint32_t  m_uiQuadtreeTULog2MaxSize;
+    uint32_t  m_uiQuadtreeTULog2MinSize;
+
+    uint32_t  m_uiQuadtreeTUMaxDepthInter;
+    uint32_t  m_uiQuadtreeTUMaxDepthIntra;
 
 #if 0 // These Enums must be made public and C style
     // profile/level
@@ -91,20 +116,6 @@ typedef struct
 
     int       m_bUseAdaptiveQP;                   ///< Flag for enabling QP adaptation based on a psycho-visual model
     int       m_iQPAdaptationRange;               ///< dQP range by QP adaptation
-
-    int       m_maxTempLayer;                     ///< Max temporal layer
-
-    // coding unit (CU) definition
-    uint32_t  m_uiMaxCUWidth;                     ///< max. CU width in pixel
-    uint32_t  m_uiMaxCUHeight;                    ///< max. CU height in pixel
-    uint32_t  m_uiMaxCUDepth;                     ///< max. CU depth
-
-    // transform unit (TU) definition
-    uint32_t  m_uiQuadtreeTULog2MaxSize;
-    uint32_t  m_uiQuadtreeTULog2MinSize;
-
-    uint32_t  m_uiQuadtreeTUMaxDepthInter;
-    uint32_t  m_uiQuadtreeTUMaxDepthIntra;
 
     // coding tools (PCM bit-depth)
     int       m_bPCMInputBitDepthFlag;            ///< 0: PCM bit-depth is internal bit-depth. 1: PCM bit-depth is input bit-depth.
@@ -262,13 +273,6 @@ typedef struct
     int       m_maxBitsPerMinCuDenom;             ///< Indicates an upper bound for the number of bits of coding_unit() data
     int       m_log2MaxMvLengthHorizontal;        ///< Indicate the maximum absolute value of a decoded horizontal MV component in quarter-pel luma units
     int       m_log2MaxMvLengthVertical;          ///< Indicate the maximum absolute value of a decoded vertical MV component in quarter-pel luma units
-
-#if HIGH_BIT_DEPTH
-    // coding tools (bit-depth)
-    int       m_inputBitDepth;                    ///< bit-depth of input file (luma component)
-    int       m_outputBitDepth;                   ///< bit-depth of output file (luma component)
-    int       m_internalBitDepth;                 ///< bit-depth codec operates at in luma (input/output files will be converted)
-#endif
 }
 x265_params;
 

@@ -36,12 +36,6 @@ namespace x265 {
 static int8_t psize[16] = { 0,  1,  2,  3, -1,  4, -1, 5, 
                            -1, -1, -1, -1, -1, -1, -1, 6 };
 
-// Returns true if the given height could support an optimized primitive
-bool FastHeight(int Height)
-{
-    return !(Height & ~3) && psize[(Height >> 2) - 1] >= 0;
-}
-
 // Returns a Partitions enum if the size matches a supported performance primitive,
 // else returns -1 (in which case you should use the slow path)
 int PartitionFromSizes(int Width, int Height)
@@ -73,9 +67,17 @@ void Setup_C_Primitives(EncoderPrimitives &p)
 #endif // if ENABLE_PRIMITIVES
 
 /* cpuid == 0 - auto-detect CPU type, else
- * cpuid != 0 - force CPU type */
+ * cpuid > 0 -  force CPU type
+ * cpuid < 0  - auto-detect if uninitialized */
 void SetupPrimitives(int cpuid)
 {
+    if (cpuid < 0)
+    {
+        if (primitives.sad[0])
+            return;
+        else
+            cpuid = 0;
+    }
     if (cpuid == 0)
     {
         cpuid = CpuIDDetect();
@@ -139,3 +141,10 @@ int CpuIDDetect(void)
     }
 }
 }
+
+extern "C"
+void x265_init_primitives( int cpuid )
+{
+    x265::SetupPrimitives(cpuid);
+}
+
