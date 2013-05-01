@@ -21,33 +21,34 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
-#include "bitcost.cpp"
+#include "bitcost.h"
 #include <stdint.h>
+#include <math.h>
 
 using namespace x265;
 
 void BitCost::setQP(unsigned int qp, double lambda)
 {
-    if (costs[QP])
+    if (costs[qp])
         cost = costs[qp];
     else
     {
         ScopedLock s(costCalcLock);
 
-        // Now that we have the lock check again if another thread calculated
-        // this row while we were blocking
-        if (costs[qp])
+        // Now that we have acquired the lock, check again if another thread calculated
+        // this row while we were blocked
+        if (!costs[qp])
         {
-            cost = costs[qp];
-            return;
+            CalculateLogs();
+            costs[qp] = new uint32_t[2 * BC_MAX_MV] + BC_MAX_MV;
+            uint32_t *c = costs[qp];
+            for (int i = 0; i < BC_MAX_MV; i++)
+            {
+                c[i] = c[-i] = (uint32_t)(logs[i] * lambda + 0.5);
+            }
         }
 
-        costs[qp] = new uint32_t[2 * MV_MAX] + MV_MAX;
-        uint32_t *c = cost[qp];
-        for (int i = 0; i < MV_MAX; i++)
-        {
-            c[i] = c[-1] = (uint32_t)(bitCost(i) * lambda);
-        }
+        cost = costs[qp];
     }
 }
 
@@ -55,23 +56,39 @@ void BitCost::setQP(unsigned int qp, double lambda)
  * Class static data and methods
  */
 
-int *BitCost::costs[MAX_QP];
+uint32_t *BitCost::costs[BC_MAX_QP];
+
+float *BitCost::logs;
 
 Lock BitCost::costCalcLock;
 
-int BitCost::bitCost(int val)
+void BitCost::CalculateLogs()
 {
+    if (!logs)
+    {
+        logs = new float[BC_MAX_MV + 1];
+        logs[0] = 1;
+        float log2_2 = (float)(2.0/log(2.0));  // 2 x 1/log(2)
+        for( int i = 1; i <= BC_MAX_MV; i++ )
+            logs[i] = ceil(log((float)(i+1)) * log2_2);
+    }
 }
 
 void BitCost::cleanupCosts()
 {
-    for (int i = 0; i < MAX_QP; i++)
+    for (int i = 0; i < BC_MAX_QP; i++)
     {
         if (costs[i])
         {
-            delete [] (costs[i] - MV_MAX);
+            delete [] (costs[i] - BC_MAX_MV);
+
+            costs[i] = 0;
         }
     }
-}
+    if (logs)
+    {
+        delete [] logs;
 
-#endif // ifndef __BITCOST__
+        logs = 0;
+    }
+}

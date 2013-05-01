@@ -311,7 +311,7 @@ __inline Void TEncSearch::xTZSearchHelp(TComPattern* pcPatternKey, IntTZSearchSt
     m_cDistParam.iStrideCur = rcStruct.iYStride;
     m_cDistParam.iSubShift = 0;
 
-    // fast encoder decision: use subsampled SAD when rows > 8 for integer ME
+    // fast encoder decision: use subsampled SAD when rows > 12 for integer ME
     if (m_pcEncCfg->getUseFastEnc())
     {
         if (m_cDistParam.iRows > 12)
@@ -364,7 +364,9 @@ __inline Void TEncSearch::xTZSearchHelp(TComPattern* pcPatternKey, IntTZSearchSt
     Int uiTempx   = (MVx <= 0) ? x265::Motion_Cost[(-MVx << 1) + 1] : x265::Motion_Cost[(MVx << 1)];
     Int uiTempy   = (MVy <= 0) ? x265::Motion_Cost[(-MVy << 1) + 1] : x265::Motion_Cost[(MVy << 1)];
 
-    uiSad += (m_pcRdCost->m_uiCost * (uiTempx + uiTempy)) >> 16;
+    UInt mvcost = (m_pcRdCost->m_uiCost * (uiTempx + uiTempy)) >> 16;
+    UInt mycost = m_bc.mvcost(x265::MV(iSearchX, iSearchY) << m_pcRdCost->m_iCostScale);
+    uiSad += mvcost;
 
     if (uiSad < rcStruct.uiBestSad)
     {
@@ -2508,7 +2510,6 @@ Void TEncSearch::estIntraPredQT(TComDataCU* pcCU,
             }
 
             for (Int j = 0; j < numCand; j++)
-
             {
                 Bool mostProbableModeIncluded = false;
                 Int mostProbableMode = uiPreds[j];
@@ -2523,7 +2524,6 @@ Void TEncSearch::estIntraPredQT(TComDataCU* pcCU,
                     uiRdModeList[numModesForFullRD++] = mostProbableMode;
                 }
             }
-
 #endif // FAST_UDI_USE_MPM
         }
         else
@@ -3883,15 +3883,22 @@ Void TEncSearch::xMotionEstimation(TComDataCU* pcCU, TComYuv* pcYuvOrg, Int iPar
 
     TComMv      cMvPred = *pcMvPred;
 
-    if (bBi) xSetSearchRange(pcCU, rcMv, iSrchRng, cMvSrchRngLT, cMvSrchRngRB);
-    else xSetSearchRange(pcCU, cMvPred, iSrchRng, cMvSrchRngLT, cMvSrchRngRB);
+    if (bBi)
+        xSetSearchRange(pcCU, rcMv, iSrchRng, cMvSrchRngLT, cMvSrchRngRB);
+    else
+        xSetSearchRange(pcCU, cMvPred, iSrchRng, cMvSrchRngLT, cMvSrchRngRB);
 
     m_pcRdCost->getMotionCost(1, 0);
 
     m_pcRdCost->setPredictor(*pcMvPred);
     m_pcRdCost->setCostScale(2);
 
+    // Configure the MV bit cost calculator
+    m_bc.setQP(pcCU->getQP(0), m_pcRdCost->getSqrtLambda());
+    m_bc.setMVP(m_pcRdCost->m_mvPredictor);
+
     setWpScalingDistParam(pcCU, iRefIdxPred, eRefPicList);
+
     //  Do integer search
     if (!m_iFastSearch || bBi)
     {
@@ -3906,6 +3913,7 @@ Void TEncSearch::xMotionEstimation(TComDataCU* pcCU, TComYuv* pcYuvOrg, Int iPar
     m_pcRdCost->getMotionCost(1, 0);
     m_pcRdCost->setCostScale(1);
 
+    // half-pel refine
     xPatternSearchFracDIF(pcCU, pcPatternKey, piRefY, iRefStride, &rcMv, cMvHalf, cMvQter, ruiCost, bBi);
 
     m_pcRdCost->setCostScale(0);

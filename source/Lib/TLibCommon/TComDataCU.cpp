@@ -39,6 +39,14 @@
 #include "TComDataCU.h"
 #include "TComPic.h"
 
+static x265::MV scaleMv(x265::MV mv, int scale)
+{
+    int mvx = Clip3(-32768, 32767, (scale * mv.x + 127 + (scale * mv.x < 0)) >> 8);
+    int mvy = Clip3(-32768, 32767, (scale * mv.y + 127 + (scale * mv.y < 0)) >> 8);
+
+    return x265::MV((int16_t)mvx, (int16_t)mvy);
+}
+
 //! \ingroup TLibCommon
 //! \{
 
@@ -2987,7 +2995,7 @@ Bool TComDataCU::isBipredRestriction(UInt puIdx)
 
 Void TComDataCU::clipMv(TComMv& rcMv)
 {
-    Int  iMvShift = 2;
+    Int iMvShift = 2;
     Int iOffset = 8;
     Int iHorMax = (m_pcSlice->getSPS()->getPicWidthInLumaSamples() + iOffset - m_uiCUPelX - 1) << iMvShift;
     Int iHorMin = (-(Int)g_uiMaxCUWidth - iOffset - (Int)m_uiCUPelX + 1) << iMvShift;
@@ -2995,8 +3003,8 @@ Void TComDataCU::clipMv(TComMv& rcMv)
     Int iVerMax = (m_pcSlice->getSPS()->getPicHeightInLumaSamples() + iOffset - m_uiCUPelY - 1) << iMvShift;
     Int iVerMin = (-(Int)g_uiMaxCUHeight - iOffset - (Int)m_uiCUPelY + 1) << iMvShift;
 
-    rcMv.setHor(min(iHorMax, max(iHorMin, rcMv.getHor())));
-    rcMv.setVer(min(iVerMax, max(iVerMin, rcMv.getVer())));
+    rcMv.setHor(min(iHorMax, max(iHorMin, (Int)rcMv.getHor())));
+    rcMv.setVer(min(iVerMax, max(iVerMin, (Int)rcMv.getVer())));
 }
 
 UInt TComDataCU::getIntraSizeIdx(UInt uiAbsPartIdx)
@@ -3220,7 +3228,7 @@ Bool TComDataCU::xAddMVPCandOrder(AMVPInfo* pInfo, RefPicList eRefPicList, Int i
                 }
                 else
                 {
-                    rcMv = cMvPred.scaleMv(iScale);
+                    rcMv = scaleMv(cMvPred, iScale);
                 }
             }
             pInfo->m_acMvCand[pInfo->iN++] = rcMv;
@@ -3250,7 +3258,7 @@ Bool TComDataCU::xAddMVPCandOrder(AMVPInfo* pInfo, RefPicList eRefPicList, Int i
                 }
                 else
                 {
-                    rcMv = cMvPred.scaleMv(iScale);
+                    rcMv = scaleMv(cMvPred, iScale);
                 }
             }
             pInfo->m_acMvCand[pInfo->iN++] = rcMv;
@@ -3333,7 +3341,7 @@ Bool TComDataCU::xGetColMVP(RefPicList eRefPicList, Int uiCUAddr, Int uiPartUnit
         }
         else
         {
-            rcMv = cColMv.scaleMv(iScale);
+            rcMv = scaleMv(cColMv, iScale);
         }
     }
     return true;

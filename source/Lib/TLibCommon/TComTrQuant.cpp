@@ -1434,7 +1434,7 @@ Void TComTrQuant::xRateDistOptQuant(TComDataCU* pcCU,
             uiQ  = piQCoef[uiBlkPos];
             dTemp = pdErrScale[uiBlkPos];
             Int lLevelDouble          = plSrcCoeff[uiBlkPos];
-            lLevelDouble              = min(abs(lLevelDouble) * uiQ, MAX_INT - (1 << (iQBits - 1)));
+            lLevelDouble              = (Int)min<Int64>((Int64)abs((Int)lLevelDouble) * uiQ, MAX_INT - (1 << (iQBits - 1)));
 
             if (m_bUseAdaptQpSelect)
             {
@@ -2072,10 +2072,9 @@ __inline Double TComTrQuant::xGetICRateCost(UInt uiAbsLevel,
 __inline Int TComTrQuant::xGetICRate(UInt uiAbsLevel,
                                      UShort ui16CtxNumOne,
                                      UShort ui16CtxNumAbs,
-                                     UShort ui16AbsGoRice
-                                     , UInt                            c1Idx,
-                                     UInt                            c2Idx
-                                     ) const
+                                     UShort ui16AbsGoRice,
+                                     UInt   c1Idx,
+                                     UInt   c2Idx) const
 {
     Int iRate = 0;
     UInt baseLevel  =  (c1Idx < C1FLAG_NUMBER) ? (2 + (c2Idx < C2FLAG_NUMBER)) : 1;

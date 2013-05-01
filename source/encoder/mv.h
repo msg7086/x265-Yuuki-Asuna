@@ -29,12 +29,15 @@
 namespace x265 {
 // private x265 namespace
 
+#if _MSC_VER
+#pragma warning(disable: 4201)
+#endif
 class MV
 {
 public:
 
     union {
-        int16_t x, y;
+        struct { int16_t x, y; };
         int32_t word;
     };
 
@@ -44,11 +47,7 @@ public:
 
     MV(int16_t _x, int16_t _y) : x(_x), y(_y)  {}
 
-    void  set(int32_t _w)                      { word = _w; }
-
-    void  set(int16_t _x, int16_t _y)          { x = _x; y = _y; }
-
-    void  setZero()                            { word = 0; }
+    const MV& operator =(uint32_t w)           { word = w; return *this; }
 
     const MV& operator +=(const MV& other)     { x += other.x; y += other.y; return *this; }
 
@@ -57,6 +56,10 @@ public:
     const MV& operator >>=(int i)              { x >>= i; y >>= i; return *this; }
 
     const MV& operator <<=(int i)              { x <<= i; y <<= i; return *this; }
+
+    MV operator >>(int i) const                { return MV(x >> i, y >> i); }
+
+    MV operator <<(int i) const                { return MV(x << i, y << i); }
 
     const MV operator -(const MV& other) const { return MV(x - other.x, y - other.y); }
 
@@ -67,34 +70,30 @@ public:
     bool operator !=(const MV& other) const    { return word != other.word; }
 
     // Scale down a QPEL mv to FPEL mv, rounding up by one HPEL offset
-    const MV roundToFPel() const               { return MV(x + 2, y + 2) >> 2; }
+    MV roundToFPel() const                     { return MV(x + 2, y + 2) >> 2; }
 
-    //const MV roundToFPel() const               { return MV(((word + 0x00020002) & ~0x00030003) >> 2); }
+    MV toFPel() const                          { return *this >> 2; }
 
     // Scale up an FPEL mv to QPEL by shifting up two bits
-    const MV asQPel() const                    { return MW(word << 2); }
+    MV toQPel() const                          { return *this << 2; }
 
-    const MV scaleMv(int scale) const
+    MV mvmin(const MV& m) const                { return MV(x > m.x ? m.x : x, y > m.y ? m.y : y); }
+    MV mvmax(const MV& m) const                { return MV(x < m.x ? m.x : x, y < m.y ? m.y : y); }
+
+    MV clipped(const MV& _min, const MV& _max) const
     {
-        int mvx = Clip3(-32768, 32767, (scale * x + 127 + (scale * x < 0)) >> 8);
-        int mvy = Clip3(-32768, 32767, (scale * y + 127 + (scale * y < 0)) >> 8);
-
-        return MV((int16_t)mvx, (int16_t)mvy);
+        MV cl = mvmin(_max);
+        return cl.mvmax(_min);
     }
 
-    const MV clipped(const MV& min, const MV& max) const
+    bool checkRange(const MV& _min, const MV& _max) const
     {
-        short cx = max(min.x, min(max.x, x))
-            short cy = max(min.y, min(max.y, y))
-                return MV(cx, cy)
-    }
-
-    bool MV checkRange(const MV& min, const MV& max) const
-    {
-        return x < min.x || x > max.x || y < min.y || y > max.y;
+        return x < _min.x || x > _max.x || y < _min.y || y > _max.y;
     }
 
     /* For compatibility with TComMV */
+    void  set(int16_t _x, int16_t _y) { x = _x; y = _y; }
+
     void  setHor(short i)         { x = i; }
 
     void  setVer(short i)         { y = i; }
@@ -102,10 +101,6 @@ public:
     short getHor() const          { return x; }
 
     short getVer() const          { return y; }
-
-    int   getAbsHor() const       { return abs(x); }
-
-    int   getAbsVer() const       { return abs(y); }
 };
 }
 
