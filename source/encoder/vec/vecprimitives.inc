@@ -27,6 +27,8 @@
 #include "primitives.h"
 #include <string.h>
 
+extern char g_aucConvertToBit[];
+
 using namespace x265;
 
 namespace {
@@ -34,13 +36,16 @@ namespace {
 // primitives and declares a Setup_Vec_FOOPrimitves() method.
 #if HIGH_BIT_DEPTH
     #include "pixel16.inc"
+    #include "ipfilter16.inc"
 #else
     #include "pixel8.inc"
+    #include "ipfilter8.inc"
 #endif
 #include "pixel.inc"
+#include "ipfilter.inc"
 #include "macroblock.inc"
-#include "interpolationfilter.inc"
 #include "blockcopy.inc"
+#include "intrapred.inc"
 }
 
 #define PASTER(name, val) name ## _ ## val
@@ -58,5 +63,6 @@ void NAME(Setup_Vec_Primitives) (EncoderPrimitives &p)
     Setup_Vec_MacroblockPrimitives(p);
     Setup_Vec_IPFilterPrimitives(p);
     Setup_Vec_BlockCopyPrimitives(p);
+    Setup_Vec_IPredPrimitives(p);
 }
 }

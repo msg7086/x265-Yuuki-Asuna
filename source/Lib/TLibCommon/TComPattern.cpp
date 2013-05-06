@@ -171,10 +171,10 @@ Void TComPattern::initPattern(TComDataCU* pcCU, UInt uiPartDepth, UInt uiAbsPart
     m_cPatternCr.setPatternParamCU(pcCU, 2, uiWidth >> 1, uiHeight >> 1, uiOffsetLeft, uiOffsetAbove, uiAbsPartIdx);
 }
 
-Void TComPattern::initAdiPattern(TComDataCU* pcCU, UInt uiZorderIdxInPart, UInt uiPartDepth, Int* piAdiBuf, Int iOrgBufStride, Int iOrgBufHeight, Bool& bAbove, Bool& bLeft, Bool bLMmode)
+Void TComPattern::initAdiPattern(TComDataCU* pcCU, UInt uiZorderIdxInPart, UInt uiPartDepth, Pel* piAdiBuf, Int iOrgBufStride, Int iOrgBufHeight, Bool& bAbove, Bool& bLeft)
 {
     Pel*  piRoiOrigin;
-    Int*  piAdiTemp;
+    Pel*  piAdiTemp;
     UInt  uiCuWidth   = pcCU->getWidth(0) >> uiPartDepth;
     UInt  uiCuHeight  = pcCU->getHeight(0) >> uiPartDepth;
     UInt  uiCuWidth2  = uiCuWidth << 1;
@@ -218,33 +218,31 @@ Void TComPattern::initAdiPattern(TComDataCU* pcCU, UInt uiZorderIdxInPart, UInt 
     piRoiOrigin = pcCU->getPic()->getPicYuvRec()->getLumaAddr(pcCU->getAddr(), pcCU->getZorderIdxInCU() + uiZorderIdxInPart);
     piAdiTemp   = piAdiBuf;
 
-    fillReferenceSamples(g_bitDepthY, piRoiOrigin, piAdiTemp, bNeighborFlags, iNumIntraNeighbor, iUnitSize, iNumUnitsInCu, iTotalUnits, uiCuWidth, uiCuHeight, uiWidth, uiHeight, iPicStride, bLMmode);
+    fillReferenceSamples(g_bitDepthY, piRoiOrigin, piAdiTemp, bNeighborFlags, iNumIntraNeighbor, iUnitSize, iNumUnitsInCu, iTotalUnits, uiCuWidth, uiCuHeight, uiWidth, uiHeight, iPicStride);
 
     Int   i;
     // generate filtered intra prediction samples
     Int iBufSize = uiCuHeight2 + uiCuWidth2 + 1; // left and left above border + above and above right border + top left corner = length of 3. filter buffer
 
-    UInt uiWH = uiWidth * uiHeight;             // number of elements in one buffer
+    UInt uiWH = ADI_BUF_STRIDE * uiHeight;       // number of elements in one buffer
 
-    Int* piFilteredBuf1 = piAdiBuf + uiWH;      // 1. filter buffer
-    Int* piFilteredBuf2 = piFilteredBuf1 + uiWH; // 2. filter buffer
-    Int* piFilterBuf = piFilteredBuf2 + uiWH;   // buffer for 2. filtering (sequential)
-    Int* piFilterBufN = piFilterBuf + iBufSize; // buffer for 1. filtering (sequential)
+    Pel* piFilteredBuf1 = piAdiBuf + uiWH;      // 1. filter buffer
+    Pel* piFilteredBuf2 = piFilteredBuf1 + uiWH; // 2. filter buffer
+    Pel* piFilterBuf = piFilteredBuf2 + uiWH;   // buffer for 2. filtering (sequential)
+    Pel* piFilterBufN = piFilterBuf + iBufSize; // buffer for 1. filtering (sequential)
 
     Int l = 0;
     // left border from bottom to top
     for (i = 0; i < uiCuHeight2; i++)
     {
-        piFilterBuf[l++] = piAdiTemp[uiWidth * (uiCuHeight2 - i)];
+        piFilterBuf[l++] = piAdiTemp[ADI_BUF_STRIDE * (uiCuHeight2 - i)];
     }
 
     // top left corner
     piFilterBuf[l++] = piAdiTemp[0];
+
     // above border from left to right
-    for (i = 0; i < uiCuWidth2; i++)
-    {
-        piFilterBuf[l++] = piAdiTemp[1 + i];
-    }
+    memcpy(&piFilterBuf[l], &piAdiTemp[1], uiCuWidth2*sizeof(*piFilterBuf));
 
     if (pcCU->getSlice()->getSPS()->getUseStrongIntraSmoothing())
     {
@@ -298,20 +296,17 @@ Void TComPattern::initAdiPattern(TComDataCU* pcCU, UInt uiZorderIdxInPart, UInt 
     l = 0;
     for (i = 0; i < uiCuHeight2; i++)
     {
-        piFilteredBuf1[uiWidth * (uiCuHeight2 - i)] = piFilterBufN[l++];
+        piFilteredBuf1[ADI_BUF_STRIDE * (uiCuHeight2 - i)] = piFilterBufN[l++];
     }
 
     piFilteredBuf1[0] = piFilterBufN[l++];
-    for (i = 0; i < uiCuWidth2; i++)
-    {
-        piFilteredBuf1[1 + i] = piFilterBufN[l++];
-    }
+    memcpy(&piFilteredBuf1[1], &piFilterBufN[l], uiCuWidth2 * sizeof(*piFilteredBuf1));
 }
 
-Void TComPattern::initAdiPatternChroma(TComDataCU* pcCU, UInt uiZorderIdxInPart, UInt uiPartDepth, Int* piAdiBuf, Int iOrgBufStride, Int iOrgBufHeight, Bool& bAbove, Bool& bLeft)
+Void TComPattern::initAdiPatternChroma(TComDataCU* pcCU, UInt uiZorderIdxInPart, UInt uiPartDepth, Pel* piAdiBuf, Int iOrgBufStride, Int iOrgBufHeight, Bool& bAbove, Bool& bLeft)
 {
     Pel*  piRoiOrigin;
-    Int*  piAdiTemp;
+    Pel*  piAdiTemp;
     UInt  uiCuWidth  = pcCU->getWidth(0) >> uiPartDepth;
     UInt  uiCuHeight = pcCU->getHeight(0) >> uiPartDepth;
     UInt  uiWidth;
@@ -362,12 +357,12 @@ Void TComPattern::initAdiPatternChroma(TComDataCU* pcCU, UInt uiZorderIdxInPart,
 
     // get Cr pattern
     piRoiOrigin = pcCU->getPic()->getPicYuvRec()->getCrAddr(pcCU->getAddr(), pcCU->getZorderIdxInCU() + uiZorderIdxInPart);
-    piAdiTemp   = piAdiBuf + uiWidth * uiHeight;
+    piAdiTemp   = piAdiBuf + ADI_BUF_STRIDE * uiHeight;
 
     fillReferenceSamples(g_bitDepthC, piRoiOrigin, piAdiTemp, bNeighborFlags, iNumIntraNeighbor, iUnitSize, iNumUnitsInCu, iTotalUnits, uiCuWidth, uiCuHeight, uiWidth, uiHeight, iPicStride);
 }
 
-Void TComPattern::fillReferenceSamples(Int bitDepth, Pel* piRoiOrigin, Int* piAdiTemp, Bool* bNeighborFlags, Int iNumIntraNeighbor, Int iUnitSize, Int iNumUnitsInCu, Int iTotalUnits, UInt uiCuWidth, UInt uiCuHeight, UInt uiWidth, UInt uiHeight, Int iPicStride, Bool bLMmode)
+Void TComPattern::fillReferenceSamples(Int bitDepth, Pel* piRoiOrigin, Pel* piAdiTemp, Bool* bNeighborFlags, Int iNumIntraNeighbor, Int iUnitSize, Int iNumUnitsInCu, Int iTotalUnits, UInt uiCuWidth, UInt uiCuHeight, UInt uiWidth, UInt uiHeight, Int iPicStride)
 {
     Pel* piRoiTemp;
     Int  i, j;
@@ -383,7 +378,7 @@ Void TComPattern::fillReferenceSamples(Int bitDepth, Pel* piRoiOrigin, Int* piAd
 
         for (i = 1; i < uiHeight; i++)
         {
-            piAdiTemp[i * uiWidth] = iDCValue;
+            piAdiTemp[i * ADI_BUF_STRIDE] = iDCValue;
         }
     }
     else if (iNumIntraNeighbor == iTotalUnits)
@@ -393,39 +388,19 @@ Void TComPattern::fillReferenceSamples(Int bitDepth, Pel* piRoiOrigin, Int* piAd
         piAdiTemp[0] = piRoiTemp[0];
 
         // Fill left border with rec. samples
+        // Fill below left border with rec. samples
         piRoiTemp = piRoiOrigin - 1;
 
-        if (bLMmode)
+        for (i = 0; i < 2 * uiCuHeight; i++)
         {
-            piRoiTemp--; // move to the second left column
-        }
-
-        for (i = 0; i < uiCuHeight; i++)
-        {
-            piAdiTemp[(1 + i) * uiWidth] = piRoiTemp[0];
-            piRoiTemp += iPicStride;
-        }
-
-        // Fill below left border with rec. samples
-        for (i = 0; i < uiCuHeight; i++)
-        {
-            piAdiTemp[(1 + uiCuHeight + i) * uiWidth] = piRoiTemp[0];
+            piAdiTemp[(1 + i) * ADI_BUF_STRIDE] = piRoiTemp[0];
             piRoiTemp += iPicStride;
         }
 
         // Fill top border with rec. samples
-        piRoiTemp = piRoiOrigin - iPicStride;
-        for (i = 0; i < uiCuWidth; i++)
-        {
-            piAdiTemp[1 + i] = piRoiTemp[i];
-        }
-
         // Fill top right border with rec. samples
-        piRoiTemp = piRoiOrigin - iPicStride + uiCuWidth;
-        for (i = 0; i < uiCuWidth; i++)
-        {
-            piAdiTemp[1 + uiCuWidth + i] = piRoiTemp[i];
-        }
+        piRoiTemp = piRoiOrigin - iPicStride;
+        memcpy(&piAdiTemp[1], piRoiTemp, 2*uiCuWidth * sizeof(*piAdiTemp));
     }
     else // reference samples are partially available
     {
@@ -458,10 +433,6 @@ Void TComPattern::fillReferenceSamples(Int bitDepth, Pel* piRoiOrigin, Int* piAd
 
         // Fill left & below-left samples
         piRoiTemp += iPicStride;
-        if (bLMmode)
-        {
-            piRoiTemp--; // move the second left column
-        }
         piAdiLineTemp--;
         pbNeighborFlags--;
         for (j = 0; j < iNumUnits2; j++)
@@ -486,10 +457,7 @@ Void TComPattern::fillReferenceSamples(Int bitDepth, Pel* piRoiOrigin, Int* piAd
         {
             if (*pbNeighborFlags)
             {
-                for (i = 0; i < iUnitSize; i++)
-                {
-                    piAdiLineTemp[i] = piRoiTemp[i];
-                }
+                memcpy(piAdiLineTemp, piRoiTemp, iUnitSize * sizeof(*piAdiTemp));
             }
             piRoiTemp += iUnitSize;
             piAdiLineTemp += iUnitSize;
@@ -545,32 +513,29 @@ Void TComPattern::fillReferenceSamples(Int bitDepth, Pel* piRoiOrigin, Int* piAd
 
         // Copy processed samples
         piAdiLineTemp = piAdiLine + uiHeight + iUnitSize - 2;
-        for (i = 0; i < uiWidth; i++)
-        {
-            piAdiTemp[i] = piAdiLineTemp[i];
-        }
+        memcpy(piAdiTemp, piAdiLineTemp, uiWidth * sizeof(*piAdiTemp));
 
         piAdiLineTemp = piAdiLine + uiHeight - 1;
         for (i = 1; i < uiHeight; i++)
         {
-            piAdiTemp[i * uiWidth] = piAdiLineTemp[-i];
+            piAdiTemp[i * ADI_BUF_STRIDE] = piAdiLineTemp[-i];
         }
     }
 }
 
-Int* TComPattern::getAdiOrgBuf(Int /*iCuWidth*/, Int /*iCuHeight*/, Int* piAdiBuf)
+Pel* TComPattern::getAdiOrgBuf(Int /*iCuWidth*/, Int /*iCuHeight*/, Pel* piAdiBuf)
 {
     return piAdiBuf;
 }
 
-Int* TComPattern::getAdiCbBuf(Int /*iCuWidth*/, Int /*iCuHeight*/, Int* piAdiBuf)
+Pel* TComPattern::getAdiCbBuf(Int /*iCuWidth*/, Int /*iCuHeight*/, Pel* piAdiBuf)
 {
     return piAdiBuf;
 }
 
-Int* TComPattern::getAdiCrBuf(Int iCuWidth, Int iCuHeight, Int* piAdiBuf)
+Pel* TComPattern::getAdiCrBuf(Int iCuWidth, Int iCuHeight, Pel* piAdiBuf)
 {
-    return piAdiBuf + (iCuWidth * 2 + 1) * (iCuHeight * 2 + 1);
+    return piAdiBuf + ADI_BUF_STRIDE * (iCuHeight * 2 + 1);
 }
 
 /** Get pointer to reference samples for intra prediction
@@ -581,9 +546,9 @@ Int* TComPattern::getAdiCrBuf(Int iCuWidth, Int iCuHeight, Int* piAdiBuf)
  *
  * The prediction mode index is used to determine whether a smoothed reference sample buffer is returned.
  */
-Int* TComPattern::getPredictorPtr(UInt uiDirMode, UInt log2BlkSize, Int* piAdiBuf)
+Pel* TComPattern::getPredictorPtr(UInt uiDirMode, UInt log2BlkSize, Pel* piAdiBuf)
 {
-    Int* piSrc;
+    Pel* piSrc;
 
     assert(log2BlkSize >= 2 && log2BlkSize < 7);
     Int diff = min<Int>(abs((Int)uiDirMode - HOR_IDX), abs((Int)uiDirMode - VER_IDX));
@@ -602,7 +567,7 @@ Int* TComPattern::getPredictorPtr(UInt uiDirMode, UInt log2BlkSize, Int* piAdiBu
 
     if (ucFiltIdx)
     {
-        piSrc += (2 * width + 1) * (2 * height + 1);
+        piSrc += ADI_BUF_STRIDE * (2 * height + 1);
     }
 
     return piSrc;

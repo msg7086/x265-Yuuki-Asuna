@@ -53,12 +53,12 @@ TComPrediction::TComPrediction()
     : m_pLumaRecBuffer(0)
     , m_iLumaRecStride(0)
 {
-    m_piYuvExt = NULL;
+    m_piPredBuf = NULL;
 }
 
 TComPrediction::~TComPrediction()
 {
-    delete[] m_piYuvExt;
+    delete[] m_piPredBuf;
 
     m_acYuvPred[0].destroy();
     m_acYuvPred[1].destroy();
@@ -84,7 +84,7 @@ TComPrediction::~TComPrediction()
 
 Void TComPrediction::initTempBuff()
 {
-    if (m_piYuvExt == NULL)
+    if (m_piPredBuf == NULL)
     {
         Int extWidth  = MAX_CU_SIZE + 16;
         Int extHeight = MAX_CU_SIZE + 1;
@@ -98,9 +98,9 @@ Void TComPrediction::initTempBuff()
             }
         }
 
-        m_iYuvExtHeight  = ((MAX_CU_SIZE + 2) << 4);
-        m_iYuvExtStride = ((MAX_CU_SIZE  + 8) << 4);
-        m_piYuvExt = new Int[m_iYuvExtStride * m_iYuvExtHeight];
+        m_iPredBufHeight  = ((MAX_CU_SIZE + 2) << 4);
+        m_iPredBufStride = ((MAX_CU_SIZE  + 8) << 4);
+        m_piPredBuf = new Pel[m_iPredBufStride * m_iPredBufHeight];
 
         // new structure
         m_acYuvPred[0].create(MAX_CU_SIZE, MAX_CU_SIZE);
@@ -122,9 +122,12 @@ Void TComPrediction::initTempBuff()
 // ====================================================================================================================
 // Public member functions
 // ====================================================================================================================
+Void xPredIntraPlanar(Pel* pSrc, Int srcStride, Pel* rpDst, Int dstStride, UInt width, UInt height);
+Void xDCPredFiltering(Pel* pSrc, Int iSrcStride, Pel*& rpDst, Int iDstStride, Int iWidth, Int iHeight);
 
 // Function for calculating DC value of the reference samples used in Intra prediction
-Pel TComPrediction::predIntraGetPredValDC(Int* pSrc, Int iSrcStride, UInt iWidth, UInt iHeight, Bool bAbove, Bool bLeft)
+#if !ENABLE_PRIMITIVES
+Pel CDECL predIntraGetPredValDC(Pel* pSrc, intptr_t iSrcStride, intptr_t iWidth, intptr_t iHeight, int bAbove, int bLeft)
 {
     Int iInd, iSum = 0;
     Pel pDcVal;
@@ -163,6 +166,7 @@ Pel TComPrediction::predIntraGetPredValDC(Int* pSrc, Int iSrcStride, UInt iWidth
 
     return pDcVal;
 }
+#endif
 
 // Function for deriving the angular Intra predictions
 
@@ -185,17 +189,16 @@ Pel TComPrediction::predIntraGetPredValDC(Int* pSrc, Int iSrcStride, UInt iWidth
  * the predicted value for the pixel is linearly interpolated from the reference samples. All reference samples are taken
  * from the extended main reference.
  */
-Void TComPrediction::xPredIntraAng(Int bitDepth, Int* pSrc, Int srcStride, Pel*& rpDst, Int dstStride, UInt width, UInt height, UInt dirMode, Bool blkAboveAvailable, Bool blkLeftAvailable, Bool bFilter)
+Void xPredIntraAng(Int bitDepth, Pel* pSrc, Int srcStride, Pel*& rpDst, Int dstStride, UInt width, UInt height, UInt dirMode, Bool blkAboveAvailable, Bool blkLeftAvailable, Bool bFilter)
 {
     Int k, l;
     Int blkSize        = width;
     Pel* pDst          = rpDst;
 
     // Map the mode index to main prediction direction and angle
-    assert(dirMode > 0); //no planar
-    Bool modeDC        = dirMode < 2;
-    Bool modeHor       = !modeDC && (dirMode < 18);
-    Bool modeVer       = !modeDC && !modeHor;
+    assert(dirMode > 1); //no planar and dc
+    Bool modeHor       = (dirMode < 18);
+    Bool modeVer       = !modeHor;
     Int intraPredAngle = modeVer ? (Int)dirMode - VER_IDX : modeHor ? -((Int)dirMode - HOR_IDX) : 0;
     Int absAng         = abs(intraPredAngle);
     Int signAng        = intraPredAngle < 0 ? -1 : 1;
@@ -207,22 +210,7 @@ Void TComPrediction::xPredIntraAng(Int bitDepth, Int* pSrc, Int srcStride, Pel*&
     absAng             = angTable[absAng];
     intraPredAngle     = signAng * absAng;
 
-    // Do the DC prediction
-    if (modeDC)
-    {
-        UChar dcval = (UChar)predIntraGetPredValDC(pSrc, srcStride, width, height, blkAboveAvailable, blkLeftAvailable);
-
-        for (k = 0; k < blkSize; k++)
-        {
-            for (l = 0; l < blkSize; l++)
-            {
-                pDst[k * dstStride + l] = dcval;
-            }
-        }
-    }
-
     // Do angular predictions
-    else
     {
         Pel* refMain;
         Pel* refSide;
@@ -337,55 +325,78 @@ Void TComPrediction::xPredIntraAng(Int bitDepth, Int* pSrc, Int srcStride, Pel*&
     }
 }
 
+Void xPredIntraDC(Pel* pSrc, Int srcStride, Pel*& rpDst, Int dstStride, UInt width, UInt height, Bool blkAboveAvailable, Bool blkLeftAvailable, Bool bFilter)
+{
+    Int k, l;
+    Int blkSize        = width;
+    Pel* pDst          = rpDst;
+
+    // Do the DC prediction
+#if ENABLE_PRIMITIVES
+    Pel dcval = (Pel) primitives.getdcval_p((pixel*)pSrc, srcStride, width, height, (blkAboveAvailable ? 1 : 0), (blkLeftAvailable ? 1 : 0));
+#else
+    UChar dcval = (UChar) predIntraGetPredValDC(pSrc, srcStride, width, height, blkAboveAvailable, blkLeftAvailable);
+#endif
+
+    for (k = 0; k < blkSize; k++)
+    {
+        for (l = 0; l < blkSize; l++)
+        {
+            pDst[k * dstStride + l] = dcval;
+        }
+    }
+    if (bFilter && blkAboveAvailable && blkLeftAvailable)
+    {
+        xDCPredFiltering(pSrc, srcStride, pDst, dstStride, width, height);
+    }
+}
+
 Void TComPrediction::predIntraLumaAng(TComPattern* pcTComPattern, UInt uiDirMode, Pel* piPred, UInt uiStride, Int iWidth, Int iHeight, Bool bAbove, Bool bLeft)
 {
     Pel *pDst = piPred;
-    Int *ptrSrc;
+    Pel *ptrSrc;
 
     assert(g_aucConvertToBit[iWidth] >= 0);   //   4x  4
     assert(g_aucConvertToBit[iWidth] <= 5);   // 128x128
     assert(iWidth == iHeight);
 
-    ptrSrc = pcTComPattern->getPredictorPtr(uiDirMode, g_aucConvertToBit[iWidth] + 2, m_piYuvExt);
+    ptrSrc = pcTComPattern->getPredictorPtr(uiDirMode, g_aucConvertToBit[iWidth] + 2, m_piPredBuf);
 
     // get starting pixel in block
-    Int sw = 2 * iWidth + 1;
+    Int sw = ADI_BUF_STRIDE;
+    Bool bFilter = ((iWidth <= 16) && (iHeight <= 16));
 
     // Create the prediction
     if (uiDirMode == PLANAR_IDX)
     {
         xPredIntraPlanar(ptrSrc + sw + 1, sw, pDst, uiStride, iWidth, iHeight);
     }
+    else if (uiDirMode == DC_IDX)
+    {
+        xPredIntraDC(ptrSrc + sw + 1, sw, pDst, uiStride, iWidth, iHeight, bAbove, bLeft, bFilter);
+    }
     else
     {
-        if ((iWidth > 16) || (iHeight > 16))
-        {
-            xPredIntraAng(g_bitDepthY, ptrSrc + sw + 1, sw, pDst, uiStride, iWidth, iHeight, uiDirMode, bAbove, bLeft, false);
-        }
-        else
-        {
-            xPredIntraAng(g_bitDepthY, ptrSrc + sw + 1, sw, pDst, uiStride, iWidth, iHeight, uiDirMode, bAbove, bLeft, true);
-
-            if ((uiDirMode == DC_IDX) && bAbove && bLeft)
-            {
-                xDCPredFiltering(ptrSrc + sw + 1, sw, pDst, uiStride, iWidth, iHeight);
-            }
-        }
+        xPredIntraAng(g_bitDepthY, ptrSrc + sw + 1, sw, pDst, uiStride, iWidth, iHeight, uiDirMode, bAbove, bLeft, bFilter);
     }
 }
 
 // Angular chroma
-Void TComPrediction::predIntraChromaAng(Int* piSrc, UInt uiDirMode, Pel* piPred, UInt uiStride, Int iWidth, Int iHeight, Bool bAbove, Bool bLeft)
+Void TComPrediction::predIntraChromaAng(Pel* piSrc, UInt uiDirMode, Pel* piPred, UInt uiStride, Int iWidth, Int iHeight, Bool bAbove, Bool bLeft)
 {
     Pel *pDst = piPred;
-    Int *ptrSrc = piSrc;
+    Pel *ptrSrc = piSrc;
 
     // get starting pixel in block
-    Int sw = 2 * iWidth + 1;
+    Int sw = ADI_BUF_STRIDE;
 
     if (uiDirMode == PLANAR_IDX)
     {
         xPredIntraPlanar(ptrSrc + sw + 1, sw, pDst, uiStride, iWidth, iHeight);
+    }
+    else if (uiDirMode == DC_IDX)
+    {
+        xPredIntraDC(ptrSrc + sw + 1, sw, pDst, uiStride, iWidth, iHeight, bAbove, bLeft, false);
     }
     else
     {
@@ -838,13 +849,13 @@ Void TComPrediction::getMvPredAMVP(TComDataCU* pcCU, UInt uiPartIdx, UInt uiPart
  *
  * This function derives the prediction samples for planar mode (intra coding).
  */
-Void TComPrediction::xPredIntraPlanar(Int* pSrc, Int srcStride, Pel* rpDst, Int dstStride, UInt width, UInt height)
+Void xPredIntraPlanar(Pel* pSrc, Int srcStride, Pel* rpDst, Int dstStride, UInt width, UInt height)
 {
     assert(width == height);
 
     Int k, l, bottomLeft, topRight;
     Int horPred;
-    Int leftColumn[MAX_CU_SIZE], topRow[MAX_CU_SIZE], bottomRow[MAX_CU_SIZE], rightColumn[MAX_CU_SIZE];
+    Int leftColumn[MAX_CU_SIZE+1], topRow[MAX_CU_SIZE+1], bottomRow[MAX_CU_SIZE], rightColumn[MAX_CU_SIZE];
     UInt blkSize = width;
     UInt offset2D = width;
     UInt shift1D = g_aucConvertToBit[width] + 2;
@@ -891,7 +902,7 @@ Void TComPrediction::xPredIntraPlanar(Int* pSrc, Int srcStride, Pel* rpDst, Int 
  *
  * This function performs filtering left and top edges of the prediction samples for DC mode (intra coding).
  */
-Void TComPrediction::xDCPredFiltering(Int* pSrc, Int iSrcStride, Pel*& rpDst, Int iDstStride, Int iWidth, Int iHeight)
+Void xDCPredFiltering(Pel* pSrc, Int iSrcStride, Pel*& rpDst, Int iDstStride, Int iWidth, Int iHeight)
 {
     Pel* pDst = rpDst;
     Int x, y, iDstStride2, iSrcStride2;

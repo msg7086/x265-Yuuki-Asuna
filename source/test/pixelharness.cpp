@@ -33,13 +33,14 @@ using namespace x265;
 // Initialize the Func Names for all the Pixel Comp
 static const char *FuncNames[NUM_PARTITIONS] =
 {
-    "  4x4", "  4x8", " 4x12", " 4x16", " 4x24", " 4x32", " 4x64",
-    "  8x4", "  8x8", " 8x12", " 8x16", " 8x24", " 8x32", " 8x64",
-    " 12x4", " 12x8", "12x12", "12x16", "12x24", "12x32", "12x64",
-    " 16x4", " 16x8", "16x12", "16x16", "16x24", "16x32", "16x64",
-    " 24x4", " 24x8", "24x12", "24x16", "24x24", "24x32", "24x64",
-    " 32x4", " 32x8", "32x12", "32x16", "32x24", "32x32", "32x64",
-    " 64x4", " 64x8", "64x12", "64x16", "64x24", "64x32", "64x64"
+    "  4x4", "  4x8", " 4x12", " 4x16", " 4x24", " 4x32", " 4x48", " 4x64",
+    "  8x4", "  8x8", " 8x12", " 8x16", " 8x24", " 8x32", " 8x48", " 8x64",
+    " 12x4", " 12x8", "12x12", "12x16", "12x24", "12x32", "12x48", "12x64",
+    " 16x4", " 16x8", "16x12", "16x16", "16x24", "16x32", "16x48", "16x64",
+    " 24x4", " 24x8", "24x12", "24x16", "24x24", "24x32", "24x48", "24x64",
+    " 32x4", " 32x8", "32x12", "32x16", "32x24", "32x32", "32x48", "32x64",
+    " 48x4", " 48x8", "48x12", "48x16", "48x24", "48x32", "48x48", "48x64",
+    " 64x4", " 64x8", "64x12", "64x16", "64x24", "64x32", "64x48", "64x64"
 };
 
 #if HIGH_BIT_DEPTH
@@ -316,7 +317,7 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
         {
             pbuf2 += 1;
             printf("sad_x3[%s]", FuncNames[curpar]);
-            REPORT_SPEEDUP(iters,
+            REPORT_SPEEDUP(iters/3,
                 opt.sad_x3[curpar](pbuf1, pbuf2, pbuf2 + 1, pbuf2 - 1, FENC_STRIDE + 5, &cres[0]),
                 ref.sad_x3[curpar](pbuf1, pbuf2, pbuf2 + 1, pbuf2 - 1, FENC_STRIDE + 5, &cres[0]));
             pbuf2 -= 1;
@@ -326,7 +327,7 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
         {
             pbuf2 += INCR;
             printf("sad_x4[%s]", FuncNames[curpar]);
-            REPORT_SPEEDUP(iters,
+            REPORT_SPEEDUP(iters/4,
                 opt.sad_x4[curpar](pbuf1, pbuf2, pbuf2 + 1, pbuf2 - 1, pbuf2 - INCR, FENC_STRIDE + 5, &cres[0]),
                 ref.sad_x4[curpar](pbuf1, pbuf2, pbuf2 + 1, pbuf2 - 1, pbuf2 - INCR, FENC_STRIDE + 5, &cres[0]));
             pbuf2 -= INCR;

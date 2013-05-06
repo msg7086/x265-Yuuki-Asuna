@@ -307,6 +307,11 @@ public:
     void fromUint32(uint32_t i) {
         xmm = _mm_cvtsi32_si128(i);
     }
+#if _WIN64
+    void fromUint64(uint64_t i) {
+        xmm = _mm_cvtsi64_si128(i);
+    }
+#endif
     // Constructor to build from all elements:
     Vec16c(int8_t i0, int8_t i1, int8_t i2, int8_t i3, int8_t i4, int8_t i5, int8_t i6, int8_t i7,
         int8_t i8, int8_t i9, int8_t i10, int8_t i11, int8_t i12, int8_t i13, int8_t i14, int8_t i15) {
@@ -420,6 +425,21 @@ public:
 };
 
 // Define operators for this class
+
+// convert vector to int32
+static inline int32_t toInt32(__m128i const & x) {
+    return _mm_cvtsi128_si32(x);
+}
+
+// extract low 64-bits from vector, return [LO LO], map to PUNPCKLQDQ
+static inline __m128i extract_lo64(__m128i const & x) {
+    return _mm_unpacklo_epi64(x, x);
+}
+
+// extract high 64-bits from vector, return [HI HI], map to PUNPCKHQDQ
+static inline __m128i extract_hi64(__m128i const & x) {
+    return _mm_unpackhi_epi64(x, x);
+}
 
 // vector operator + : add element by element
 static inline Vec16c operator + (Vec16c const & a, Vec16c const & b) {
@@ -975,6 +995,11 @@ public:
         xmm = _mm_load_si128((__m128i const*)p);
         return *this;
     }
+    // Partial load. Load 4 elements and set the rest to 0(MMX)
+    Vec8s & load_partial4(void const * p) {
+        xmm = _mm_loadl_epi64((__m128i const*)p);
+        return *this;
+    }
     // Partial load. Load n elements and set the rest to 0
     Vec8s & load_partial(int n, void const * p) {
         if      (n >= 8) load(p);
@@ -991,6 +1016,10 @@ public:
         }
         cutoff(n);
         return *this;
+    }
+    // Partial store. Store 4 elements
+    void store_partial4(void * p) const {
+        _mm_storel_epi64((__m128i*)p, xmm);
     }
     // Partial store. Store n elements
     void store_partial(int n, void * p) const {
@@ -1385,6 +1414,10 @@ public:
         xmm = x;
         return *this;
     };
+    Vec8us & addSumAbsDiff(__m128i const & a, __m128i const & b) {
+        xmm = _mm_add_epi16(xmm, _mm_sad_epu8(a, b));
+        return *this;
+    }
     // Member function to load from array (unaligned)
     Vec8us & load(void const * p) {
         xmm = _mm_loadu_si128((__m128i const*)p);
@@ -4363,9 +4396,19 @@ static inline Vec4ui extend_low (Vec8us const & a) {
     return    _mm_unpacklo_epi16(a,_mm_setzero_si128());   // interleave with zero extensions
 }
 
+// Function extend_low : extends the low 4 elements to 32 bits with zero extension
+static inline Vec4ui extend_low_unsafe (Vec8us const & a) {
+    return    _mm_unpacklo_epi16(a,a);   // interleave with zero extensions
+}
+
 // Function extend_high : extends the high 4 elements to 32 bits with zero extension
 static inline Vec4ui extend_high (Vec8us const & a) {
     return    _mm_unpackhi_epi16(a,_mm_setzero_si128());   // interleave with zero extensions
+}
+
+// Function extend_high : extends the high 4 elements to 32 bits with zero extension
+static inline Vec4ui extend_high_unsafe (Vec8us const & a) {
+    return    _mm_unpackhi_epi16(a,a);   // interleave with zero extensions
 }
 
 // Extend 32-bit integers to 64-bit integers, signed and unsigned
@@ -5322,6 +5365,26 @@ template <int32_t d>
 static inline Vec16uc & operator /= (Vec16uc & a, Const_int_t<d> b) {
     a = a / b;
     return a;
+}
+
+/*****************************************************************************
+*
+*          Vector shift: shift is a compile-time constant
+*
+*****************************************************************************/
+
+// Shift Vec4ui by compile-time constant
+template <int32_t d>
+static inline Vec4ui shift_right_by_i(Vec4ui const & x) {
+    const int n = int(d) / 8;
+    Static_error_check<((d%8) == 0)> shift_by_non_bytes;
+    return _mm_srli_si128(x, n);
+}
+
+// vector operator >> : shift right logical all elements with const bytes (map to PSRLDQ)
+template <int32_t d>
+static inline Vec4ui operator >> (Vec4ui const & a, Const_int_t<d>) {
+    return shift_right_by_i<d>(a);
 }
 
 #if _MSC_VER
