@@ -70,12 +70,7 @@ TComPicYuv::TComPicYuv()
         for (int j = 0; j < 4; j++)
         {
             m_filteredBlockBufY[i][j] = NULL;
-            m_filteredBlockBufU[i][j] = NULL;
-            m_filteredBlockBufV[i][j] = NULL;
-
             m_filteredBlockOrgY[i][j] = NULL;
-            m_filteredBlockOrgU[i][j] = NULL;
-            m_filteredBlockOrgV[i][j] = NULL;
         }
     }
 
@@ -158,12 +153,7 @@ Void TComPicYuv::destroy()
         for (int j = 0; j < 4; j++)
         {
             if (m_filteredBlockBufY[i][j]) { xFree(m_filteredBlockBufY[i][j]);    m_filteredBlockBufY[i][j] = NULL; }
-            if (m_filteredBlockBufU[i][j]) { xFree(m_filteredBlockBufU[i][j]);    m_filteredBlockBufU[i][j] = NULL; }
-            if (m_filteredBlockBufV[i][j]) { xFree(m_filteredBlockBufV[i][j]);    m_filteredBlockBufV[i][j] = NULL; }
-
             m_filteredBlockOrgY[i][j]      = NULL;
-            m_filteredBlockOrgU[i][j]      = NULL;
-            m_filteredBlockOrgV[i][j]      = NULL;
         }
     }
 }
@@ -265,19 +255,12 @@ Void TComPicYuv::extendPicBorder()
         for (int j = 0; j < 4; j++)
         {
             m_filteredBlockBufY[i][j]      = (Pel*)xMalloc(Pel, (m_iPicWidth       + (m_iLumaMarginX << 1)) * (m_iPicHeight       + (m_iLumaMarginY << 1)));
-            //m_filteredBlockBufU[i][j]      = (Pel*)xMalloc(Pel, ((m_iPicWidth >> 1) + (m_iChromaMarginX << 1)) * ((m_iPicHeight >> 1) + (m_iChromaMarginY << 1)));
-            //m_filteredBlockBufV[i][j]      = (Pel*)xMalloc(Pel, ((m_iPicWidth >> 1) + (m_iChromaMarginX << 1)) * ((m_iPicHeight >> 1) + (m_iChromaMarginY << 1)));
-
             m_filteredBlockOrgY[i][j]      = m_filteredBlockBufY[i][j] + m_iLumaMarginY   * getStride()  + m_iLumaMarginX;
-            // m_filteredBlockOrgU[i][j]      = m_filteredBlockBufU[i][j] + m_iChromaMarginY * getCStride() + m_iChromaMarginX;
-            //m_filteredBlockOrgV[i][j]      = m_filteredBlockBufV[i][j] + m_iChromaMarginY * getCStride() + m_iChromaMarginX;
         }
     }
 
     /* Generate H/Q-pel for LumaBlocks  */
-    generateHQpel();
-
-    /*TODO: Generate H/Q-pel for chroma blocks */
+    generateLumaHQpel();
 
     //Extend border.
     int tmpMargin = 4;
@@ -286,8 +269,6 @@ Void TComPicYuv::extendPicBorder()
         for (int j = 0; j < 4; j++)
         {
             xExtendPicCompBorder(m_filteredBlockOrgY[i][j] - tmpMargin * getStride() - tmpMargin, getStride(), getWidth() + 2 * tmpMargin, getHeight() + 2 * tmpMargin, m_iLumaMarginX - tmpMargin, m_iLumaMarginY - tmpMargin);
-            //xExtendPicCompBorder(m_filteredBlockOrgU[i][j], getCStride(), getWidth() >> 1, getHeight() >> 1, m_iChromaMarginX, m_iChromaMarginY);
-            //xExtendPicCompBorder(m_filteredBlockOrgV[i][j], getCStride(), getWidth() >> 1, getHeight() >> 1, m_iChromaMarginX, m_iChromaMarginY);
         }
     }
 
@@ -325,7 +306,7 @@ Void TComPicYuv::xExtendPicCompBorder(Pel* piTxt, Int iStride, Int iWidth, Int i
     }
 }
 
-Void TComPicYuv::generateHQpel()
+Void TComPicYuv::generateLumaHQpel()
 {
     Int width      = m_iPicWidth; // + (m_iLumaMarginX << 1)-8;
     Int height     =  m_iPicHeight; //+ (m_iLumaMarginY << 1)-8;
@@ -525,6 +506,11 @@ Void TComPicYuv::generateHQpel()
 #else
     filterVertical_short_pel<NTAPS_LUMA>(g_bitDepthY, intPtr, intStride, dstPtr, dstStride, width + (tmpMarginX << 1), height + (tmpMarginY << 1), m_lumaFilter[3]);
 #endif
+
+    for (int i = 0; i < 4; i++)
+    {
+        filteredBlockTmp[i].destroy();
+    }
 }
 
 Void TComPicYuv::dump(Char* pFileName, Bool bAdd)

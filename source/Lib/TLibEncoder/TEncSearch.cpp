@@ -736,16 +736,16 @@ __inline Void TEncSearch::xTZ8PointDiamondSearch(TComPattern* pcPatternKey, IntT
 
 UInt TEncSearch::xPatternRefinement(TComPattern* pcPatternKey,
                                     TComMv baseRefMv,
-                                    Int iFrac, TComMv& rcMvFrac)
+                                    Int iFrac, TComMv& rcMvFrac, TComPicYuv* refPic, Int offset, TComDataCU* pcCU, UInt uiPartAddr)
 {
     UInt  uiDist;
     UInt  uiDistBest  = MAX_UINT;
     UInt  uiDirecBest = 0;
 
     Pel*  piRefPos;
-    Int iRefStride = m_filteredBlock[0][0].getStride();
+    Int iRefStride = refPic->getStride();
 
-    m_pcRdCost->setDistParam(pcPatternKey, m_filteredBlock[0][0].getLumaAddr(), iRefStride, 1, m_cDistParam, m_pcEncCfg->getUseHADME());
+    m_pcRdCost->setDistParam(pcPatternKey, refPic->getLumaFilterBlock(0, 0, pcCU->getAddr(), pcCU->getZorderIdxInCU() + uiPartAddr) + offset, iRefStride, 1, m_cDistParam, m_pcEncCfg->getUseHADME());
 
     const TComMv* pcMvRefine = (iFrac == 2 ? s_acMvRefineH : s_acMvRefineQ);
 
@@ -756,11 +756,14 @@ UInt TEncSearch::xPatternRefinement(TComPattern* pcPatternKey,
 
         Int horVal = cMvTest.getHor() * iFrac;
         Int verVal = cMvTest.getVer() * iFrac;
-        piRefPos = m_filteredBlock[verVal & 3][horVal & 3].getLumaAddr();
-        if (horVal == 2 && (verVal & 1) == 0)
-            piRefPos += 1;
-        if ((horVal & 1) == 0 && verVal == 2)
-            piRefPos += iRefStride;
+        piRefPos =  refPic->getLumaFilterBlock(verVal & 3, horVal & 3, pcCU->getAddr(), pcCU->getZorderIdxInCU() + uiPartAddr) + offset;
+        if (horVal < 0)
+            piRefPos -= 1;
+        if (verVal < 0)
+        {
+            piRefPos -= iRefStride;
+        }
+
         cMvTest = pcMvRefine[i];
         cMvTest += rcMvFrac;
 
@@ -782,6 +785,7 @@ UInt TEncSearch::xPatternRefinement(TComPattern* pcPatternKey,
     rcMvFrac = pcMvRefine[uiDirecBest];
 
     return uiDistBest;
+
 }
 
 Void TEncSearch::xEncSubdivCbfQT(TComDataCU* pcCU,
@@ -3887,6 +3891,8 @@ Void TEncSearch::xMotionEstimation(TComDataCU* pcCU, TComYuv* pcYuvOrg, Int iPar
     Pel*        piRefY      = pcCU->getSlice()->getRefPic(eRefPicList, iRefIdxPred)->getPicYuvRec()->getLumaAddr(pcCU->getAddr(), pcCU->getZorderIdxInCU() + uiPartAddr);
     Int         iRefStride  = pcCU->getSlice()->getRefPic(eRefPicList, iRefIdxPred)->getPicYuvRec()->getStride();
 
+    TComPicYuv* refPic = pcCU->getSlice()->getRefPic(eRefPicList, iRefIdxPred)->getPicYuvRec(); //For testing new generateHpel
+
     TComMv      cMvPred = *pcMvPred;
 
     if (bBi)
@@ -3930,7 +3936,7 @@ Void TEncSearch::xMotionEstimation(TComDataCU* pcCU, TComYuv* pcYuvOrg, Int iPar
     m_pcRdCost->getMotionCost(1, 0);
     m_pcRdCost->setCostScale(1);
 
-    xPatternSearchFracDIF(pcCU, pcPatternKey, piRefY, iRefStride, &rcMv, cMvHalf, cMvQter, ruiCost, bBi);
+    xPatternSearchFracDIF(pcCU, pcPatternKey, piRefY, iRefStride, &rcMv, cMvHalf, cMvQter, ruiCost, bBi, refPic, uiPartAddr);
 
     m_pcRdCost->setCostScale(0);
     rcMv <<= 2;
@@ -4225,32 +4231,19 @@ Void TEncSearch::xPatternSearchFracDIF(TComDataCU* pcCU,
                                        TComMv& rcMvHalf,
                                        TComMv& rcMvQter,
                                        UInt& ruiCost
-                                       , Bool biPred
+                                       , Bool biPred, TComPicYuv * refPic, UInt uiPartAddr
                                        )
 {
-    //  Reference pattern initialization (integer scale)
-    TComPattern cPatternRoi;
     Int         iOffset    = pcMvInt->getHor() + pcMvInt->getVer() * iRefStride;
 
-    cPatternRoi.initPattern(piRefY +  iOffset,
-                            NULL,
-                            NULL,
-                            pcPatternKey->getROIYWidth(),
-                            pcPatternKey->getROIYHeight(),
-                            iRefStride,
-                            0, 0);
-
-    //  Half-pel refinement
-    xExtDIFUpSamplingH(&cPatternRoi, biPred);
+    TComMv baseRefMv(0, 0);
 
     rcMvHalf = *pcMvInt;
-    rcMvHalf <<= 1;                         // for mv-cost
-    TComMv baseRefMv(0, 0);
-    ruiCost = xPatternRefinement(pcPatternKey, baseRefMv, 2, rcMvHalf);
+    rcMvHalf <<= 1;
 
+    ruiCost =  xPatternRefinement(pcPatternKey, baseRefMv, 2, rcMvHalf, refPic, iOffset, pcCU, uiPartAddr);
     m_pcRdCost->setCostScale(0);
 
-    xExtDIFUpSamplingQ(&cPatternRoi, rcMvHalf, biPred);
     baseRefMv = rcMvHalf;
     baseRefMv <<= 1;
 
@@ -4258,7 +4251,8 @@ Void TEncSearch::xPatternSearchFracDIF(TComDataCU* pcCU,
     rcMvQter <<= 1;                         // for mv-cost
     rcMvQter += rcMvHalf;
     rcMvQter <<= 1;
-    ruiCost = xPatternRefinement(pcPatternKey, baseRefMv, 1, rcMvQter);
+
+    ruiCost = xPatternRefinement(pcPatternKey, baseRefMv, 1, rcMvQter, refPic, iOffset, pcCU, uiPartAddr);
 }
 
 /** encode residual and calculate rate-distortion for a CU block
@@ -5649,7 +5643,7 @@ Void TEncSearch::xExtDIFUpSamplingQ(TComPattern* pattern, TComMv halfPelRef, Boo
 #else
     filterHorizontal_pel_short<NTAPS_LUMA>(g_bitDepthY, srcPtr, srcStride, intPtr, intStride, width, extHeight, m_lumaFilter[3]);
 #endif
-
+//------
     // Generate @ 1,1
     intPtr = filteredBlockTmp[1].getLumaAddr() + (halfFilterSize - 1) * intStride;
     dstPtr = m_filteredBlock[1][1].getLumaAddr();
@@ -5662,7 +5656,7 @@ Void TEncSearch::xExtDIFUpSamplingQ(TComPattern* pattern, TComMv halfPelRef, Boo
 #else
     filterVertical_short_pel<NTAPS_LUMA>(g_bitDepthY, intPtr, intStride, dstPtr, dstStride, width, height, m_lumaFilter[1]);
 #endif
-
+//-------
     // Generate @ 3,1
     intPtr = filteredBlockTmp[1].getLumaAddr() + (halfFilterSize - 1) * intStride;
     dstPtr = m_filteredBlock[3][1].getLumaAddr();
