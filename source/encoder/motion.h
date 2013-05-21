@@ -42,7 +42,7 @@ struct MotionReference
 
 protected:
 
-    MotionReference& operator=(const MotionReference&);
+    MotionReference& operator =(const MotionReference&);
 };
 
 class MotionEstimate : public BitCost
@@ -80,7 +80,7 @@ protected:
     int partEnum;
     int searchMethod;
 
-    MotionEstimate& operator=(const MotionEstimate&);
+    MotionEstimate& operator =(const MotionEstimate&);
 
 public:
 
@@ -118,6 +118,10 @@ public:
     /* returns SATD QPEL cost of best outMV for this PU */
     int motionEstimate(const MV &qmvp, int numCandidates, const MV *mvc, int merange, MV &outQMv);
 
+    /*HM Motion Search*/
+    void ExtendedDiamondSearch(MV &omv, int &bcost, int iDist);
+    void ExtendedPointSearch(MV &omv, int &bcost);
+
 protected:
 
     /* Helper functions for motionEstimate.  fref is coincident block in reference frame */
@@ -132,6 +136,7 @@ protected:
     {
         MV fmv = qmv >> 2;
         pixel *qfref = ref->lumaPlane[qmv.x & 3][qmv.y & 3] + blockOffset;
+
         return sad(fenc, FENC_STRIDE,
                    qfref + fmv.y * ref->lumaStride + fmv.x,
                    ref->lumaStride);
@@ -141,6 +146,7 @@ protected:
     {
         MV fmv = qmv >> 2;
         pixel *qfref = ref->lumaPlane[qmv.x & 3][qmv.y & 3] + blockOffset;
+
         return satd(fenc, FENC_STRIDE,
                     qfref + fmv.y * ref->lumaStride + fmv.x,
                     ref->lumaStride);
