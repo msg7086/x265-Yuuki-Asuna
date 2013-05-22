@@ -25,15 +25,8 @@
 #define __ENCODER__
 
 #include "TLibEncoder/TEncTop.h"
-
-#include "input/input.h"
-#include "output/output.h"
-#include "threadpool.h"
 #include "common.h"
 #include "x265.h"
-
-#include <list>
-#include <ostream>
 
 namespace x265 {
 // private namespace
@@ -41,8 +34,6 @@ namespace x265 {
 class Encoder : public TEncTop
 {
 protected:
-    x265_param_t *m_param;
-
     // profile/level
     Profile::Name m_profile;
     Level::Tier   m_levelTier;
@@ -51,21 +42,13 @@ protected:
     // coding structure
     GOPEntry  m_GOPList[MAX_GOP];               ///< the coding structure entries from the config file
     int       m_maxTempLayer;                   ///< Max temporal layer
-    double    m_adLambdaModifier[MAX_TLAYER];   ///< Lambda modifier array for each temporal layer
     int       m_numReorderPics[MAX_TLAYER];     ///< total number of reorder pictures
     int       m_maxDecPicBuffering[MAX_TLAYER]; ///< total number of pictures in the decoded picture buffer
-    int       m_minSpatialSegmentationIdc;      ///< Indicates the maximum size of the spatial segments in the pictures in the coded video sequence
-
-    // internal member functions
-    void      xSetGlobal();                     ///< set global variables
-    void      xCheckParameter();                ///< check validity of configuration values
-    void      xPrintParameter();                ///< print configuration values
-    void      xPrintUsage();                    ///< print usage
 
 public:
     int       m_iGOPSize;                       ///< GOP size of hierarchical structure
 
-    Encoder() : m_param(NULL) {};
+    Encoder() : m_profile(Profile::MAIN), m_levelTier(Level::MAIN), m_level(Level::NONE) {};
 
     virtual ~Encoder() {}
 

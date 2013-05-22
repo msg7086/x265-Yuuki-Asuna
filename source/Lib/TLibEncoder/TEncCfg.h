@@ -100,7 +100,6 @@ protected:
 
     //==== File I/O ========
     Int       m_iFrameRate;
-    Int       m_FrameSkip;
     Int       m_iSourceWidth;
     Int       m_iSourceHeight;
     Int       m_conformanceMode;
@@ -135,7 +134,7 @@ protected:
 
     Int       m_maxTempLayer;                    ///< Max temporal layer
     Bool      m_useAMP;
-    Bool      m_useAMPRefine;
+    Bool      m_useRectInter;
 
     //======= Transform =============
     UInt      m_uiQuadtreeTULog2MaxSize;
@@ -277,17 +276,13 @@ public:
 
     Void      setFrameRate(Int i)      { m_iFrameRate = i; }
 
-    Void      setFrameSkip(UInt i) { m_FrameSkip = i; }
-
     Void      setSourceWidth(Int i)      { m_iSourceWidth = i; }
 
     Void      setSourceHeight(Int i)      { m_iSourceHeight = i; }
 
-    Window   &getConformanceWindow()                           { return m_conformanceWindow; }
+    Window   &getConformanceWindow()      { return m_conformanceWindow; }
 
     Void      setConformanceWindow(Int confLeft, Int confRight, Int confTop, Int confBottom) { m_conformanceWindow.setWindow(confLeft, confRight, confTop, confBottom); }
-
-    Void      setFramesToBeEncoded(Int i)      { m_framesToBeEncoded = i; }
 
     //====== Coding Structure ========
     Void      setIntraPeriod(Int i)      { m_uiIntraPeriod = (UInt)i; }
@@ -327,10 +322,6 @@ public:
 
     Void      setQuadtreeTUMaxDepthIntra(UInt u)      { m_uiQuadtreeTUMaxDepthIntra = u; }
 
-    Void setUseAMP(Bool b) { m_useAMP = b; }
-
-    Void setUseAMPRefine(Bool b) { m_useAMPRefine = b; }
-
     //====== Loop/Deblock Filter ========
     Void      setLoopFilterDisable(Bool b)      { m_bLoopFilterDisable       = b; }
 
@@ -347,7 +338,10 @@ public:
     //====== Motion search ========
     Void      setSearchMethod(Int i)     { m_iSearchMethod = i; }
     Void      setSearchRange(Int i)      { m_iSearchRange = i; }
-    Void      setBipredSearchRange(Int i)      { m_bipredSearchRange = i; }
+    Void      setBipredSearchRange(Int i){ m_bipredSearchRange = i; }
+    Void      setUseRectInter(Bool b)    { m_useRectInter = b; }
+    Bool      getUseRectInter() const    { return m_useRectInter; }
+    Void      setUseAMP(Bool b)          { m_useAMP = b; }
 
     //====== Quality control ========
     Void      setMaxCuDQPDepth(Int i)      { m_iMaxCuDQPDepth = i; }
@@ -360,17 +354,15 @@ public:
 
     Bool      getUseAdaptQpSelect()           { return m_bUseAdaptQpSelect; }
 
-    Void      setUseAdaptiveQP(Bool b)      { m_bUseAdaptiveQP = b; }
+    Void      setUseAdaptiveQP(Bool b)        { m_bUseAdaptiveQP = b; }
 
-    Void      setQPAdaptationRange(Int i)      { m_iQPAdaptationRange = i; }
+    Void      setQPAdaptationRange(Int i)     { m_iQPAdaptationRange = i; }
 
     //====== Lossless ========
     Void      setUseLossless(Bool b)        { m_useLossless = b;  }
 
     //====== Sequence ========
     Int       getFrameRate()      { return m_iFrameRate; }
-
-    UInt      getFrameSkip()      { return m_FrameSkip; }
 
     Int       getSourceWidth()      { return m_iSourceWidth; }
 

@@ -43,6 +43,8 @@
 #include "primitives.h"
 #include "threadpool.h"
 
+#include <limits.h>
+
 //! \ingroup TLibEncoder
 //! \{
 
@@ -53,9 +55,10 @@
 TEncTop::TEncTop()
 {
     m_iPOCLast          = -1;
+    m_framesToBeEncoded = INT_MAX;
     m_iNumPicRcvd       =  0;
     m_uiNumAllPicCoded  =  0;
-    m_cRDGoOnSbacCoder.init(&m_cRDGoOnBinCoderCABAC);
+//     m_cRDGoOnSbacCoder.init(&m_cRDGoOnBinCoderCABAC);
 #if ENC_DEC_TRACE
     g_hTrace = fopen("TraceEnc.txt", "wb");
     g_bJustDoIt = g_bEncDecTraceDisable;
@@ -132,7 +135,7 @@ Void TEncTop::createWPPCoders(Int iNumSubstreams)
     m_pcSbacCoders           = new TEncSbac[iNumSubstreams];
     m_pcBinCoderCABACs       = new TEncBinCABAC[iNumSubstreams];
     m_pcRDGoOnSbacCoders     = new TEncSbac[iNumSubstreams];
-    m_pcRDGoOnBinCodersCABAC = new TEncBinCABAC[iNumSubstreams];
+    m_pcRDGoOnBinCodersCABAC = new TEncBinCABACCounter[iNumSubstreams];
     m_pcBitCounters          = new TComBitCounter[iNumSubstreams];
     m_pcRdCosts              = new TComRdCost[iNumSubstreams];
     m_pcEntropyCoders        = new TEncEntropy[iNumSubstreams];
@@ -182,12 +185,10 @@ Void TEncTop::destroy()
     }
     m_cLoopFilter.destroy();
     m_cRateCtrl.destroy();
-    // SBAC RD
-    Int iDepth;
 
     for (UInt ui = 0; ui < m_iNumSubstreams; ui++)
     {
-        for (iDepth = 0; iDepth < g_uiMaxCUDepth + 1; iDepth++)
+        for (Int iDepth = 0; iDepth < g_uiMaxCUDepth + 1; iDepth++)
         {
             for (Int iCIIdx = 0; iCIIdx < CI_NUM; iCIIdx++)
             {
@@ -196,7 +197,7 @@ Void TEncTop::destroy()
             }
         }
 
-        for (iDepth = 0; iDepth < g_uiMaxCUDepth + 1; iDepth++)
+        for (Int iDepth = 0; iDepth < g_uiMaxCUDepth + 1; iDepth++)
         {
             delete [] m_ppppcRDSbacCoders[ui][iDepth];
             delete [] m_ppppcBinCodersCABAC[ui][iDepth];
@@ -204,9 +205,12 @@ Void TEncTop::destroy()
 
         delete[] m_ppppcRDSbacCoders[ui];
         delete[] m_ppppcBinCodersCABAC[ui];
+
+        m_pcCuEncoders[ui].destroy();
     }
 
     delete[] m_pcCuEncoders;
+
     delete[] m_pcSearchs;
     delete[] m_pcEntropyCoders;
     delete[] m_ppppcRDSbacCoders;
@@ -261,7 +265,7 @@ Void TEncTop::init()
     // initialize encoder search class
     for(UInt ui=0; ui<m_uiNumSubstreams; ui++)
     {
-        m_pcSearchs[ui].init(this, &m_cTrQuant, m_iSearchRange, m_bipredSearchRange, m_iSearchMethod, &m_cRdCost, getRDGoOnSbacCoder());
+        m_pcSearchs[ui].init(this, &m_cTrQuant, m_iSearchRange, m_bipredSearchRange, m_iSearchMethod, &m_cRdCost, NULL/*getRDGoOnSbacCoder()*/);
     }
 
     m_iMaxRefPicNum = 0;
@@ -295,12 +299,14 @@ Void TEncTop::deletePicBuffer()
  \param   pcPicYuvOrg         original YUV picture
  \retval  rcListPicYuvRecOut  list of reconstruction YUV pictures
  \retval  rcListBitstreamOut  list of output bitstreams
- \retval  iNumEncoded         number of encoded pictures
+ \retval                      number of encoded pictures
  */
-Void TEncTop::encode(Bool flush, const x265_picture_t* pic, TComList<TComPicYuv*>& rcListPicYuvRecOut, std::list<AccessUnit>& accessUnitsOut, Int& iNumEncoded)
+int TEncTop::encode(Bool flush, const x265_picture_t* pic, TComList<TComPicYuv*>& rcListPicYuvRecOut, std::list<AccessUnit>& accessUnitsOut)
 {
     if (pic)
     {
+        m_iNumPicRcvd++;
+        
         // get original YUV
         TComPic* pcPicCurr = NULL;
         xGetNewPicBuffer(pcPicCurr);
@@ -313,10 +319,14 @@ Void TEncTop::encode(Bool flush, const x265_picture_t* pic, TComList<TComPicYuv*
         }
     }
 
+    // Wait until we have a full GOP of pictures
     if (!m_iNumPicRcvd || (!flush && m_iPOCLast != 0 && m_iNumPicRcvd != m_iGOPSize && m_iGOPSize))
     {
-        iNumEncoded = 0;
-        return;
+        return 0;
+    }
+    if (flush)
+    {
+        m_framesToBeEncoded = m_iNumPicRcvd + m_uiNumAllPicCoded;
     }
 
     if (m_RCEnableRateControl)
@@ -332,9 +342,11 @@ Void TEncTop::encode(Bool flush, const x265_picture_t* pic, TComList<TComPicYuv*
         m_cRateCtrl.destroyRCGOP();
     }
 
-    iNumEncoded         = m_iNumPicRcvd;
-    m_iNumPicRcvd       = 0;
-    m_uiNumAllPicCoded += iNumEncoded;
+    m_uiNumAllPicCoded += m_iNumPicRcvd;
+
+    Int iNumEncoded = m_iNumPicRcvd;
+    m_iNumPicRcvd = 0;
+    return iNumEncoded;
 }
 
 // ====================================================================================================================
@@ -390,7 +402,6 @@ Void TEncTop::xGetNewPicBuffer(TComPic*& rpcPic)
     rpcPic->setReconMark(false);
 
     m_iPOCLast++;
-    m_iNumPicRcvd++;
 
     rpcPic->getSlice(0)->setPOC(m_iPOCLast);
     // mark it should be extended
@@ -462,17 +473,13 @@ Void TEncTop::xInitSPS()
     for (i = 0; i < g_uiMaxCUDepth - g_uiAddCUDepth; i++)
     {
         m_cSPS.setAMPAcc(i, m_useAMP);
-        m_cSPS.setAMPRefineAcc(i, m_useAMPRefine);
-        //m_cSPS.setAMPAcc( i, 1 );
     }
 
     m_cSPS.setUseAMP(m_useAMP);
-    m_cSPS.setUseAMPRefine(m_useAMPRefine);
 
     for (i = g_uiMaxCUDepth - g_uiAddCUDepth; i < g_uiMaxCUDepth; i++)
     {
         m_cSPS.setAMPAcc(i, 0);
-        m_cSPS.setAMPRefineAcc(i, 1);
     }
 
     m_cSPS.setBitDepthY(g_bitDepthY);

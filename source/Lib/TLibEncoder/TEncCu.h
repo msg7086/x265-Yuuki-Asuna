@@ -90,9 +90,6 @@ private:
     TComRdCost*             m_pcRdCost;
 
     TEncEntropy*            m_pcEntropyCoder;
-    TEncCavlc*              m_pcCavlcCoder;
-    TEncSbac*               m_pcSbacCoder;
-    TEncBinCABAC*           m_pcBinCABAC;
 
     // SBAC RD
     TEncSbac***             m_pppcRDSbacCoder;
@@ -108,7 +105,7 @@ public:
     Void set_pppcRDSbacCoder(TEncSbac*** pppcRDSbacCoder) { m_pppcRDSbacCoder = pppcRDSbacCoder; }
     Void set_pcEntropyCoder(TEncEntropy* pcEntropyCoder) { m_pcEntropyCoder = pcEntropyCoder; }
     Void set_pcPredSearch(TEncSearch* pcPredSearch) { m_pcPredSearch = pcPredSearch; }
-    
+    Void set_pcRDGoOnSbacCoder(TEncSbac* pcRDGoOnSbacCoder) { m_pcRDGoOnSbacCoder = pcRDGoOnSbacCoder; }
 
     /// copy parameters from encoder class
     Void  init(TEncTop* pcEncTop);

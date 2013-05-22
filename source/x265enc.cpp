@@ -97,14 +97,15 @@ Void TAppEncTop::xInitLibCfg()
     m_cTEncTop.setIntraPeriod(iIntraPeriod);
     m_cTEncTop.setQP(iQP);
     m_cTEncTop.setUseAMP(enableAMP);
-    m_cTEncTop.setUseAMPRefine(enableAMPRefine);
+    m_cTEncTop.setUseRectInter(enableRectInter);
+
     //====== Loop/Deblock Filter ========
-    m_cTEncTop.setLoopFilterDisable(bLoopFilterDisable);
-    m_cTEncTop.setLoopFilterOffsetInPPS(loopFilterOffsetInPPS);
-    m_cTEncTop.setLoopFilterBetaOffset(loopFilterBetaOffsetDiv2);
-    m_cTEncTop.setLoopFilterTcOffset(loopFilterTcOffsetDiv2);
-    m_cTEncTop.setDeblockingFilterControlPresent(DeblockingFilterControlPresent);
-    m_cTEncTop.setDeblockingFilterMetric(DeblockingFilterMetric);
+    m_cTEncTop.setLoopFilterDisable(m_bLoopFilterDisable);
+    m_cTEncTop.setLoopFilterOffsetInPPS(m_loopFilterOffsetInPPS);
+    m_cTEncTop.setLoopFilterBetaOffset(m_loopFilterBetaOffsetDiv2);
+    m_cTEncTop.setLoopFilterTcOffset(m_loopFilterTcOffsetDiv2);
+    m_cTEncTop.setDeblockingFilterControlPresent(m_DeblockingFilterControlPresent);
+    m_cTEncTop.setDeblockingFilterMetric(m_DeblockingFilterMetric);
 
     //====== Motion search ========
     m_cTEncTop.setSearchMethod(searchMethod);
@@ -118,7 +119,7 @@ Void TAppEncTop::xInitLibCfg()
 
     m_cTEncTop.setUseAdaptQpSelect(bUseAdaptQpSelect);
     Int lowestQP = -6 * (g_bitDepthY - 8); // XXX: check
-    if ((iQP == lowestQP) && useLossless)
+    if ((iQP == lowestQP) && m_useLossless)
     {
         bUseAdaptiveQP = 0;
     }
@@ -137,9 +138,6 @@ Void TAppEncTop::xInitLibCfg()
     m_cTEncTop.setUseTransformSkip(useTransformSkip);
     m_cTEncTop.setUseTransformSkipFast(useTransformSkipFast);
     m_cTEncTop.setUseConstrainedIntraPred(bUseConstrainedIntraPred);
-    m_cTEncTop.setPCMLog2MinSize(uiPCMLog2MinSize);
-    m_cTEncTop.setUsePCM(usePCM);
-    m_cTEncTop.setPCMLog2MaxSize(pcmLog2MaxSize);
     m_cTEncTop.setMaxNumMergeCand(maxNumMergeCand);
 
     //====== Weighted Prediction ========
@@ -154,26 +152,11 @@ Void TAppEncTop::xInitLibCfg()
 
     m_cTEncTop.setSaoLcuBoundary(saoLcuBoundary);
     m_cTEncTop.setSaoLcuBasedOptimization(saoLcuBasedOptimization);
-    m_cTEncTop.setPCMInputBitDepthFlag(bPCMInputBitDepthFlag);
-    m_cTEncTop.setPCMFilterDisableFlag(bPCMFilterDisableFlag);
     m_cTEncTop.setWaveFrontSynchro(iWaveFrontSynchro);
     m_cTEncTop.setTMVPModeId(TMVPModeId);
     m_cTEncTop.setSignHideFlag(signHideFlag);
-    m_cTEncTop.setUseRateCtrl(RCEnableRateControl);
-    m_cTEncTop.setTargetBitrate(RCTargetBitrate);
-    m_cTEncTop.setKeepHierBit(RCKeepHierarchicalBit);
-    m_cTEncTop.setLCULevelRC(RCLCULevelRC);
-    m_cTEncTop.setUseLCUSeparateModel(RCUseLCUSeparateModel);
-    m_cTEncTop.setInitialQP(RCInitialQP);
-    m_cTEncTop.setForceIntraQP(RCForceIntraQP);
-    m_cTEncTop.setTransquantBypassEnableFlag(TransquantBypassEnableFlag);
-    m_cTEncTop.setCUTransquantBypassFlagValue(CUTransquantBypassFlagValue);
-    m_cTEncTop.setUseStrongIntraSmoothing(useStrongIntraSmoothing);
-    m_cTEncTop.setUseLossless(useLossless);
 
-    m_cTEncTop.setFrameSkip(m_FrameSkip);
     m_cTEncTop.setConformanceWindow(0, 0, 0, 0);
-    m_cTEncTop.setFramesToBeEncoded(m_framesToBeEncoded);
     int nullpad[2] = { 0, 0 };
     m_cTEncTop.setPad(nullpad);
 
@@ -193,9 +176,26 @@ Void TAppEncTop::xInitLibCfg()
         m_cTEncTop.setLambdaModifier(uiLoop, m_adLambdaModifier[uiLoop]);
     }
     m_cTEncTop.setMaxTempLayer(m_maxTempLayer);
-
+    m_cTEncTop.setUseStrongIntraSmoothing(useStrongIntraSmoothing);
 
     //====== Tool list ========
+    m_cTEncTop.setPCMInputBitDepthFlag(m_bPCMInputBitDepthFlag);
+    m_cTEncTop.setPCMFilterDisableFlag(m_bPCMFilterDisableFlag);
+    m_cTEncTop.setUseRateCtrl(m_RCEnableRateControl);
+    m_cTEncTop.setTargetBitrate(m_RCTargetBitrate);
+    m_cTEncTop.setKeepHierBit(m_RCKeepHierarchicalBit);
+    m_cTEncTop.setLCULevelRC(m_RCLCULevelRC);
+    m_cTEncTop.setUseLCUSeparateModel(m_RCUseLCUSeparateModel);
+    m_cTEncTop.setInitialQP(m_RCInitialQP);
+    m_cTEncTop.setForceIntraQP(m_RCForceIntraQP);
+    m_cTEncTop.setTransquantBypassEnableFlag(m_TransquantBypassEnableFlag);
+    m_cTEncTop.setCUTransquantBypassFlagValue(m_CUTransquantBypassFlagValue);
+    m_cTEncTop.setUseLossless(m_useLossless);
+
+    m_cTEncTop.setUsePCM(m_usePCM);
+    m_cTEncTop.setPCMLog2MinSize(m_uiPCMLog2MinSize);
+    m_cTEncTop.setPCMLog2MaxSize(m_pcmLog2MaxSize);
+
     m_cTEncTop.setUseASR(m_bUseASR);
     m_cTEncTop.setUseHADME(m_bUseHADME);
     m_cTEncTop.setdQPs(m_aidQP);
@@ -294,7 +294,6 @@ Void TAppEncTop::encode()
     xInitLib();
 
     // main encoder loop
-    Int   iNumEncoded = 0;
     Bool  bEos = false;
 
     list<AccessUnit> outputAccessUnits; ///< list of access units to write out.  is populated by the encoding process
@@ -309,7 +308,7 @@ Void TAppEncTop::encode()
 
         // read input YUV file
         x265_picture_t pic;
-        Bool flush = false;
+        Bool nopic = false;
         if (m_input->readPicture(pic))
         {
             m_iFrameRcvd++;
@@ -317,23 +316,18 @@ Void TAppEncTop::encode()
         }
         else
         {
-            flush = true;
+            nopic = true;
             bEos = true;
-            m_cTEncTop.setFramesToBeEncoded(m_iFrameRcvd);
         }
 
         // call encoding function for one frame
-        PPAStartCpuEventFunc(encode_frame);
-        m_cTEncTop.encode(bEos, flush ? 0 : &pic, m_cListPicYuvRec, outputAccessUnits, iNumEncoded);
-        PPAStopCpuEventFunc(encode_frame);
+        int iNumEncoded = m_cTEncTop.encode(bEos, nopic ? 0 : &pic, m_cListPicYuvRec, outputAccessUnits);
 
         // write bistream to file if necessary
         if (iNumEncoded > 0)
         {
-            PPAStartCpuEventFunc(bitstream_write);
             xWriteOutput(bitstreamFile, iNumEncoded, outputAccessUnits);
             outputAccessUnits.clear();
-            PPAStopCpuEventFunc(bitstream_write);
         }
     }
 
@@ -402,6 +396,7 @@ Void TAppEncTop::xDeleteBuffer()
  */
 Void TAppEncTop::xWriteOutput(std::ostream &bitstreamFile, Int iNumEncoded, const std::list<AccessUnit>& accessUnits)
 {
+    PPAStartCpuEventFunc(bitstream_write);
     Int i;
 
     TComList<TComPicYuv *>::iterator iterPicYuvRec = m_cListPicYuvRec.end();
@@ -429,6 +424,7 @@ Void TAppEncTop::xWriteOutput(std::ostream &bitstreamFile, Int iNumEncoded, cons
         const vector<UInt>& stats = writeAnnexB(bitstreamFile, au);
         rateStatsAccum(au, stats);
     }
+    PPAStopCpuEventFunc(bitstream_write);
 }
 
 /**

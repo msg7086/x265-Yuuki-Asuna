@@ -238,12 +238,9 @@ Void TEncCu::init(TEncTop* pcEncTop)
     m_pcRdCost           = pcEncTop->getRdCost();
 
     m_pcEntropyCoder     = NULL;
-    m_pcCavlcCoder       = pcEncTop->getCavlcCoder();
-    m_pcSbacCoder        = pcEncTop->getSbacCoder();
-    m_pcBinCABAC         = pcEncTop->getBinCABAC();
 
     m_pppcRDSbacCoder   = NULL;
-    m_pcRDGoOnSbacCoder = pcEncTop->getRDGoOnSbacCoder();
+    m_pcRDGoOnSbacCoder = NULL;
 
     m_pcRateCtrl        = pcEncTop->getRateCtrl();
 }
@@ -266,6 +263,7 @@ Void TEncCu::compressCU(TComDataCU* pcCu)
 
     m_pcPredSearch->set_pppcRDSbacCoder(m_pppcRDSbacCoder);
     m_pcPredSearch->set_pcEntropyCoder(m_pcEntropyCoder);
+    m_pcPredSearch->set_pcRDGoOnSbacCoder(m_pcRDGoOnSbacCoder);
 
     // analysis of CU
     xCompressCU(m_ppcBestCU[0], m_ppcTempCU[0], NULL, 0);
@@ -565,12 +563,12 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TComDat
 
         if(rpcBestCU->getTotalCost() < LAMBDA_PARTITION_SELECT*_NxNCost)              // checking if BestCU is of size_2NX2N
         {
-            rpcBestCU->copyToPic(uiDepth);                                                        // Copy Best data to Picture for next partition prediction.
+            rpcBestCU->copyToPic(uiDepth);                                            // Copy Best data to Picture for next partition prediction.
             xCopyYuv2Pic(rpcBestCU->getPic(), rpcBestCU->getAddr(), rpcBestCU->getZorderIdxInCU(), uiDepth, uiDepth, rpcBestCU, uiLPelX, uiTPelY);        // Copy Yuv data to picture Yuv
             return;
         }
 
-        if (pcPic->getSlice(0)->getSPS()->getAMPRefineAcc(uiDepth))
+        if (m_pcEncCfg->getUseRectInter())
         {
             // 2NxN, Nx2N
             if (doNotBlockPu)
@@ -803,7 +801,7 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TComDat
                     }
                 }
             
-                if (pcPic->getSlice(0)->getSPS()->getAMPRefineAcc(uiDepth))
+                if (m_pcEncCfg->getUseRectInter())
                 {
                     // 2NxN, Nx2N
                     if (doNotBlockPu)

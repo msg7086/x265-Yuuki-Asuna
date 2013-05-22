@@ -290,11 +290,12 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
     ("QuadtreeTUMaxDepthInter", uiQuadtreeTUMaxDepthInter, 2u, "Depth of TU tree for inter CUs")
 
     // Coding structure parameters
-    ("IntraPeriod,-ip",         iIntraPeriod,                -1, "Intra period in frames, (-1: only first frame)")
-    ("DecodingRefreshType,-dr", m_iDecodingRefreshType,       0, "Intra refresh type (0:none 1:CRA 2:IDR)")
-    ("GOPSize,g",               m_iGOPSize,                   1, "GOP size of temporal structure")
+    ("IntraPeriod,-ip",         iIntraPeriod,              -1, "Intra period in frames, (-1: only first frame)")
+    ("DecodingRefreshType,-dr", m_iDecodingRefreshType,     0, "Intra refresh type (0:none 1:CRA 2:IDR)")
+    ("GOPSize,g",               m_iGOPSize,                 1, "GOP size of temporal structure")
+
     // motion options
-    ("SearchMethod,-me",        searchMethod,               3, "0:DIA 1:HEX 2:UMH 3: UMH")
+    ("SearchMethod,-me",        searchMethod,               3, "0:DIA 1:HEX 2:UMH 3:HM 4:ORIG")
     ("SearchRange,-sr",         iSearchRange,              96, "Motion search range")
     ("BipredSearchRange",       bipredSearchRange,          4, "Motion search range for bipred refinement")
     ("HadamardME",              m_bUseHADME,                1, "Hadamard ME for fractional-pel")
@@ -327,16 +328,16 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
     ("RDpenalty",                     rdPenalty,                0,  "RD-penalty for 32x32 TU for intra in non-intra slices. 0:disbaled  1:RD-penalty  2:maximum RD-penalty")
 
     // Deblocking filter parameters
-    ("LoopFilterDisable",              bLoopFilterDisable,             0)
-    ("LoopFilterOffsetInPPS",          loopFilterOffsetInPPS,          0)
-    ("LoopFilterBetaOffset_div2",      loopFilterBetaOffsetDiv2,       0)
-    ("LoopFilterTcOffset_div2",        loopFilterTcOffsetDiv2,         0)
-    ("DeblockingFilterControlPresent", DeblockingFilterControlPresent, 0)
-    ("DeblockingFilterMetric",         DeblockingFilterMetric,         0)
+    ("LoopFilterDisable",              m_bLoopFilterDisable,             0)
+    ("LoopFilterOffsetInPPS",          m_loopFilterOffsetInPPS,          0)
+    ("LoopFilterBetaOffset_div2",      m_loopFilterBetaOffsetDiv2,       0)
+    ("LoopFilterTcOffset_div2",        m_loopFilterTcOffsetDiv2,         0)
+    ("DeblockingFilterControlPresent", m_DeblockingFilterControlPresent, 0)
+    ("DeblockingFilterMetric",         m_DeblockingFilterMetric,         0)
 
     // Coding tools
     ("AMP",                      enableAMP,                 1,  "Enable asymmetric motion partitions")
-    ("AMP_REFINE",               enableAMPRefine,           1,  "Enable asymmetric refinement motion partitions like include Nx2N and 2NxN")
+    ("RectInter",                enableRectInter,           1,  "Enable rectangular motion partitions Nx2N and 2NxN, disabling also disables AMP")
     ("TransformSkip",            useTransformSkip,          0,  "Intra transform skipping")
     ("TransformSkipFast",        useTransformSkipFast,      0,  "Fast intra transform skipping")
     ("SAO",                      bUseSAO,                   1,  "Enable Sample Adaptive Offset")
@@ -346,13 +347,12 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
 
     ("ConstrainedIntraPred",     bUseConstrainedIntraPred,  0, "Constrained Intra Prediction")
 
-    ("PCMEnabledFlag",           usePCM,                    0)
-    ("PCMLog2MaxSize",           pcmLog2MaxSize,            5u)
-    ("PCMLog2MinSize",           uiPCMLog2MinSize,          3u)
-    ("PCMInputBitDepthFlag",     bPCMInputBitDepthFlag,     1)
-    ("PCMFilterDisableFlag",     bPCMFilterDisableFlag,     0)
-
-    ("LosslessCuEnabled",        useLossless,               0)
+    ("PCMEnabledFlag",           m_usePCM,                    0)
+    ("PCMLog2MaxSize",           m_pcmLog2MaxSize,            5)
+    ("PCMLog2MinSize",           m_uiPCMLog2MinSize,          3)
+    ("PCMInputBitDepthFlag",     m_bPCMInputBitDepthFlag,     1)
+    ("PCMFilterDisableFlag",     m_bPCMFilterDisableFlag,     0)
+    ("LosslessCuEnabled",        m_useLossless,               0)
 
     ("WeightedPredP,-wpP",       useWeightedPred,               0,          "Use weighted prediction in P slices")
     ("WeightedPredB,-wpB",       useWeightedBiPred,             0,          "Use weighted (bidirectional) prediction in B slices")
@@ -374,18 +374,18 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
     ("FDM", useFastDecisionForMerge, 1, "Fast decision for Merge RD Cost")
     ("CFM", bUseCbfFastMode, 0, "Cbf fast mode setting")
     ("ESD", useEarlySkipDetection, 0, "Early SKIP detection setting")
-
-    ("RateControl",         RCEnableRateControl,       0, "Rate control: enable rate control")
-    ("TargetBitrate",       RCTargetBitrate,           0, "Rate control: target bitrate")
-    ("KeepHierarchicalBit", RCKeepHierarchicalBit,     0, "Rate control: keep hierarchical bit allocation in rate control algorithm")
-    ("LCULevelRateControl", RCLCULevelRC,              1, "Rate control: true: LCU level RC; false: picture level RC")
-    ("RCLCUSeparateModel",  RCUseLCUSeparateModel,     1, "Rate control: use LCU level separate R-lambda model")
-    ("InitialQP",           RCInitialQP,               0, "Rate control: initial QP")
-    ("RCForceIntraQP",      RCForceIntraQP,            0, "Rate control: force intra QP to be equal to initial QP")
-
-    ("TransquantBypassEnableFlag",     TransquantBypassEnableFlag,         0, "transquant_bypass_enable_flag indicator in PPS")
-    ("CUTransquantBypassFlagValue",    CUTransquantBypassFlagValue,        0, "Fixed cu_transquant_bypass_flag value, when transquant_bypass_enable_flag is enabled")
     ("StrongIntraSmoothing,-sis",      useStrongIntraSmoothing,            1, "Enable strong intra smoothing for 32x32 blocks")
+
+    ("RateControl",         m_RCEnableRateControl,       0, "Rate control: enable rate control")
+    ("TargetBitrate",       m_RCTargetBitrate,           0, "Rate control: target bitrate")
+    ("KeepHierarchicalBit", m_RCKeepHierarchicalBit,     0, "Rate control: keep hierarchical bit allocation in rate control algorithm")
+    ("LCULevelRateControl", m_RCLCULevelRC,              1, "Rate control: true: LCU level RC; false: picture level RC")
+    ("RCLCUSeparateModel",  m_RCUseLCUSeparateModel,     1, "Rate control: use LCU level separate R-lambda model")
+    ("InitialQP",           m_RCInitialQP,               0, "Rate control: initial QP")
+    ("RCForceIntraQP",      m_RCForceIntraQP,            0, "Rate control: force intra QP to be equal to initial QP")
+
+    ("TransquantBypassEnableFlag",     m_TransquantBypassEnableFlag,         0, "transquant_bypass_enable_flag indicator in PPS")
+    ("CUTransquantBypassFlagValue",    m_CUTransquantBypassFlagValue,        0, "Fixed cu_transquant_bypass_flag value, when transquant_bypass_enable_flag is enabled")
     ("RecalculateQPAccordingToLambda", m_recalculateQPAccordingToLambda,     0, "Recalculate QP values according to lambda values. Do not suggest to be enabled in all intra case")
 
     ("SEIActiveParameterSets",         m_activeParameterSetsSEIEnabled,      0, "Enable generation of active parameter sets SEI messages")
@@ -582,8 +582,6 @@ Bool TAppEncCfg::parseCfg(Int argc, Char* argv[])
     printf("Frame index                  : %u - %d (%d frames)\n", m_FrameSkip, m_FrameSkip + m_framesToBeEncoded - 1, m_framesToBeEncoded);
     printf("GOP size                     : %d\n", m_iGOPSize);
     x265_print_params(this);
-    printf("\n\n");
-    fflush(stdout);
 
     return true;
 }
@@ -655,12 +653,12 @@ Void TAppEncCfg::xCheckParameter()
         }
     }
 
-    if ((iIntraPeriod != 1) && !loopFilterOffsetInPPS && DeblockingFilterControlPresent && (!bLoopFilterDisable))
+    if ((iIntraPeriod != 1) && !m_loopFilterOffsetInPPS && m_DeblockingFilterControlPresent && (!m_bLoopFilterDisable))
     {
         for (Int i = 0; i < m_iGOPSize; i++)
         {
-            xConfirmPara((m_GOPList[i].m_betaOffsetDiv2 + loopFilterBetaOffsetDiv2) < -6 || (m_GOPList[i].m_betaOffsetDiv2 + loopFilterBetaOffsetDiv2) > 6, "Loop Filter Beta Offset div. 2 for one of the GOP entries exceeds supported range (-6 to 6)");
-            xConfirmPara((m_GOPList[i].m_tcOffsetDiv2 + loopFilterTcOffsetDiv2) < -6 || (m_GOPList[i].m_tcOffsetDiv2 + loopFilterTcOffsetDiv2) > 6, "Loop Filter Tc Offset div. 2 for one of the GOP entries exceeds supported range (-6 to 6)");
+            xConfirmPara((m_GOPList[i].m_betaOffsetDiv2 + m_loopFilterBetaOffsetDiv2) < -6 || (m_GOPList[i].m_betaOffsetDiv2 + m_loopFilterBetaOffsetDiv2) > 6, "Loop Filter Beta Offset div. 2 for one of the GOP entries exceeds supported range (-6 to 6)");
+            xConfirmPara((m_GOPList[i].m_tcOffsetDiv2 + m_loopFilterTcOffsetDiv2) < -6 || (m_GOPList[i].m_tcOffsetDiv2 + m_loopFilterTcOffsetDiv2) > 6, "Loop Filter Tc Offset div. 2 for one of the GOP entries exceeds supported range (-6 to 6)");
         }
     }
     m_extraRPSs = 0;
