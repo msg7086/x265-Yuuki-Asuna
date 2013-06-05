@@ -26,13 +26,9 @@
 
 #include "primitives.h"
 #include <string.h>
-#include <stdio.h>
-#include <assert.h>
 #include <smmintrin.h>
 #include <algorithm>
 #include "utils.h"
-
-extern char g_aucConvertToBit[];
 
 using namespace x265;
 

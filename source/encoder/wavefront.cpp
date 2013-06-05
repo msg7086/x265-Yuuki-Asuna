@@ -23,35 +23,109 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
+#include "TLibEncoder/TEncTop.h"
 #include "wavefront.h"
 
 using namespace x265;
 
-EncodingFrame::EncodingFrame(int nrows_, int ncols_, ThreadPool *pool) :
-    QueueFrame(pool), nrows(nrows_), ncols(ncols_), data(NULL)
+void CTURow::create(TEncTop* top)
 {
-    this->rows = new CURowState[this->nrows];
-}
+    m_cRDGoOnSbacCoder.init(&m_cRDGoOnBinCodersCABAC);
+    m_cSbacCoder.init(&m_cBinCoderCABAC);
+    m_cSearch.init(top, &m_cRdCost);
 
+    m_cCuEncoder.create((UChar) g_uiMaxCUDepth, g_uiMaxCUWidth, g_uiMaxCUHeight);
+    m_cCuEncoder.init(top);
 
-EncodingFrame::~EncodingFrame()
-{
-    this->Flush();
-    if (this->rows)
-        delete[] this->rows;
-}
-
-
-void EncodingFrame::Initialize(CUComputeData* cdata)
-{
-    this->data = cdata;
-
-    for (int i = 0; i < this->nrows; ++i)
+    if (top->getUseAdaptiveQP())
     {
-        this->rows[i].Initialize();
+        m_cTrQuant.initSliceQpDelta();
+    }
+    m_cTrQuant.init(1 << top->getQuadtreeTULog2MaxSize(), top->getUseRDOQ(), top->getUseRDOQTS(), true,
+                    top->getUseTransformSkipFast(), top->getUseAdaptQpSelect());
+
+    m_pppcRDSbacCoders = new TEncSbac**[g_uiMaxCUDepth + 1];
+    m_pppcBinCodersCABAC = new TEncBinCABACCounter**[g_uiMaxCUDepth + 1];
+
+    for (UInt iDepth = 0; iDepth < g_uiMaxCUDepth + 1; iDepth++)
+    {
+        m_pppcRDSbacCoders[iDepth]  = new TEncSbac*[CI_NUM];
+        m_pppcBinCodersCABAC[iDepth] = new TEncBinCABACCounter*[CI_NUM];
+
+        for (Int iCIIdx = 0; iCIIdx < CI_NUM; iCIIdx++)
+        {
+            m_pppcRDSbacCoders[iDepth][iCIIdx] = new TEncSbac;
+            m_pppcBinCodersCABAC[iDepth][iCIIdx] = new TEncBinCABACCounter;
+            m_pppcRDSbacCoders[iDepth][iCIIdx]->init(m_pppcBinCodersCABAC[iDepth][iCIIdx]);
+        }
     }
 
-    if (!this->InitJobQueue(this->nrows))
+    m_cCuEncoder.set_pcRdCost(&m_cRdCost);
+    m_cCuEncoder.set_pppcRDSbacCoder(m_pppcRDSbacCoders);
+    m_cCuEncoder.set_pcEntropyCoder(&m_cEntropyCoder);
+    m_cCuEncoder.set_pcPredSearch(&m_cSearch);
+    m_cCuEncoder.set_pcTrQuant(&m_cTrQuant);
+    m_cCuEncoder.set_pcRdCost(&m_cRdCost);
+}
+
+void CTURow::destroy()
+{
+    for (UInt iDepth = 0; iDepth < g_uiMaxCUDepth + 1; iDepth++)
+    {
+        for (Int iCIIdx = 0; iCIIdx < CI_NUM; iCIIdx++)
+        {
+            delete m_pppcRDSbacCoders[iDepth][iCIIdx];
+            delete m_pppcBinCodersCABAC[iDepth][iCIIdx];
+        }
+    }
+    for (UInt iDepth = 0; iDepth < g_uiMaxCUDepth + 1; iDepth++)
+    {
+        delete [] m_pppcRDSbacCoders[iDepth];
+        delete [] m_pppcBinCodersCABAC[iDepth];
+    }
+    delete[] m_pppcRDSbacCoders;
+    delete[] m_pppcBinCodersCABAC;
+    m_cCuEncoder.destroy();
+}
+
+EncodeFrame::EncodeFrame(ThreadPool* pool)
+    : QueueFrame(pool)
+    , m_pcSbacCoder(NULL)
+    , m_pcBinCABAC(NULL)
+    , m_pcSlice(NULL)
+    , m_pic(NULL)
+    , m_rows(NULL)
+{
+}
+
+void EncodeFrame::destroy()
+{
+    JobProvider::Flush();
+
+    if (m_rows)
+    {
+        for (int i = 0; i < m_nrows; ++i)
+        {
+            m_rows[i].destroy();
+        }
+        delete[] m_rows;
+    }
+}
+
+void EncodeFrame::create(TEncTop *top)
+{
+    m_nrows = top->getNumSubstreams();
+    m_enableWpp = top->getWaveFrontsynchro() ? true : false;
+    m_pcSbacCoder = top->getSbacCoder();
+    m_pcBinCABAC = top->getBinCABAC();
+
+    m_rows = new CTURow[m_nrows];
+    for (int i = 0; i < m_nrows; ++i)
+    {
+        m_rows[i].create(top);
+    }
+
+    if (!QueueFrame::InitJobQueue(m_nrows))
     {
         assert(!"Unable to initialize job queue.");
         throw;
@@ -59,108 +133,114 @@ void EncodingFrame::Initialize(CUComputeData* cdata)
 }
 
 
-void EncodingFrame::Encode()
+void EncodeFrame::Encode(TComPic *pic, TComSlice* pcSlice)
 {
-    this->Enqueue();
+    m_pic = pic;
+    m_pcSlice = pcSlice;
 
-    this->EnqueueRow(0);
-    this->complete.Wait();
+    // reset entropy coders
+    m_pcSbacCoder->init(m_pcBinCABAC);
+    for (int i = 0; i < this->m_nrows; i++)
+    {
+        m_rows[i].init();
+        m_rows[i].m_cEntropyCoder.setEntropyCoder(m_pcSbacCoder, pcSlice);
+        m_rows[i].m_cEntropyCoder.resetEntropy();
+        m_rows[i].m_pppcRDSbacCoders[0][CI_CURR_BEST]->load(m_pcSbacCoder);
+    }
 
-    this->Dequeue();
+    QueueFrame::Enqueue();
+
+    // Enqueue first row, then block until worker threads complete the frame
+    QueueFrame::EnqueueRow(0);
+    m_completionEvent.Wait();
+
+    QueueFrame::Dequeue();
 }
 
 
-void EncodingFrame::ProcessRow(int irow)
+void EncodeFrame::ProcessRow(int irow)
 {
-    CURowState& curRow = this->rows[irow];
+    // Called by worker threads
+    const uint32_t numCols = m_pic->getPicSym()->getFrameWidthInCU();
+    const uint32_t lineStartCUAddr = irow * numCols;
 
-    const UInt uiWidthInLCUs  = this->data->pic->getPicSym()->getFrameWidthInCU();
-    const UInt uiCurLineCUAddr = irow * uiWidthInLCUs;
+    CTURow& curRow  = m_rows[irow];
+    CTURow& codeRow = m_rows[m_enableWpp ? irow : 0];
 
-    for(UInt uiCol = curRow.curCol; uiCol < uiWidthInLCUs; uiCol++)
+    for(UInt uiCol = curRow.m_curCol; uiCol < numCols; uiCol++)
     {
-        const UInt uiCUAddr = uiCurLineCUAddr + uiCol;
-        TComDataCU* pcCU = this->data->pic->getCU(uiCUAddr);
-        pcCU->initCU(this->data->pic, uiCUAddr);
+        const uint32_t uiCUAddr = lineStartCUAddr + uiCol;
+        TComDataCU* pcCU = m_pic->getCU(uiCUAddr);
+        pcCU->initCU(m_pic, uiCUAddr);
 
-        const UInt uiSubStrm = (this->data->waveFrontSynchro ? irow : 0);
-        TEncBinCABAC* pppcRDSbacCoder = (TEncBinCABAC*)this->data->sbacCoders[uiSubStrm][0][CI_CURR_BEST]->getEncBinIf();
-        pppcRDSbacCoder->setBinCountingEnableFlag(false);
-        pppcRDSbacCoder->setBinsCoded(0);
+        TEncBinCABAC* pcRDSbacCoder = (TEncBinCABAC*)codeRow.m_pppcRDSbacCoders[0][CI_CURR_BEST]->getEncBinIf();
+        pcRDSbacCoder->setBinCountingEnableFlag(false);
+        pcRDSbacCoder->setBinsCoded(0);
 
-        this->data->entropyCoders[uiSubStrm].setEntropyCoder(this->data->sbacCoder, this->data->slice);
-        this->data->entropyCoders[uiSubStrm].resetEntropy();
+        codeRow.m_cEntropyCoder.setEntropyCoder(m_pcSbacCoder, m_pcSlice);
+        codeRow.m_cEntropyCoder.resetEntropy();
 
-        // Load SBAC coder context from previous row.
-        if (this->data->waveFrontSynchro && uiCol == 0 && irow > 0)
+        if (m_enableWpp && uiCol == 0 && irow > 0)
         {
-            this->data->sbacCoders[uiSubStrm][0][CI_CURR_BEST]->loadContexts(&this->data->bufferSbacCoders[irow-1]);
+            // Load SBAC coder context from previous row.
+            codeRow.m_pppcRDSbacCoders[0][CI_CURR_BEST]->loadContexts(&m_rows[irow-1].m_cBufferSbacCoder);
         }
 
-        UInt uiGoOnIdx = 0;
-        if (m_pool->GetThreadCount() > 1)
+        codeRow.m_cEntropyCoder.setEntropyCoder(&codeRow.m_cRDGoOnSbacCoder, m_pcSlice);
+        codeRow.m_cEntropyCoder.setBitstream(&codeRow.m_cBitCounter);
+        ((TEncBinCABAC*)codeRow.m_cRDGoOnSbacCoder.getEncBinIf())->setBinCountingEnableFlag(true);
+        codeRow.m_cCuEncoder.set_pcRDGoOnSbacCoder(&codeRow.m_cRDGoOnSbacCoder);
+
+        codeRow.m_cCuEncoder.compressCU(pcCU); // Does all the CU analysis
+
+        // restore entropy coder to an initial state
+        codeRow.m_cEntropyCoder.setEntropyCoder(codeRow.m_pppcRDSbacCoders[0][CI_CURR_BEST], m_pcSlice);
+        codeRow.m_cEntropyCoder.setBitstream(&codeRow.m_cBitCounter);
+        codeRow.m_cCuEncoder.setBitCounter(&codeRow.m_cBitCounter);
+        pcRDSbacCoder->setBinCountingEnableFlag(true);
+        codeRow.m_cBitCounter.resetBits();
+        pcRDSbacCoder->setBinsCoded(0);
+
+        codeRow.m_cCuEncoder.encodeCU(pcCU);  // Output CU bitstream
+
+        pcRDSbacCoder->setBinCountingEnableFlag(false);
+
+        if (m_enableWpp && uiCol == 1)
         {
-            uiGoOnIdx = uiSubStrm;
-        }
-        this->data->entropyCoders[uiSubStrm].setEntropyCoder(&this->data->goOnSbacCoders[uiGoOnIdx], this->data->slice);
-        this->data->entropyCoders[uiSubStrm].setBitstream(&this->data->bitCounters[uiSubStrm]);
-
-        ((TEncBinCABAC*)this->data->goOnSbacCoders[uiGoOnIdx].getEncBinIf())->setBinCountingEnableFlag(true);
-
-        this->data->cuEncoders[uiSubStrm].set_pppcRDSbacCoder(this->data->sbacCoders[uiSubStrm]);
-        this->data->cuEncoders[uiSubStrm].set_pcEntropyCoder(&this->data->entropyCoders[uiSubStrm]);
-        this->data->cuEncoders[uiSubStrm].set_pcPredSearch(&this->data->predSearches[uiSubStrm]);
-        this->data->cuEncoders[uiSubStrm].set_pcRDGoOnSbacCoder(&this->data->goOnSbacCoders[uiGoOnIdx]);
-        this->data->cuEncoders[uiSubStrm].set_pcTrQuant(&this->data->trQuants[uiSubStrm]);
-
-        this->data->cuEncoders[uiSubStrm].compressCU(pcCU);
-
-        // restore entropy coder to an initial stage
-        this->data->entropyCoders[uiSubStrm].setEntropyCoder(this->data->sbacCoders[uiSubStrm][0][CI_CURR_BEST], this->data->slice);
-        this->data->entropyCoders[uiSubStrm].setBitstream(&this->data->bitCounters[uiSubStrm]);
-        this->data->cuEncoders[uiSubStrm].setBitCounter(&this->data->bitCounters[uiSubStrm]);
-        pppcRDSbacCoder->setBinCountingEnableFlag(true);
-        this->data->bitCounters[uiSubStrm].resetBits();
-        pppcRDSbacCoder->setBinsCoded(0);
-        this->data->cuEncoders[uiSubStrm].encodeCU(pcCU);
-
-        pppcRDSbacCoder->setBinCountingEnableFlag(false);
-
-        if (this->data->waveFrontSynchro && uiCol == 1)
-        {
-            this->data->bufferSbacCoders[irow].loadContexts(this->data->sbacCoders[uiSubStrm][0][CI_CURR_BEST]);
+            // Save CABAC state for next row
+            curRow.m_cBufferSbacCoder.loadContexts(codeRow.m_pppcRDSbacCoders[0][CI_CURR_BEST]);
         }
 
-        // FIXME: If needed, these countings may added for the slice atomically with an updated CUComputeData.
+        // FIXME: If needed, these counters may be added atomically to slice or this (needed for rate control?)
         //m_uiPicTotalBits += pcCU->getTotalBits();
         //m_dPicRdCost     += pcCU->getTotalCost();
         //m_uiPicDist      += pcCU->getTotalDistortion();
 
-        // Completed CU processing of current column.
+        // Completed CU processing
+        curRow.m_curCol++;
 
-        curRow.curCol++;
-
-        if (curRow.curCol >= 2 && irow < this->nrows - 1)
+        if (curRow.m_curCol >= 2 && irow < m_nrows - 1)
         {
-            ScopedLock below(this->rows[irow + 1].lock);
-            if (this->rows[irow + 1].active == false &&
-                this->rows[irow + 1].curCol + 2 <= curRow.curCol)
+            ScopedLock below(m_rows[irow + 1].m_lock);
+            if (m_rows[irow + 1].m_active == false &&
+                m_rows[irow + 1].m_curCol + 2 <= curRow.m_curCol)
             {
-                this->rows[irow + 1].active = true;
-                this->EnqueueRow(irow + 1);
+                m_rows[irow + 1].m_active = true;
+                QueueFrame::EnqueueRow(irow + 1);
             }
         }
 
-        ScopedLock self(curRow.lock);
-        if (irow > 0 && curRow.curCol < this->ncols - 1 && this->rows[irow - 1].curCol < curRow.curCol + 2)
+        ScopedLock self(curRow.m_lock);
+        if (irow > 0 && curRow.m_curCol < numCols - 1 && m_rows[irow - 1].m_curCol < curRow.m_curCol + 2)
         {
-            curRow.active = false;
+            curRow.m_active = false;
             return;
         }
     }
 
-    if (irow == this->nrows - 1)
+    // this row of CTUs has been encoded
+    if (irow == m_nrows - 1)
     {
-        this->complete.Trigger();
+        m_completionEvent.Trigger();
     }
 }

@@ -3707,8 +3707,8 @@ UInt TEncSearch::xGetTemplateCost(TComDataCU* pcCU,
     }
 
     // calc distortion
-    uiCost = m_pcRdCost->getDistPart(g_bitDepthY, pcTemplateCand->getLumaAddr(uiPartAddr), pcTemplateCand->getStride(), pcOrgYuv->getLumaAddr(uiPartAddr), pcOrgYuv->getStride(), iSizeX, iSizeY, TEXT_LUMA, DF_SAD);
-    uiCost = (UInt)CALCRDCOST_SAD(m_auiMVPIdxCost[iMVPIdx][iMVPNum], uiCost, (Double)m_pcRdCost->m_uiLambdaMotionSAD);
+    uiCost = m_me.bufSAD((pixel*)pcTemplateCand->getLumaAddr(uiPartAddr), pcTemplateCand->getStride());
+    uiCost =  (UInt)((Double)floor((Double)uiCost + (Double)((Int)(m_auiMVPIdxCost[iMVPIdx][iMVPNum] * (Double)m_pcRdCost->m_uiLambdaMotionSAD + .5) >> 16)));
     return uiCost;
 }
 
@@ -4664,8 +4664,8 @@ Void TEncSearch::xEstimateResidualQT(TComDataCU* pcCU,
 
         if (checkTransformSkipY)
         {
-            UInt uiNonzeroDistY, uiAbsSumTransformSkipY;
-            Double dSingleCostY;
+            UInt uiNonzeroDistY = 0, uiAbsSumTransformSkipY;
+            Double dSingleCostY = MAX_DOUBLE;
 
             Short *pcResiCurrY = m_pcQTTempTComYuv[uiQTTempAccessLayer].getLumaAddr(absTUPartIdx);
             UInt resiYStride = m_pcQTTempTComYuv[uiQTTempAccessLayer].getStride();
@@ -4679,10 +4679,7 @@ Void TEncSearch::xEstimateResidualQT(TComDataCU* pcCU,
             Short bestResiY[32 * 32];
             for (Int i = 0; i < trHeight; ++i)
             {
-                for (int j = 0; j < trWidth; j++)
-                {
-                    bestResiY[i * trWidth + j] = pcResiCurrY[i * resiYStride + j];
-                }
+                memcpy(bestResiY + i*trWidth, pcResiCurrY + i*resiYStride, sizeof(Short)*trWidth); 
             }
 
             m_pcRDGoOnSbacCoder->load(m_pppcRDSbacCoder[uiDepth][CI_QT_TRAFO_ROOT]);
@@ -4745,8 +4742,9 @@ Void TEncSearch::xEstimateResidualQT(TComDataCU* pcCU,
 
         if (bCodeChroma && checkTransformSkipUV)
         {
-            UInt uiNonzeroDistU, uiNonzeroDistV, uiAbsSumTransformSkipU, uiAbsSumTransformSkipV;
-            Double dSingleCostU, dSingleCostV;
+            UInt uiNonzeroDistU = 0, uiNonzeroDistV = 0, uiAbsSumTransformSkipU, uiAbsSumTransformSkipV;
+            Double dSingleCostU = MAX_DOUBLE;
+            Double dSingleCostV = MAX_DOUBLE;
 
             Short *pcResiCurrU = m_pcQTTempTComYuv[uiQTTempAccessLayer].getCbAddr(absTUPartIdxC);
             Short *pcResiCurrV = m_pcQTTempTComYuv[uiQTTempAccessLayer].getCrAddr(absTUPartIdxC);

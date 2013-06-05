@@ -51,115 +51,6 @@ TComRdCost::TComRdCost()
 TComRdCost::~TComRdCost()
 {}
 
-// Calculate RD functions
-Double TComRdCost::calcRdCost(UInt uiBits, UInt uiDistortion, Bool bFlag, DFunc eDFunc)
-{
-    Double dRdCost = 0.0;
-    Double dLambda = 0.0;
-
-    switch (eDFunc)
-    {
-    case DF_SSE:
-        assert(0);
-        break;
-    case DF_SAD:
-        dLambda = (Double)m_uiLambdaMotionSAD;
-        break;
-    case DF_DEFAULT:
-        dLambda =         m_dLambda;
-        break;
-    case DF_SSE_FRAME:
-        dLambda =         m_dFrameLambda;
-        break;
-    default:
-        assert(0);
-        break;
-    }
-
-    if (bFlag)
-    {
-        // Intra8x8, Intra4x4 Block only...
-#if SEQUENCE_LEVEL_LOSSLESS
-        dRdCost = (Double)(uiBits);
-#else
-        dRdCost = (((Double)uiDistortion) + ((Double)uiBits * dLambda));
-#endif
-    }
-    else
-    {
-        if (eDFunc == DF_SAD)
-        {
-            dRdCost = ((Double)uiDistortion + (Double)((Int)(uiBits * dLambda + .5) >> 16));
-            dRdCost = (Double)(UInt)floor(dRdCost);
-        }
-        else
-        {
-#if SEQUENCE_LEVEL_LOSSLESS
-            dRdCost = (Double)(uiBits);
-#else
-            dRdCost = ((Double)uiDistortion + (Double)((Int)(uiBits * dLambda + .5)));
-            dRdCost = (Double)(UInt)floor(dRdCost);
-#endif
-        }
-    }
-
-    return dRdCost;
-}
-
-Double TComRdCost::calcRdCost64(UInt64 uiBits, UInt64 uiDistortion, Bool bFlag, DFunc eDFunc)
-{
-    Double dRdCost = 0.0;
-    Double dLambda = 0.0;
-
-    switch (eDFunc)
-    {
-    case DF_SSE:
-        assert(0);
-        break;
-    case DF_SAD:
-        dLambda = (Double)m_uiLambdaMotionSAD;
-        break;
-    case DF_DEFAULT:
-        dLambda =         m_dLambda;
-        break;
-    case DF_SSE_FRAME:
-        dLambda =         m_dFrameLambda;
-        break;
-    default:
-        assert(0);
-        break;
-    }
-
-    if (bFlag)
-    {
-        // Intra8x8, Intra4x4 Block only...
-#if SEQUENCE_LEVEL_LOSSLESS
-        dRdCost = (Double)(uiBits);
-#else
-        dRdCost = (((Double)(Int64)uiDistortion) + ((Double)(Int64)uiBits * dLambda));
-#endif
-    }
-    else
-    {
-        if (eDFunc == DF_SAD)
-        {
-            dRdCost = ((Double)(Int64)uiDistortion + (Double)((Int)((Int64)uiBits * dLambda + .5) >> 16));
-            dRdCost = (Double)(UInt)floor(dRdCost);
-        }
-        else
-        {
-#if SEQUENCE_LEVEL_LOSSLESS
-            dRdCost = (Double)(uiBits);
-#else
-            dRdCost = ((Double)(Int64)uiDistortion + (Double)((Int)((Int64)uiBits * dLambda + .5)));
-            dRdCost = (Double)(UInt)floor(dRdCost);
-#endif
-        }
-    }
-
-    return dRdCost;
-}
-
 Void TComRdCost::setLambda(Double dLambda)
 {
     m_dLambda           = dLambda;
@@ -373,11 +264,11 @@ UInt TComRdCost::calcHAD(Int bitDepth, Pel* pi0, Int iStride0, Pel* pi1, Int iSt
     return uiSum >> DISTORTION_PRECISION_ADJUSTMENT(bitDepth - 8);
 }
 
-UInt TComRdCost::getDistPart(Int bitDepth, Pel* piCur, Int iCurStride,  Pel* piOrg, Int iOrgStride, UInt uiBlkWidth, UInt uiBlkHeight, TextType eText, DFunc eDFunc)
+UInt TComRdCost::getDistPart(Int bitDepth, Pel* piCur, Int iCurStride,  Pel* piOrg, Int iOrgStride, UInt uiBlkWidth, UInt uiBlkHeight, TextType eText)
 {
     DistParam cDtParam;
 
-    setDistParam(uiBlkWidth, uiBlkHeight, eDFunc, cDtParam);
+    setDistParam(uiBlkWidth, uiBlkHeight, DF_SSE, cDtParam);
     cDtParam.pOrg       = piOrg;
     cDtParam.pCur       = piCur;
     cDtParam.iStrideOrg = iOrgStride;
@@ -403,13 +294,13 @@ UInt TComRdCost::getDistPart(Int bitDepth, Pel* piCur, Int iCurStride,  Pel* piO
 }
 
 #if !HIGH_BIT_DEPTH
-UInt TComRdCost::getDistPart(Int bitDepth, Pel* piCur, Int iCurStride,  Short* piOrg, Int iOrgStride, UInt uiBlkWidth, UInt uiBlkHeight, TextType eText, DFunc eDFunc)
+UInt TComRdCost::getDistPart(Int bitDepth, Pel* piCur, Int iCurStride,  Short* piOrg, Int iOrgStride, UInt uiBlkWidth, UInt uiBlkHeight, TextType eText)
 {
     DistParamSSE cDtParam;
 
     cDtParam.iCols    = uiBlkWidth;
     cDtParam.iRows    = uiBlkHeight;
-    cDtParam.DistFunc = m_afpDistortFunc[eDFunc + g_aucConvertToBit[cDtParam.iCols] + 1];
+    cDtParam.DistFunc = m_afpDistortFunc[DF_SSE + g_aucConvertToBit[cDtParam.iCols] + 1];
     cDtParam.iSubShift  = 0;
 
     cDtParam.pOrg       = NULL;
@@ -439,13 +330,13 @@ UInt TComRdCost::getDistPart(Int bitDepth, Pel* piCur, Int iCurStride,  Short* p
     }
 }
 
-UInt TComRdCost::getDistPart(Int bitDepth, Short* piCur, Int iCurStride,  Short* piOrg, Int iOrgStride, UInt uiBlkWidth, UInt uiBlkHeight, TextType eText, DFunc eDFunc)
+UInt TComRdCost::getDistPart(Int bitDepth, Short* piCur, Int iCurStride,  Short* piOrg, Int iOrgStride, UInt uiBlkWidth, UInt uiBlkHeight, TextType eText)
 {
     DistParamSSE cDtParam;
 
     cDtParam.iCols    = uiBlkWidth;
     cDtParam.iRows    = uiBlkHeight;
-    cDtParam.DistFunc = m_afpDistortFunc[eDFunc + g_aucConvertToBit[cDtParam.iCols] + 1];
+    cDtParam.DistFunc = m_afpDistortFunc[DF_SSE + g_aucConvertToBit[cDtParam.iCols] + 1];
     cDtParam.iSubShift  = 0;
 
     cDtParam.pOrg       = NULL;
@@ -474,28 +365,7 @@ UInt TComRdCost::getDistPart(Int bitDepth, Short* piCur, Int iCurStride,  Short*
         return DtParam->DistFunc(DtParam);
     }
 }
-
 #endif // if !HIGH_BIT_DEPTH
-
-UInt TComRdCost::getSADPart(Int bitDepth, Pel* pelCur, Int curStride,  Pel* pelOrg, Int orgStride, UInt width, UInt height)
-{
-    Int shift = DISTORTION_PRECISION_ADJUSTMENT(bitDepth - 8);
-
-    UInt SAD = 0;
-
-    for (Int i = 0; i < height; i++)
-    {
-        for (Int j = 0; j < width; j++)
-        {
-            SAD += abs((pelCur[j] - pelOrg[j]));
-        }
-
-        pelCur = pelCur + curStride;
-        pelOrg = pelOrg + orgStride;
-    }
-
-    return SAD >> shift;
-}
 
 // ====================================================================================================================
 // Distortion functions
