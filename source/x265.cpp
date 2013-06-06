@@ -70,6 +70,10 @@ static struct option long_options[] =
 #undef HELP
 };
 
+#if CU_STAT_LOGFILE
+FILE* fp = NULL;
+#endif
+
 /* Ctrl-C handler */
 static volatile int b_ctrl_c = 0;
 static int          b_exit_on_ctrl_c = 0;
@@ -421,6 +425,9 @@ int main(int argc, char **argv)
 #endif
     PPA_INIT();
 
+#if CU_STAT_LOGFILE
+    fp = fopen("Log_CU_stats.txt", "w");
+#endif
     x265_param_t param;
     CLIOptions   cliopt;
 
@@ -501,6 +508,9 @@ int main(int argc, char **argv)
 
 #if HAVE_VLD
     assert(VLDReportLeaks() == 0);
+#endif
+#if CU_STAT_LOGFILE
+    fclose(fp);
 #endif
     return 0;
 }
