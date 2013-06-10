@@ -68,7 +68,10 @@ class TEncCu
 {
 private:
 
-    TComDataCU**            m_NxNCU[4];
+    TComDataCU**            m_InterCU_2Nx2N;
+    TComDataCU**            m_InterCU_Rect;
+    TComDataCU**            m_IntrainInterCU;
+    TComDataCU**            m_MergeCU;
     TComDataCU**            m_ppcBestCU;    ///< Best CUs in each depth
     TComDataCU**            m_ppcTempCU;    ///< Temporary CUs in each depth
     UChar                   m_uhTotalDepth;
@@ -110,6 +113,7 @@ public:
     Void set_pcPredSearch(TEncSearch* pcPredSearch) { m_pcPredSearch = pcPredSearch; }
     Void set_pcRDGoOnSbacCoder(TEncSbac* pcRDGoOnSbacCoder) { m_pcRDGoOnSbacCoder = pcRDGoOnSbacCoder; }
     Void set_pcTrQuant(TComTrQuant* pcTrQuant) { m_pcTrQuant = pcTrQuant; }
+    Void set_pcRdCost(TComRdCost* pcRdCost) { m_pcRdCost = pcRdCost; }
 
     /// copy parameters from encoder class
     Void  init(TEncTop* pcEncTop);
@@ -135,17 +139,18 @@ protected:
     Void  finishCU(TComDataCU* pcCU, UInt uiAbsPartIdx,           UInt uiDepth);
     Void  xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TComDataCU* rpcParentCU,  UInt uiDepth, UInt uiPartUnitIdx, PartSize eParentPartSize = SIZE_NONE);
     Void  xCompressIntraCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TComDataCU* rpcParentCU,  UInt uiDepth, PartSize eParentPartSize = SIZE_NONE);
+    Void  xCompressInterCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, UInt uiDepth);
     Void  xEncodeCU(TComDataCU* pcCU, UInt uiAbsPartIdx,           UInt uiDepth);
 
     Int   xComputeQP(TComDataCU* pcCU, UInt uiDepth);
-    Void  xCheckBestMode(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, UInt uiDepth, float lambda = 1.0);
+    Void  xCheckBestMode(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, UInt uiDepth);
     Void swapCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, UInt uiDepth);
 
     Void  xCheckRDCostMerge2Nx2N(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, Bool *earlyDetectionSkipMode);
     Void  xCheckRDCostInter(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, PartSize ePartSize, Bool bUseMRG = false);
-    Void  xCalcRDCostInter(TComDataCU*& rpcTempCU, UInt PartitionIndex, PartSize ePartSize, Bool bUseMRG = false);
+    Void  xComputeCostInter(TComDataCU*& rpcTempCU, PartSize ePartSize, Bool bUseMRG = false);
     Void  xCheckRDCostIntra(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, PartSize ePartSize);
-    Void  xCalcRDCostIntra(TComDataCU*& rpcTempCU, PartSize ePartSize);
+    Void  xCheckRDCostIntrainInter(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, PartSize eSize);
     Void  xCheckDQP(TComDataCU* pcCU);
 
     Void  xCheckIntraPCM(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU);

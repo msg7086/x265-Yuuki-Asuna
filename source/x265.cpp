@@ -70,6 +70,11 @@ static struct option long_options[] =
 #undef HELP
 };
 
+#if CU_STAT_LOGFILE
+FILE* fp = NULL;
+FILE * fp1 = NULL;
+#endif
+
 /* Ctrl-C handler */
 static volatile int b_ctrl_c = 0;
 static int          b_exit_on_ctrl_c = 0;
@@ -338,8 +343,6 @@ struct CLIOptions
         if (argc <= 1 || help)
             do_help();
 
-        x265_setup_primitives(param, cpuid);
-
         if (inputfn == NULL || bitstreamfn == NULL)
         {
             log(X265_LOG_ERROR, "input or output file not specified, try -V for help\n");
@@ -379,8 +382,12 @@ struct CLIOptions
 
         this->framesToBeEncoded = this->framesToBeEncoded ? min(this->framesToBeEncoded, numRemainingFrames) : numRemainingFrames;
 
-        log(X265_LOG_INFO, "Input File                   : %s (%u - %d of %d total frames)\n", inputfn,
-            this->frameSkip, this->frameSkip + this->framesToBeEncoded - 1, numRemainingFrames);
+        if (this->cli_log_level >= X265_LOG_INFO)
+        {
+            fprintf(stderr, "%s  [info]: %dx%d %dHz, frames %u - %d of %d\n", input->getName(),
+                param->iSourceWidth, param->iSourceHeight, param->iFrameRate,
+                this->frameSkip, this->frameSkip + this->framesToBeEncoded - 1, numRemainingFrames);
+        }
 
         if (reconfn)
         {
@@ -408,6 +415,8 @@ struct CLIOptions
             return true;
         }
 
+        x265_setup_primitives(param, cpuid);
+
         x265_set_globals(param, inputBitDepth);
 
         return false;
@@ -421,10 +430,13 @@ int main(int argc, char **argv)
 #endif
     PPA_INIT();
 
+#if CU_STAT_LOGFILE
+    fp = fopen("Log_CU_stats.txt", "w");
+    fp1 = fopen("LOG_CU_COST.txt","w");
+#endif
     x265_param_t param;
     CLIOptions   cliopt;
 
-    // TODO: needs proper logging file handle with log levels, etc
     if (cliopt.parse(argc, argv, &param))
         exit(1);
 
@@ -483,7 +495,6 @@ int main(int argc, char **argv)
 
     /* clear progress report */
     fprintf(stderr, "                                                                               \r");
-    fprintf(stderr, "\n");
 
     x265_encoder_close(encoder);
     cliopt.bitstreamFile.close();
@@ -493,8 +504,8 @@ int main(int argc, char **argv)
 
     double elapsed = (double)(x265_mdate() - cliopt.i_start) / 1000000;
     double vidtime = (double)inFrameCount / param.iFrameRate;
-    printf("Bytes written to file: %u (%.3f kbps) in %3.3f sec\n",
-           cliopt.totalBytes, 0.008 * cliopt.totalBytes / vidtime, elapsed);
+    printf("\nencoded %d frames in %.2fs (%.2f fps), %.2f kb/s\n", 
+        outFrameCount, elapsed, outFrameCount / elapsed, (0.008f * cliopt.totalBytes) / vidtime);
 
     x265_cleanup(); /* Free library singletons */
 
@@ -502,6 +513,10 @@ int main(int argc, char **argv)
 
 #if HAVE_VLD
     assert(VLDReportLeaks() == 0);
+#endif
+#if CU_STAT_LOGFILE
+    fclose(fp);
+    fclose(fp1);
 #endif
     return 0;
 }

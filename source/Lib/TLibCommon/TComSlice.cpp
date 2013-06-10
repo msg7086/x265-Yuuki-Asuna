@@ -39,6 +39,7 @@
 #include "TComSlice.h"
 #include "TComPic.h"
 #include "TLibEncoder/TEncSbac.h"
+#include "threadpool.h"
 
 //! \ingroup TLibCommon
 //! \{
@@ -67,12 +68,8 @@ TComSlice::TComSlice()
     , m_pcPic(NULL)
     , m_colFromL0Flag(1)
     , m_colRefIdx(0)
-#if SAO_CHROMA_LAMBDA
     , m_dLambdaLuma(0.0)
     , m_dLambdaChroma(0.0)
-#else
-    , m_dLambda(0.0)
-#endif
     , m_uiTLayer(0)
     , m_bTLayerSwitchingFlag(false)
     , m_sliceCurEndCUAddr(0)
@@ -323,7 +320,7 @@ Void TComSlice::setRefPicList(TComList<TComPic*>& rcListPic, Bool checkNumPocTot
         {
             pcRefPic = xGetRefPic(rcListPic, getPOC() + m_pcRPS->getDeltaPOC(i));
             pcRefPic->setIsLongTerm(0);
-            pcRefPic->getPicYuvRec()->extendPicBorder();
+            pcRefPic->getPicYuvRec()->extendPicBorder(x265::ThreadPool::GetThreadPool());
             RefPicSetStCurr0[NumPocStCurr0] = pcRefPic;
             NumPocStCurr0++;
             pcRefPic->setCheckLTMSBPresent(false);
@@ -336,7 +333,7 @@ Void TComSlice::setRefPicList(TComList<TComPic*>& rcListPic, Bool checkNumPocTot
         {
             pcRefPic = xGetRefPic(rcListPic, getPOC() + m_pcRPS->getDeltaPOC(i));
             pcRefPic->setIsLongTerm(0);
-            pcRefPic->getPicYuvRec()->extendPicBorder();
+            pcRefPic->getPicYuvRec()->extendPicBorder(x265::ThreadPool::GetThreadPool());
             RefPicSetStCurr1[NumPocStCurr1] = pcRefPic;
             NumPocStCurr1++;
             pcRefPic->setCheckLTMSBPresent(false);
@@ -349,7 +346,7 @@ Void TComSlice::setRefPicList(TComList<TComPic*>& rcListPic, Bool checkNumPocTot
         {
             pcRefPic = xGetLongTermRefPic(rcListPic, m_pcRPS->getPOC(i), m_pcRPS->getCheckLTMSBPresent(i));
             pcRefPic->setIsLongTerm(1);
-            pcRefPic->getPicYuvRec()->extendPicBorder();
+            pcRefPic->getPicYuvRec()->extendPicBorder(x265::ThreadPool::GetThreadPool());
             RefPicSetLtCurr[NumPocLtCurr] = pcRefPic;
             NumPocLtCurr++;
         }
@@ -685,12 +682,8 @@ Void TComSlice::copySliceInfo(TComSlice *pSrc)
 
     m_colFromL0Flag        = pSrc->m_colFromL0Flag;
     m_colRefIdx            = pSrc->m_colRefIdx;
-#if SAO_CHROMA_LAMBDA
     m_dLambdaLuma          = pSrc->m_dLambdaLuma;
     m_dLambdaChroma        = pSrc->m_dLambdaChroma;
-#else
-    m_dLambda              = pSrc->m_dLambda;
-#endif
     for (i = 0; i < 2; i++)
     {
         for (j = 0; j < MAX_NUM_REF; j++)

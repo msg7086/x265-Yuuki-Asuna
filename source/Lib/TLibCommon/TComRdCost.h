@@ -158,9 +158,6 @@ public:
 #define CALCRDCOST(uiBits, uiDistortion, m_dLambda) \
     (Double)floor((Double)uiDistortion + (Double)((uiBits * m_dLambda + .5))) \
 
-#define CALCRDCOST_SAD(uiBits, uiDistortion, m_dLambda) \
-    (Double)floor((Double)uiDistortion + (Double)((Int)(uiBits * m_dLambda + .5) >> 16)) \
-
 /// RD cost computation class
 class TComRdCost
     : public TComRdCostWeightPrediction
@@ -168,13 +165,7 @@ class TComRdCost
 private:
 
     // for distortion
-    Int                     m_iBlkWidth;
-    Int                     m_iBlkHeight;
-
     FpDistFunc              m_afpDistortFunc[64]; // [eDFunc]
-
-    Double                  m_cbDistortionWeight;
-    Double                  m_crDistortionWeight;
 
     Double                  m_sqrtLambda;
     UInt                    m_uiLambdaMotionSSE;
@@ -188,11 +179,11 @@ public:
     Double                  m_dLambda;
     UInt                    m_uiLambdaMotionSAD;
 
+    Double                  m_cbDistortionWeight;
+    Double                  m_crDistortionWeight;
+
     TComRdCost();
     virtual ~TComRdCost();
-
-    Double  calcRdCost(UInt uiBits, UInt   uiDistortion, Bool bFlag = false, DFunc eDFunc = DF_DEFAULT);
-    Double  calcRdCost64(UInt64 uiBits, UInt64 uiDistortion, Bool bFlag = false, DFunc eDFunc = DF_DEFAULT);
 
     Void    setCbDistortionWeight(Double cbDistortionWeight) { m_cbDistortionWeight = cbDistortionWeight; }
 
@@ -206,6 +197,15 @@ public:
 
     Double  getLambda() { return m_dLambda; }
 
+    // for motion cost
+    Void    getMotionCost(Bool bSad, Int iAdd) { m_uiCost = (bSad ? m_uiLambdaMotionSAD + iAdd : m_uiLambdaMotionSSE + iAdd); }
+
+    Void    setPredictor(TComMv& rcMv)         { m_mvPredictor = rcMv; }
+
+    Void    setCostScale(Int iCostScale)       { m_iCostScale = iCostScale; }
+
+    UInt    getCost(UInt b)                    { return (m_uiCost * b) >> 16; }
+
     // Distortion Functions
     Void    init();
 
@@ -215,29 +215,6 @@ public:
     Void    setDistParam(DistParam& rcDP, Int bitDepth, Pel* p1, Int iStride1, Pel* p2, Int iStride2, Int iWidth, Int iHeight, Bool bHadamard = false);
 
     UInt    calcHAD(Int bitDepth, Pel* pi0, Int iStride0, Pel* pi1, Int iStride1, Int iWidth, Int iHeight);
-
-    // for motion cost
-    UInt    xGetComponentBits(Int iVal);
-    Void    getMotionCost(Bool bSad, Int iAdd) { m_uiCost = (bSad ? m_uiLambdaMotionSAD + iAdd : m_uiLambdaMotionSSE + iAdd); }
-
-    Void    setPredictor(TComMv& rcMv)      { m_mvPredictor = rcMv; }
-
-    Void    setCostScale(Int iCostScale)    { m_iCostScale = iCostScale; }
-
-    __inline UInt getCost(Int x, Int y)
-    {
-        return m_uiCost * getBits(x, y) >> 16;
-    }
-
-    UInt    getCost(UInt b)                 { return (m_uiCost * b) >> 16; }
-
-    UInt    getBits(Int x, Int y)
-    {
-        return xGetComponentBits((x << m_iCostScale) - m_mvPredictor.getHor()) +
-               xGetComponentBits((y << m_iCostScale) - m_mvPredictor.getVer());
-    }
-
-    FpDistFunc * getSadFunctions()         { return m_afpDistortFunc; }
 
 private:
 
@@ -267,16 +244,6 @@ private:
 
     static UInt xCalcHADs4x4(Pel *piOrg, Pel *piCurr, Int iStrideOrg, Int iStrideCur, Int iStep);
     static UInt xCalcHADs8x8(Pel *piOrg, Pel *piCurr, Int iStrideOrg, Int iStrideCur, Int iStep);
-
-public:
-
-    UInt   getDistPart(Int bitDepth, Pel* piCur, Int iCurStride,  Pel* piOrg, Int iOrgStride, UInt uiBlkWidth, UInt uiBlkHeight, TextType eText = TEXT_LUMA, DFunc eDFunc = DF_SSE);
-#if !HIGH_BIT_DEPTH
-    UInt   getDistPart(Int bitDepth, Pel* piCur, Int iCurStride,  Short* piOrg, Int iOrgStride, UInt uiBlkWidth, UInt uiBlkHeight, TextType eText = TEXT_LUMA, DFunc eDFunc = DF_SSE);
-    UInt   getDistPart(Int bitDepth, Short* piCur, Int iCurStride,  Short* piOrg, Int iOrgStride, UInt uiBlkWidth, UInt uiBlkHeight, TextType eText = TEXT_LUMA, DFunc eDFunc = DF_SSE);
-#endif
-
-    UInt   getSADPart(Int bitDepth, Pel* pelCur, Int curStride,  Pel* pelOrg, Int orgStride, UInt width, UInt height);
 }; // END CLASS DEFINITION TComRdCost
 
 //! \}

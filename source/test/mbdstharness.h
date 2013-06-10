@@ -31,7 +31,7 @@ class MBDstHarness : public TestHarness
 {
 protected:
 
-    short *mbuf1, *mbuf2, *mbuf3, *mbuf4;
+    short *mbuf1, *mbuf2, *mbuf3, *mbuf4, *mbufdct;
     int mb_t_size;
 
     int *mintbuf1, *mintbuf2, *mintbuf3, *mintbuf4;
@@ -46,12 +46,15 @@ protected:
     bool check_butterfly32_inverse_primitive(x265::butterfly ref, x265::butterfly opt);
     bool check_butterfly4_primitive(x265::butterfly ref, x265::butterfly opt);
     bool check_xdequant_primitive(x265::quant ref, x265::quant opt);
+    bool check_dct_primitive(x265::dct_t ref, x265::dct_t opt, int width);
 
 public:
 
     MBDstHarness();
 
     virtual ~MBDstHarness();
+
+    const char *getName() const { return "transforms"; }
 
     bool testCorrectness(const x265::EncoderPrimitives& ref, const x265::EncoderPrimitives& opt);
 

@@ -56,6 +56,9 @@ PixelHarness::PixelHarness()
     pbuf1 = (pixel*)TestHarness::alignedMalloc(sizeof(pixel), 64 * 64 * 32, 32);
     pbuf2 = (pixel*)TestHarness::alignedMalloc(sizeof(pixel), 64 * 64 * 32, 32);
 
+    sbuf1 = (short*)TestHarness::alignedMalloc(sizeof(short), 64 * 64 * 32, 32);
+    sbuf2 = (short*)TestHarness::alignedMalloc(sizeof(short), 64 * 64 * 32, 32);
+
     if (!pbuf1 || !pbuf2)
     {
         fprintf(stderr, "malloc failed, unable to initiate tests!\n");
@@ -67,6 +70,9 @@ PixelHarness::PixelHarness()
         //Generate the Random Buffer for Testing
         pbuf1[i] = rand() & PIXEL_MAX;
         pbuf2[i] = rand() & PIXEL_MAX;
+
+        sbuf1[i] = rand() & PIXEL_MAX;
+        sbuf2[i] = rand() & PIXEL_MAX;
     }
 }
 
@@ -87,6 +93,40 @@ bool PixelHarness::check_pixel_primitive(pixelcmp ref, pixelcmp opt)
     {
         int vres = opt(pbuf1, STRIDE, pbuf2 + j, STRIDE);
         int cres = ref(pbuf1, STRIDE, pbuf2 + j, STRIDE);
+        if (vres != cres)
+            return false;
+
+        j += INCR;
+    }
+
+    return true;
+}
+
+bool PixelHarness::check_pixel_sp_primitive(pixelcmp_sp ref, pixelcmp_sp opt)
+{
+    int j = 0;
+
+    for (int i = 0; i <= 100; i++)
+    {
+        int vres = opt(sbuf1, STRIDE, pbuf2 + j, STRIDE);
+        int cres = ref(sbuf1, STRIDE, pbuf2 + j, STRIDE);
+        if (vres != cres)
+            return false;
+
+        j += INCR;
+    }
+
+    return true;
+}
+
+bool PixelHarness::check_pixel_ss_primitive(pixelcmp_ss ref, pixelcmp_ss opt)
+{
+    int j = 0;
+
+    for (int i = 0; i <= 100; i++)
+    {
+        int vres = opt(sbuf1, STRIDE, sbuf2 + j, STRIDE);
+        int cres = ref(sbuf1, STRIDE, sbuf2 + j, STRIDE);
         if (vres != cres)
             return false;
 
@@ -250,11 +290,29 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
             }
         }
 
-        if (opt.sse[curpar])
+        if (opt.sse_pp[curpar])
         {
-            if (!check_pixel_primitive(ref.sse[curpar], opt.sse[curpar]))
+            if (!check_pixel_primitive(ref.sse_pp[curpar], opt.sse_pp[curpar]))
             {
-                printf("sse[%s]: failed!\n", FuncNames[curpar]);
+                printf("sse_pp[%s]: failed!\n", FuncNames[curpar]);
+                return false;
+            }
+        }
+
+        if (opt.sse_sp[curpar])
+        {
+            if (!check_pixel_sp_primitive(ref.sse_sp[curpar], opt.sse_sp[curpar]))
+            {
+                printf("sse_sp[%s]: failed!\n", FuncNames[curpar]);
+                return false;
+            }
+        }
+
+        if (opt.sse_ss[curpar])
+        {
+            if (!check_pixel_ss_primitive(ref.sse_ss[curpar], opt.sse_ss[curpar]))
+            {
+                printf("sse_ss[%s]: failed!\n", FuncNames[curpar]);
                 return false;
             }
         }
@@ -371,10 +429,22 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
             REPORT_SPEEDUP(opt.sad[curpar], ref.sad[curpar], pbuf1, STRIDE, fref, STRIDE);
         }
 
-        if (opt.sse[curpar])
+        if (opt.sse_pp[curpar])
         {
-            printf("   sse[%s]", FuncNames[curpar]);
-            REPORT_SPEEDUP(opt.sse[curpar], ref.sse[curpar], pbuf1, STRIDE, fref, STRIDE);
+            printf("sse_pp[%s]", FuncNames[curpar]);
+            REPORT_SPEEDUP(opt.sse_pp[curpar], ref.sse_pp[curpar], pbuf1, STRIDE, fref, STRIDE);
+        }
+
+        if (opt.sse_sp[curpar])
+        {
+            printf("sse_sp[%s]", FuncNames[curpar]);
+            REPORT_SPEEDUP(opt.sse_sp[curpar], ref.sse_sp[curpar], (short*)pbuf1, STRIDE, fref, STRIDE);
+        }
+
+        if (opt.sse_ss[curpar])
+        {
+            printf("sse_ss[%s]", FuncNames[curpar]);
+            REPORT_SPEEDUP(opt.sse_ss[curpar], ref.sse_ss[curpar], (short*)pbuf1, STRIDE, (short*)fref, STRIDE);
         }
 
         if (opt.sad_x3[curpar])
