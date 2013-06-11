@@ -28,6 +28,7 @@
 #include "Lib/TLibCommon/CommonDef.h"
 #include "butterfly.h"
 #include <algorithm>
+#include <string.h>
 
 /* Used for filter */
 #define IF_INTERNAL_PREC 14 ///< Number of bits for internal precision
@@ -581,7 +582,7 @@ void CDECL xDeQuant(int bitDepth, const int* pSrc, int* pDes, int iWidth, int iH
 namespace x265 {
 // x265 private namespace
 
-void Setup_C_MacroblockPrimitives(EncoderPrimitives& p)
+void Setup_C_DCTPrimitives(EncoderPrimitives& p)
 {
     p.inversedst = inversedst;
 
