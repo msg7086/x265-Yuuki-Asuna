@@ -132,6 +132,7 @@ enum Butterflies
     NUM_BUTTERFLIES
 };
 
+// NOTE: All of DCT functions don't support Dest Stride
 enum Dcts
 {
     DST_4x4,
@@ -139,6 +140,11 @@ enum Dcts
     DCT_8x8,
     DCT_16x16,
     DCT_32x32,
+    IDST_4x4,
+    IDCT_4x4,
+    IDCT_8x8,
+    IDCT_16x16,
+    IDCT_32x32,
     NUM_DCTS
 };
 
@@ -194,7 +200,6 @@ typedef void (CDECL * cvt16to32_t)(short *psOrg, int *piDst, int);
 typedef void (CDECL * cvt16to32_shl_t)(int *piDst, short *psOrg, int, int);
 typedef void (CDECL * cvt32to16_t)(int *psOrg, short *piDst, int);
 typedef void (CDECL * cvt32to16_shr_t)(short *piDst, int *psOrg, int, int);
-typedef int  (CDECL * scan_coef_t)(int* pcCoef, const unsigned int *scan, const unsigned int *scanT, unsigned int *cgFlag, unsigned int uiWidth, int *piScanPosLast);
 typedef void (CDECL * dct_t)(short *pSrc, short *pDst);
 typedef void (CDECL * getResidue_t)(pixel *piOrig, pixel *piPred, short *piRes, int height, int width, int stride);
 typedef void (CDECL * calcRecons_t)(pixel* piPred, short* piResi,pixel*  piReco, short* piRecQt, pixel *piRecIPred, int uiStride, int uiRecQtStride, int uiRecIPredStride, int uiHeight, int uiWidth);
@@ -233,7 +238,6 @@ struct EncoderPrimitives
     getIPredPlanar_p getIPredPlanar;
     getIPredAng_p getIPredAng;
     quant deQuant;
-    scan_coef_t scan_coef;
     dct_t dct[NUM_DCTS];
     cvt16to32_t cvt16to32;
     cvt16to32_shl_t cvt16to32_shl;

@@ -2855,19 +2855,12 @@ Void TEncSearch::xRestrictBipredMergeCand(TComDataCU* pcCU, UInt puIdx, TComMvFi
  * \param bUseRes
  * \returns Void
  */
-Void TEncSearch::predInterSearch(TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv*& rpcPredYuv, TShortYUV*& rpcResiYuv, TComYuv*& rpcRecoYuv, Bool bUseRes, Bool bUseMRG)
+Void TEncSearch::predInterSearch(TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv*& rpcPredYuv, Bool bUseMRG)
 {
     m_acYuvPred[0].clear();
     m_acYuvPred[1].clear();
     m_cYuvPredTemp.clear();
     rpcPredYuv->clear();
-
-    if (!bUseRes)
-    {
-        rpcResiYuv->clear();
-    }
-
-    rpcRecoYuv->clear();
 
     TComMv        cMvSrchRngLT;
     TComMv        cMvSrchRngRB;
@@ -2916,7 +2909,9 @@ Void TEncSearch::predInterSearch(TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv*& 
     TComMvField cMvFieldNeighbours[MRG_MAX_NUM_CANDS << 1]; // double length for mv of both lists
     UChar uhInterDirNeighbours[MRG_MAX_NUM_CANDS];
     Int numValidMergeCand = 0;
-
+#if FAST_MODE_DECISION
+    pcCU->getTotalCost() = 0;
+#endif
     for (Int iPartIdx = 0; iPartIdx < iNumPart; iPartIdx++)
     {
         UInt          uiCost[2] = { MAX_UINT, MAX_UINT };
@@ -2946,6 +2941,7 @@ Void TEncSearch::predInterSearch(TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv*& 
 
         Pel* PU = fenc->getLumaAddr(pcCU->getAddr(), pcCU->getZorderIdxInCU() + uiPartAddr);
         m_me.setSourcePU(PU - fenc->getLumaAddr(), iRoiWidth, iRoiHeight);
+        m_me.setQP(pcCU->getQP(0), m_pcRdCost->getSqrtLambda());
 
         Bool bTestNormalMC = true;
 
@@ -3321,6 +3317,9 @@ Void TEncSearch::predInterSearch(TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv*& 
 #if CU_STAT_LOGFILE
                 meCost += uiMRGCost;
 #endif
+#if FAST_MODE_DECISION
+                pcCU->getTotalCost() += uiMRGCost;
+#endif
             }
             else
             {
@@ -3334,9 +3333,17 @@ Void TEncSearch::predInterSearch(TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv*& 
 #if CU_STAT_LOGFILE
                 meCost += uiMECost;
 #endif
+#if FAST_MODE_DECISION
+                pcCU->getTotalCost() += uiMECost;
+#endif
             }
         }
+#if FAST_MODE_DECISION
+        else
+            pcCU->getTotalCost() += uiCostTemp;
+#endif
         motionCompensation(pcCU, rpcPredYuv, REF_PIC_LIST_X, iPartIdx);
+        
     }
 
 #if CU_STAT_LOGFILE
@@ -3581,6 +3588,7 @@ UInt TEncSearch::xGetTemplateCost(TComDataCU* pcCU,
 
     // calc distortion
     uiCost = m_me.bufSAD((pixel*)pcTemplateCand->getLumaAddr(uiPartAddr), pcTemplateCand->getStride());
+    x265_emms();
     uiCost =  (UInt)((Double)floor((Double)uiCost + (Double)((Int)(m_auiMVPIdxCost[iMVPIdx][iMVPNum] * (Double)m_pcRdCost->m_uiLambdaMotionSAD + .5) >> 16)));
     return uiCost;
 }
@@ -3645,13 +3653,15 @@ Void TEncSearch::xMotionEstimation(TComDataCU* pcCU, TComYuv* pcYuvOrg, Int iPar
     CYCLE_COUNTER_START(ME);
     if (m_iSearchMethod != X265_ORIG_SEARCH && m_cDistParam.bApplyWeight == false && !bBi)
     {
-        // TODO: To make motionEstimate re-entrant, most of these must be function arguments
         TComPicYuv *refRecon = pcCU->getSlice()->getRefPic(eRefPicList, iRefIdxPred)->getPicYuvRec();
-        m_me.setReference(refRecon->getMotionReference(0));
-        m_me.setSearchLimits(cMvSrchRngLT, cMvSrchRngRB);
-        m_me.setQP(pcCU->getQP(0), m_pcRdCost->getSqrtLambda());
-
-        int satdCost = m_me.motionEstimate(*pcMvPred, 3, m_acMvPredictors, iSrchRng, rcMv);
+        int satdCost = m_me.motionEstimate(refRecon->getMotionReference(0),
+                                           cMvSrchRngLT,
+                                           cMvSrchRngRB,
+                                           *pcMvPred,
+                                           3,
+                                           m_acMvPredictors,
+                                           iSrchRng,
+                                           rcMv);
 
         /* Get total cost of PU, but only include MV bit cost once */
         ruiBits += m_me.bitcost(rcMv);
@@ -4152,8 +4162,9 @@ Void TEncSearch::encodeResAndCalcRdInterCU(TComDataCU* pcCU, TComYuv* pcYuvOrg, 
 
     dCostBest = CALCRDCOST(uiBitsBest, uiDistortionBest, m_pcRdCost->m_dLambda);
 
-    pcCU->getTotalBits()       = uiBitsBest;
+    
 #if !FAST_MODE_DECISION
+    pcCU->getTotalBits()       = uiBitsBest;
     pcCU->getTotalDistortion() = uiDistortionBest;
     pcCU->getTotalCost()       = dCostBest;
 #endif
