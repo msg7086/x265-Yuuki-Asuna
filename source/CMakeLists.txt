@@ -6,7 +6,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 project (x265)
-cmake_minimum_required (VERSION 2.8)
+cmake_minimum_required (VERSION 2.6)
 
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" "${CMAKE_MODULE_PATH}")
 include(version)
@@ -30,7 +30,7 @@ if("$ENV{CXX}" STREQUAL "icpc")
     add_definitions(-Wall -Wextra -Werror -Wshadow -no-vec)
 elseif(CMAKE_COMPILER_IS_GNUCXX)
     set(GCC 1)
-    add_definitions(-Wall -Wextra -Werror -Wshadow)
+    add_definitions(-Wall -Wextra -Werror -Wshadow -mstackrealign)
 endif()
 
 option(HIGH_BIT_DEPTH "Use 16bit pixels internally" OFF)
