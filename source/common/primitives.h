@@ -197,12 +197,13 @@ typedef void (CDECL * getIPredPlanar_p)(pixel* pSrc, intptr_t srcStride, pixel* 
 typedef void (CDECL * getIPredAng_p)(int bitDepth, pixel* rpDst, int dstStride, int width, int dirMode, bool bFilter, pixel *refLeft, pixel *refAbove);
 typedef void (CDECL * quant)(int bitDepth, const int* pSrc, int* pDes, int iWidth, int iHeight, int mcqp_miper, int mcqp_mirem, bool useScalingList, unsigned int uiLog2TrSize, int *piDequantCoef);
 typedef void (CDECL * cvt16to32_t)(short *psOrg, int *piDst, int);
-typedef void (CDECL * cvt16to32_shl_t)(int *piDst, short *psOrg, int, int);
+typedef void (CDECL * cvt16to32_shl_t)(int *piDst, short *psOrg, intptr_t, int, int);
 typedef void (CDECL * cvt32to16_t)(int *psOrg, short *piDst, int);
 typedef void (CDECL * cvt32to16_shr_t)(short *piDst, int *psOrg, int, int);
 typedef void (CDECL * dct_t)(short *pSrc, short *pDst, intptr_t stride);
 typedef void (CDECL * getResidue_t)(pixel *piOrig, pixel *piPred, short *piRes, int height, int width, int stride);
 typedef void (CDECL * calcRecons_t)(pixel* piPred, short* piResi,pixel*  piReco, short* piRecQt, pixel *piRecIPred, int uiStride, int uiRecQtStride, int uiRecIPredStride, int uiHeight, int uiWidth);
+typedef void (CDECL * filterVmulti_t)(int bitDepth, short *src, int srcStride, pixel *dstA, pixel *dstE, pixel *dstI, pixel *dstP, int dstStride, int block_width, int block_height);
 
 
 /* Define a structure containing function pointers to optimized encoder
@@ -245,6 +246,7 @@ struct EncoderPrimitives
     cvt32to16_shr_t cvt32to16_shr;
     getResidue_t getResidue;
     calcRecons_t calcRecons;
+    filterVmulti_t filterVmulti;
 };
 
 /* This copy of the table is what gets used by all by the encoder.
