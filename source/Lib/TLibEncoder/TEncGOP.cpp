@@ -75,14 +75,7 @@ inline const char*digestToString(const unsigned char digest[3][16], int numChar)
     return string;
 }
 
-using namespace std;
-//! \ingroup TLibEncoder
-//! \{
-
-// ====================================================================================================================
-// Constructor / destructor / initialization / destroy
-// ====================================================================================================================
-Int getLSB(Int poc, Int maxLSB)
+static inline Int getLSB(Int poc, Int maxLSB)
 {
     if (poc >= 0)
     {
@@ -94,15 +87,23 @@ Int getLSB(Int poc, Int maxLSB)
     }
 }
 
+using namespace std;
+
+//! \ingroup TLibEncoder
+//! \{
+
+// ====================================================================================================================
+// Constructor / destructor / initialization / destroy
+// ====================================================================================================================
 TEncGOP::TEncGOP()
 {
     m_iLastIDR            = 0;
     m_iGopSize            = 0;
-    m_iNumPicCoded        = 0; //Niko
     m_bSeqFirst           = true;
 
     m_pcCfg               = NULL;
     m_pcListPic           = NULL;
+    m_cFrameEncoders      = NULL;
 
     m_bRefreshPending   = 0;
     m_pocCRA            = 0;
@@ -125,7 +126,13 @@ Void  TEncGOP::create()
 }
 
 Void  TEncGOP::destroy()
-{}
+{
+    if (m_cFrameEncoders)
+    {
+        m_cFrameEncoders->destroy();
+        delete m_cFrameEncoders;
+    }
+}
 
 Void TEncGOP::init(TEncTop* pcTEncTop)
 {
@@ -135,6 +142,8 @@ Void TEncGOP::init(TEncTop* pcTEncTop)
     m_pcRateCtrl           = pcTEncTop->getRateCtrl();
     m_lastBPSEI            = 0;
     m_totalCoded           = 0;
+    m_cFrameEncoders = new x265::EncodeFrame(pcTEncTop->getThreadPool());
+    m_cFrameEncoders->init(pcTEncTop);
 }
 
 SEIActiveParameterSets* TEncGOP::xCreateSEIActiveParameterSets(TComSPS *sps)
@@ -204,7 +213,7 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
     UInt                  uiOneBitstreamPerSliceLength = 0;
     TComOutputBitstream*  pcBitstreamRedirect = new TComOutputBitstream;
     TComOutputBitstream*  pcSubstreamsOut = NULL;
-    x265::EncodeFrame*    pcEncodeFrame  = m_pcEncTop->getFrameEncoder(0);
+    x265::EncodeFrame*    pcEncodeFrame  = getFrameEncoder(0);
     TEncEntropy*          pcEntropyCoder = pcEncodeFrame->getEntropyEncoder(0);
     TEncSlice*            pcSliceEncoder = pcEncodeFrame->getSliceEncoder();
     TEncCavlc*            pcCavlcCoder   = pcEncodeFrame->getCavlcCoder();
@@ -218,7 +227,7 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
     m_iGopSize = (iPOCLast == 0) ? 1 : m_pcCfg->getGOPSize();
     assert(iNumPicRcvd > 0 && m_iGopSize > 0);
 
-    m_iNumPicCoded = 0;
+    Int iNumPicCoded = 0;
     SEIPictureTiming pictureTimingSEI;
     Bool writeSOP = m_pcCfg->getSOPDescriptionSEIEnabled();
 
@@ -405,9 +414,9 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
         m_pcEncTop->selectReferencePictureSet(pcSlice, pocCurr, iGOPid);
         pcSlice->getRPS()->setNumberOfLongtermPictures(0);
 
-        if (pcSlice->checkThatAllRefPicsAreAvailable(rcListPic, pcSlice->getRPS(), false) != 0)
+        if ((pcSlice->checkThatAllRefPicsAreAvailable(rcListPic, pcSlice->getRPS(), false) != 0) || (pcSlice->isIRAP()))
         {
-            pcSlice->createExplicitReferencePictureSetFromReference(rcListPic, pcSlice->getRPS());
+            pcSlice->createExplicitReferencePictureSetFromReference(rcListPic, pcSlice->getRPS(), pcSlice->isIRAP());
         }
         pcSlice->applyReferencePictureSet(rcListPic, pcSlice->getRPS());
 
@@ -549,7 +558,7 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
         //  Slice compression
         if (m_pcCfg->getUseASR())
         {
-            pcSliceEncoder->setSearchRange(pcSlice);
+            pcSliceEncoder->setSearchRange(pcSlice, pcEncodeFrame);
         }
 
         Bool bGPBcheck = false;
@@ -579,12 +588,12 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
         }
         pcPic->getSlice(pcSlice->getSliceIdx())->setMvdL1ZeroFlag(pcSlice->getMvdL1ZeroFlag());
 
-        Int sliceQP              = pcSlice->getSliceQp();
         Double lambda            = 0.0;
         Int actualHeadBits       = 0;
         Int actualTotalBits      = 0;
         Int estimatedBits        = 0;
         Int tmpBitsBeforeWriting = 0;
+
         if (m_pcCfg->getUseRateCtrl())
         {
             Int frameLevel = m_pcRateCtrl->getRCSeq()->getGOPID2Level(iGOPid);
@@ -595,9 +604,9 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
             m_pcRateCtrl->initRCPic(frameLevel);
             estimatedBits = m_pcRateCtrl->getRCPic()->getTargetBits();
 
+            Int sliceQP = m_pcCfg->getInitialQP();
             if ((pcSlice->getPOC() == 0 && m_pcCfg->getInitialQP() > 0) || (frameLevel == 0 && m_pcCfg->getForceIntraQP())) // QP is specified
             {
-                sliceQP              = m_pcCfg->getInitialQP();
                 Int    NumberBFrames = (m_pcCfg->getGOPSize() - 1);
                 Double dLambda_scale = 1.0 - Clip3(0.0, 0.5, 0.05 * (Double)NumberBFrames);
                 Double dQPFactor     = 0.57 * dLambda_scale;
@@ -683,7 +692,7 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
             pcSlice->setNextSlice(false);
             assert(pcPic->getNumAllocatedSlice() == startCUAddrSliceIdx);
 
-            pcSliceEncoder->compressSlice(pcPic);  // The bulk of the real work
+            pcSliceEncoder->compressSlice(pcPic, pcEncodeFrame);  // The bulk of the real work
 
             Bool bNoBinBitConstraintViolated = (!pcSlice->isNextSlice());
 
@@ -758,7 +767,7 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
                 // CHECK_ME: maybe HM's bug
                 UInt maxCU = 1500 >> (pcSlice->getSPS()->getMaxCUDepth() << 1);
                 UInt numDU = 0;
-                if (pcPic->getNumCUsInFrame() % maxCU != 0)
+                if (pcPic->getNumCUsInFrame() % maxCU != 0 || numDU == 0)
                 {
                     numDU++;
                 }
@@ -1096,7 +1105,7 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
 
                 pcSlice->setTileOffstForMultES(uiOneBitstreamPerSliceLength);
                 pcSlice->setTileLocationCount(0);
-                pcSliceEncoder->encodeSlice(pcPic, pcSubstreamsOut);
+                pcSliceEncoder->encodeSlice(pcPic, pcSubstreamsOut, pcEncodeFrame);
 
                 {
                     // Construct the final bitstream by flushing and concatenating substreams.
@@ -1514,7 +1523,7 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
         pcPic->getPicYuvRec()->copyToPic(pcPicYuvRecOut);
 
         pcPic->setReconMark(true);
-        m_iNumPicCoded++;
+        iNumPicCoded++;
         m_totalCoded++;
 
         if (m_pcCfg->getLogLevel() >= X265_LOG_DEBUG)
@@ -1531,7 +1540,7 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
     if (accumBitsDU != NULL) delete accumBitsDU;
     if (accumNalsDU != NULL) delete accumNalsDU;
 
-    assert(m_iNumPicCoded == iNumPicRcvd);
+    assert(iNumPicCoded == iNumPicRcvd);
 }
 
 Void TEncGOP::printOutSummary(UInt uiNumAllPicCoded)
@@ -1909,7 +1918,7 @@ Void TEncGOP::arrangeLongtermPicturesInRPS(TComSlice *pcSlice, TComList<TComPic*
     {
         longtermPicsPoc[ctr] = rps->getPOC(i);                              // LTRP POC
         longtermPicsLSB[ctr] = getLSB(longtermPicsPoc[ctr], maxPicOrderCntLSB); // LTRP POC LSB
-        indices[ctr]      = i;
+        indices[ctr] = i;
         longtermPicsMSB[ctr] = longtermPicsPoc[ctr] - longtermPicsLSB[ctr];
     }
 

@@ -67,7 +67,8 @@ Void TEncCu::create(UChar uhTotalDepth, UInt uiMaxWidth, UInt uiMaxHeight)
 
     m_uhTotalDepth          = uhTotalDepth + 1;
     m_InterCU_2Nx2N         = new TComDataCU*[m_uhTotalDepth - 1];
-    m_InterCU_Rect          = new TComDataCU*[m_uhTotalDepth - 1];
+    m_InterCU_2NxN          = new TComDataCU*[m_uhTotalDepth - 1];
+    m_InterCU_Nx2N          = new TComDataCU*[m_uhTotalDepth - 1];
     m_IntrainInterCU        = new TComDataCU*[m_uhTotalDepth - 1];
     m_MergeCU               = new TComDataCU*[m_uhTotalDepth - 1];
     m_ppcBestCU      = new TComDataCU*[m_uhTotalDepth - 1];
@@ -77,6 +78,13 @@ Void TEncCu::create(UChar uhTotalDepth, UInt uiMaxWidth, UInt uiMaxHeight)
     m_ppcResiYuvBest = new TShortYUV*[m_uhTotalDepth - 1];
     m_ppcRecoYuvBest = new TComYuv*[m_uhTotalDepth - 1];
     m_ppcPredYuvTemp = new TComYuv*[m_uhTotalDepth - 1];
+
+    m_ppcPredYuvMode[0] = new TComYuv*[m_uhTotalDepth - 1];
+    m_ppcPredYuvMode[1] = new TComYuv*[m_uhTotalDepth - 1];
+    m_ppcPredYuvMode[2] = new TComYuv*[m_uhTotalDepth - 1];
+    m_ppcPredYuvMode[3] = new TComYuv*[m_uhTotalDepth - 1];
+    m_ppcPredYuvMode[4] = new TComYuv*[m_uhTotalDepth - 1];
+
     m_ppcResiYuvTemp = new TShortYUV*[m_uhTotalDepth - 1];
     m_ppcRecoYuvTemp = new TComYuv*[m_uhTotalDepth - 1];
 
@@ -102,8 +110,10 @@ Void TEncCu::create(UChar uhTotalDepth, UInt uiMaxWidth, UInt uiMaxHeight)
 
         m_InterCU_2Nx2N[i] = new TComDataCU;
         m_InterCU_2Nx2N[i]->create(uiNumPartitions, uiWidth, uiHeight, false, uiMaxWidth >> (m_uhTotalDepth - 1));
-        m_InterCU_Rect[i] = new TComDataCU;
-        m_InterCU_Rect[i]->create(uiNumPartitions, uiWidth, uiHeight, false, uiMaxWidth >> (m_uhTotalDepth - 1));
+        m_InterCU_2NxN[i] = new TComDataCU;
+        m_InterCU_2NxN[i]->create(uiNumPartitions, uiWidth, uiHeight, false, uiMaxWidth >> (m_uhTotalDepth - 1));
+        m_InterCU_Nx2N[i] = new TComDataCU;
+        m_InterCU_Nx2N[i]->create(uiNumPartitions, uiWidth, uiHeight, false, uiMaxWidth >> (m_uhTotalDepth - 1));
         m_IntrainInterCU[i] = new TComDataCU;
         m_IntrainInterCU[i]->create(uiNumPartitions, uiWidth, uiHeight, false, uiMaxWidth >> (m_uhTotalDepth - 1));
         m_MergeCU[i] = new TComDataCU;
@@ -118,6 +128,22 @@ Void TEncCu::create(UChar uhTotalDepth, UInt uiMaxWidth, UInt uiMaxHeight)
 
         m_ppcPredYuvTemp[i] = new TComYuv;
         m_ppcPredYuvTemp[i]->create(uiWidth, uiHeight);
+
+        m_ppcPredYuvMode[0][i] = new TComYuv;
+        m_ppcPredYuvMode[0][i]->create(uiWidth, uiHeight);
+
+        m_ppcPredYuvMode[1][i] = new TComYuv;
+        m_ppcPredYuvMode[1][i]->create(uiWidth, uiHeight);
+
+        m_ppcPredYuvMode[2][i] = new TComYuv;
+        m_ppcPredYuvMode[2][i]->create(uiWidth, uiHeight);
+
+        m_ppcPredYuvMode[3][i] = new TComYuv;
+        m_ppcPredYuvMode[3][i]->create(uiWidth, uiHeight);
+
+        m_ppcPredYuvMode[4][i] = new TComYuv;
+        m_ppcPredYuvMode[4][i]->create(uiWidth, uiHeight);
+
         m_ppcResiYuvTemp[i] = new TShortYUV;
         m_ppcResiYuvTemp[i]->create(uiWidth, uiHeight);
         m_ppcRecoYuvTemp[i] = new TComYuv;
@@ -162,11 +188,17 @@ Void TEncCu::destroy()
             delete m_InterCU_2Nx2N[i];
             m_InterCU_2Nx2N[i] = NULL;
         }
-        if (m_InterCU_Rect[i])
+        if (m_InterCU_2NxN[i])
         {
-            m_InterCU_Rect[i]->destroy();
-            delete m_InterCU_Rect[i];
-            m_InterCU_Rect[i] = NULL;
+            m_InterCU_2NxN[i]->destroy();
+            delete m_InterCU_2NxN[i];
+            m_InterCU_2NxN[i] = NULL;
+        }
+        if (m_InterCU_Nx2N[i])
+        {
+            m_InterCU_Nx2N[i]->destroy();
+            delete m_InterCU_Nx2N[i];
+            m_InterCU_Nx2N[i] = NULL;
         }
         if (m_IntrainInterCU[i])
         {
@@ -216,6 +248,38 @@ Void TEncCu::destroy()
             m_ppcPredYuvTemp[i]->destroy();
             delete m_ppcPredYuvTemp[i];
             m_ppcPredYuvTemp[i] = NULL;
+        }
+
+        if (m_ppcPredYuvMode[0][i])
+        {
+            m_ppcPredYuvMode[0][i]->destroy();
+            delete m_ppcPredYuvMode[0][i];
+            m_ppcPredYuvMode[0][i] = NULL;
+        }
+
+        if (m_ppcPredYuvMode[1][i])
+        {
+            m_ppcPredYuvMode[1][i]->destroy();
+            delete m_ppcPredYuvMode[1][i];
+            m_ppcPredYuvMode[1][i] = NULL;
+        }
+        if (m_ppcPredYuvMode[2][i])
+        {
+            m_ppcPredYuvMode[2][i]->destroy();
+            delete m_ppcPredYuvMode[2][i];
+            m_ppcPredYuvMode[2][i] = NULL;
+        }
+        if (m_ppcPredYuvMode[3][i])
+        {
+            m_ppcPredYuvMode[3][i]->destroy();
+            delete m_ppcPredYuvMode[3][i];
+            m_ppcPredYuvMode[3][i] = NULL;
+        }
+        if (m_ppcPredYuvMode[4][i])
+        {
+            m_ppcPredYuvMode[4][i]->destroy();
+            delete m_ppcPredYuvMode[4][i];
+            m_ppcPredYuvMode[4][i] = NULL;
         }
         if (m_ppcResiYuvTemp[i])
         {
@@ -268,10 +332,15 @@ Void TEncCu::destroy()
         m_InterCU_2Nx2N = NULL;
     }
 
-    if (m_InterCU_Rect)
+    if (m_InterCU_2NxN)
     {
-        delete [] m_InterCU_Rect;
-        m_InterCU_Rect = NULL;
+        delete [] m_InterCU_2NxN;
+        m_InterCU_2NxN = NULL;
+    }
+    if (m_InterCU_Nx2N)
+    {
+        delete [] m_InterCU_Nx2N;
+        m_InterCU_Nx2N = NULL;
     }
     if (m_IntrainInterCU)
     {
@@ -334,6 +403,32 @@ Void TEncCu::destroy()
         delete [] m_ppcPredYuvTemp;
         m_ppcPredYuvTemp = NULL;
     }
+    if (m_ppcPredYuvMode[0])
+    {
+        delete [] m_ppcPredYuvMode[0];
+        m_ppcPredYuvMode[0] = NULL;
+    }
+    if (m_ppcPredYuvMode[1])
+    {
+        delete [] m_ppcPredYuvMode[1];
+        m_ppcPredYuvMode[1] = NULL;
+    }
+    if (m_ppcPredYuvMode[2])
+    {
+        delete [] m_ppcPredYuvMode[2];
+        m_ppcPredYuvMode[2] = NULL;
+    }
+    if (m_ppcPredYuvMode[3])
+    {
+        delete [] m_ppcPredYuvMode[3];
+        m_ppcPredYuvMode[3] = NULL;
+    }
+    if (m_ppcPredYuvMode[4])
+    {
+        delete [] m_ppcPredYuvMode[4];
+        m_ppcPredYuvMode[4] = NULL;
+    }
+
     if (m_ppcResiYuvTemp)
     {
         delete [] m_ppcResiYuvTemp;
@@ -408,7 +503,7 @@ Void TEncCu::compressCU(TComDataCU* pcCu)
         xCompressIntraCU(m_ppcBestCU[0], m_ppcTempCU[0], NULL, 0);
     else
 #if FAST_MODE_DECISION
-        xCompressInterCU(m_ppcBestCU[0], m_ppcTempCU[0], 0);
+        xCompressInterCU(m_ppcBestCU[0], m_ppcTempCU[0], pcCu, 0, 0);
 #else
         xCompressCU(m_ppcBestCU[0], m_ppcTempCU[0], pcCu, 0, 0);
 #endif
@@ -587,7 +682,7 @@ Void TEncCu::xCompressIntraCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TC
         m_pcEntropyCoder->encodeSplitFlag(rpcBestCU, 0, uiDepth, true);
         rpcBestCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits(); // split bits
         rpcBestCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
-        rpcBestCU->getTotalCost()  = CALCRDCOST(rpcBestCU->getTotalBits(), rpcBestCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
+        rpcBestCU->getTotalCost()  = m_pcRdCost->calcRdCost(rpcBestCU->getTotalDistortion(), rpcBestCU->getTotalBits());
 
         // Early CU determination
         if (rpcBestCU->isSkipped(0))
@@ -665,7 +760,7 @@ Void TEncCu::xCompressIntraCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TC
             rpcTempCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits();     // split bits
             rpcTempCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
         }
-        rpcTempCU->getTotalCost()  = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
+        rpcTempCU->getTotalCost() = m_pcRdCost->calcRdCost(rpcTempCU->getTotalDistortion(), rpcTempCU->getTotalBits());
 
         if ((g_uiMaxCUWidth >> uiDepth) == rpcTempCU->getSlice()->getPPS()->getMinCuDQPSize() && rpcTempCU->getSlice()->getPPS()->getUseDQP())
         {
@@ -683,13 +778,6 @@ Void TEncCu::xCompressIntraCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TC
             uiTargetPartIdx = 0;
             if (hasResidual)
             {
-#if !RDO_WITHOUT_DQP_BITS
-                m_pcEntropyCoder->resetBits();
-                m_pcEntropyCoder->encodeQP(rpcTempCU, uiTargetPartIdx, false);
-                rpcTempCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits();     // dQP bits
-                rpcTempCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
-                rpcTempCU->getTotalCost()  = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
-#endif
 
                 Bool foundNonZeroCbf = false;
                 rpcTempCU->setQPSubCUs(rpcTempCU->getRefQP(uiTargetPartIdx), rpcTempCU, 0, uiDepth, foundNonZeroCbf);
@@ -861,7 +949,7 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TComDat
         m_pcEntropyCoder->encodeSplitFlag(rpcBestCU, 0, uiDepth, true);
         rpcBestCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits(); // split bits
         rpcBestCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
-        rpcBestCU->getTotalCost()  = CALCRDCOST(rpcBestCU->getTotalBits(), rpcBestCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
+        rpcBestCU->getTotalCost()  = CALCRDCOST(rpcBestCU->getTotalBits(), rpcBestCU->getTotalDistortion(), m_pcRdCost->getUiLambda());
 
         // Early CU determination
         if (rpcBestCU->isSkipped(0))
@@ -984,7 +1072,7 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TComDat
             rpcTempCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits();     // split bits
             rpcTempCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
         }
-        rpcTempCU->getTotalCost()  = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
+        rpcTempCU->getTotalCost()  = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(), m_pcRdCost->getUiLambda());
 
         if ((g_uiMaxCUWidth >> uiDepth) == rpcTempCU->getSlice()->getPPS()->getMinCuDQPSize() && rpcTempCU->getSlice()->getPPS()->getUseDQP())
         {
@@ -1002,14 +1090,6 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TComDat
             uiTargetPartIdx = 0;
             if (hasResidual)
             {
-#if !RDO_WITHOUT_DQP_BITS
-                m_pcEntropyCoder->resetBits();
-                m_pcEntropyCoder->encodeQP(rpcTempCU, uiTargetPartIdx, false);
-                rpcTempCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits();     // dQP bits
-                rpcTempCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
-                rpcTempCU->getTotalCost()  = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
-#endif
-
                 Bool foundNonZeroCbf = false;
                 rpcTempCU->setQPSubCUs(rpcTempCU->getRefQP(uiTargetPartIdx), rpcTempCU, 0, uiDepth, foundNonZeroCbf);
                 assert(foundNonZeroCbf);
@@ -1294,7 +1374,7 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TComDat
             {
                 UInt uiRawBits = (2 * g_bitDepthY + g_bitDepthC) * rpcBestCU->getWidth(0) * rpcBestCU->getHeight(0) / 2;
                 UInt uiBestBits = rpcBestCU->getTotalBits();
-                if ((uiBestBits > uiRawBits) || (rpcBestCU->getTotalCost() > CALCRDCOST(uiRawBits, 0, m_pcRdCost->m_dLambda)))
+                if ((uiBestBits > uiRawBits) || (rpcBestCU->getTotalCost() > m_pcRdCost->calcRdCost(0, uiRawBits)))
                 {
                     xCheckIntraPCM(rpcBestCU, rpcTempCU);
                     rpcTempCU->initEstData(uiDepth, iQP);
@@ -1306,7 +1386,7 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TComDat
         m_pcEntropyCoder->encodeSplitFlag(rpcBestCU, 0, uiDepth, true);
         rpcBestCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits(); // split bits
         rpcBestCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
-        rpcBestCU->getTotalCost()  = CALCRDCOST(rpcBestCU->getTotalBits(), rpcBestCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
+        rpcBestCU->getTotalCost()  = m_pcRdCost->calcRdCost(rpcBestCU->getTotalDistortion(), rpcBestCU->getTotalBits());
 
         // Early CU determination
         if (rpcBestCU->isSkipped(0))
@@ -1388,7 +1468,7 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TComDat
             rpcTempCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits();     // split bits
             rpcTempCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
         }
-        rpcTempCU->getTotalCost()  = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
+        rpcTempCU->getTotalCost() = m_pcRdCost->calcRdCost(rpcTempCU->getTotalDistortion(), rpcTempCU->getTotalBits());
 
         if ((g_uiMaxCUWidth >> uiDepth) == rpcTempCU->getSlice()->getPPS()->getMinCuDQPSize() && rpcTempCU->getSlice()->getPPS()->getUseDQP())
         {
@@ -1406,14 +1486,6 @@ Void TEncCu::xCompressCU(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, TComDat
             uiTargetPartIdx = 0;
             if (hasResidual)
             {
-#if !RDO_WITHOUT_DQP_BITS
-                m_pcEntropyCoder->resetBits();
-                m_pcEntropyCoder->encodeQP(rpcTempCU, uiTargetPartIdx, false);
-                rpcTempCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits();     // dQP bits
-                rpcTempCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
-                rpcTempCU->getTotalCost()  = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
-#endif
-
                 Bool foundNonZeroCbf = false;
                 rpcTempCU->setQPSubCUs(rpcTempCU->getRefQP(uiTargetPartIdx), rpcTempCU, 0, uiDepth, foundNonZeroCbf);
                 assert(foundNonZeroCbf);
@@ -1747,7 +1819,7 @@ Void TEncCu::xCheckRDCostMerge2Nx2N(TComDataCU*& rpcBestCU, TComDataCU*& rpcTemp
     rpcTempCU->getInterMergeCandidates(0, 0, cMvFieldNeighbours, uhInterDirNeighbours, numValidMergeCand);
 
     Int mergeCandBuffer[MRG_MAX_NUM_CANDS];
-    for (UInt ui = 0; ui < rpcTempCU->getSlice()->getMaxNumMergeCand(); ++ui)
+    for (UInt ui = 0; ui < numValidMergeCand; ++ui)
     {
         mergeCandBuffer[ui] = 0;
     }
@@ -1800,7 +1872,7 @@ Void TEncCu::xCheckRDCostMerge2Nx2N(TComDataCU*& rpcBestCU, TComDataCU*& rpcTemp
                                         (pixel *)m_ppcPredYuvTemp[uhDepth]->getLumaAddr(), m_ppcPredYuvTemp[uhDepth]->getStride());
                     x265_emms();
                     rpcTempCU->getTotalDistortion() = SATD;
-                    rpcTempCU->getTotalCost()  = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
+                    rpcTempCU->getTotalCost()  = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(),m_pcRdCost->getUiLambda());
 #endif
 
                     if (uiNoResidual == 0)
@@ -1935,7 +2007,7 @@ Void TEncCu::xCheckRDCostIntra(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU, P
 
     rpcTempCU->getTotalBits() = m_pcEntropyCoder->getNumberOfWrittenBits();
     rpcTempCU->getTotalBins() = ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
-    rpcTempCU->getTotalCost() = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
+    rpcTempCU->getTotalCost() = m_pcRdCost->calcRdCost(rpcTempCU->getTotalDistortion(), rpcTempCU->getTotalBits());
 
     xCheckDQP(rpcTempCU);
     xCheckBestMode(rpcBestCU, rpcTempCU, uiDepth);
@@ -1992,7 +2064,7 @@ Void TEncCu::xCheckRDCostIntrainInter(TComDataCU*& rpcBestCU, TComDataCU*& rpcTe
     x265_emms();
     rpcTempCU->getTotalDistortion() = SATD;
 #endif
-    rpcTempCU->getTotalCost() = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
+    rpcTempCU->getTotalCost() = m_pcRdCost->calcRdCost(rpcTempCU->getTotalDistortion(), rpcTempCU->getTotalBits());
 
     xCheckDQP(rpcTempCU);
     xCheckBestMode(rpcBestCU, rpcTempCU, uiDepth);
@@ -2038,7 +2110,7 @@ Void TEncCu::xCheckIntraPCM(TComDataCU*& rpcBestCU, TComDataCU*& rpcTempCU)
 
     rpcTempCU->getTotalBits() = m_pcEntropyCoder->getNumberOfWrittenBits();
     rpcTempCU->getTotalBins() = ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
-    rpcTempCU->getTotalCost() = CALCRDCOST(rpcTempCU->getTotalBits(), rpcTempCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
+    rpcTempCU->getTotalCost() = m_pcRdCost->calcRdCost(rpcTempCU->getTotalDistortion(), rpcTempCU->getTotalBits());
 
     xCheckDQP(rpcTempCU);
     xCheckBestMode(rpcBestCU, rpcTempCU, uiDepth);
@@ -2104,20 +2176,7 @@ Void TEncCu::xCheckDQP(TComDataCU* pcCU)
 
     if (pcCU->getSlice()->getPPS()->getUseDQP() && (g_uiMaxCUWidth >> uiDepth) >= pcCU->getSlice()->getPPS()->getMinCuDQPSize())
     {
-        if (pcCU->getCbf(0, TEXT_LUMA, 0) || pcCU->getCbf(0, TEXT_CHROMA_U, 0) || pcCU->getCbf(0, TEXT_CHROMA_V, 0))
-        {
-#if !RDO_WITHOUT_DQP_BITS
-            m_pcEntropyCoder->resetBits();
-            m_pcEntropyCoder->encodeQP(pcCU, 0, false);
-            pcCU->getTotalBits() += m_pcEntropyCoder->getNumberOfWrittenBits(); // dQP bits
-            pcCU->getTotalBins() += ((TEncBinCABAC*)((TEncSbac*)m_pcEntropyCoder->m_pcEntropyCoderIf)->getEncBinIf())->getBinsCoded();
-            pcCU->getTotalCost() = CALCRDCOST(pcCU->getTotalBits(), pcCU->getTotalDistortion(), m_pcRdCost->m_dLambda);
-#endif
-        }
-        else
-        {
-            pcCU->setQPSubParts(pcCU->getRefQP(0), 0, uiDepth); // set QP to default QP
-        }
+        pcCU->setQPSubParts(pcCU->getRefQP(0), 0, uiDepth); // set QP to default QP        
     }
 }
 

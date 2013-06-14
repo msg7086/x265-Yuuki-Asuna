@@ -50,7 +50,7 @@ IPFilterHarness::IPFilterHarness()
 {
     ipf_t_size = 200 * 200;
     pixel_buff = (pixel*)malloc(ipf_t_size * sizeof(pixel));     // Assuming max_height = max_width = max_srcStride = max_dstStride = 100
-    short_buff = (short*)malloc(ipf_t_size * sizeof(short));
+    short_buff = (short*)TestHarness::alignedMalloc(sizeof(short), ipf_t_size, 32);
     IPF_vec_output_s = (short*)malloc(ipf_t_size * sizeof(short)); // Output Buffer1
     IPF_C_output_s = (short*)malloc(ipf_t_size * sizeof(short));   // Output Buffer2
     IPF_vec_output_p = (pixel*)malloc(ipf_t_size * sizeof(pixel)); // Output Buffer1
@@ -77,7 +77,7 @@ IPFilterHarness::~IPFilterHarness()
     free(IPF_C_output_s);
     free(IPF_vec_output_p);
     free(IPF_C_output_p);
-    free(short_buff);
+    TestHarness::alignedFree(short_buff);
     free(pixel_buff);
 }
 
@@ -288,13 +288,13 @@ bool IPFilterHarness::check_filterVMultiplane(x265::filterVmulti_t ref, x265::fi
         memset(dstEvec, 0, 10000 * sizeof(pixel));
         memset(dstIvec, 0, 10000 * sizeof(pixel));
         memset(dstPvec, 0, 10000 * sizeof(pixel));
-        opt(8, short_buff + 3 * 64,
+        opt(8, short_buff + 8 * rand_srcStride,
             rand_srcStride,
             dstAvec, dstEvec, dstIvec, dstPvec,
             rand_dstStride,
             rand_width,
             rand_height);
-        ref(8, short_buff + 3 * 64,
+        ref(8, short_buff + 8*rand_srcStride,
             rand_srcStride,
             dstAref, dstEref, dstIref, dstPref,
             rand_dstStride,
@@ -364,7 +364,6 @@ bool IPFilterHarness::check_filterHMultiplane(x265::filterHmulti_t ref, x265::fi
 
 bool IPFilterHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPrimitives& opt)
 {
-    
     for (int value = 0; value < NUM_IPFILTER_P_P; value++)
     {
         if (opt.ipFilter_p_p[value])
@@ -496,13 +495,13 @@ void IPFilterHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPr
     {
         printf("Filter-V-multiplane\t");
         REPORT_SPEEDUP(opt.filterVmulti, ref.filterVmulti,
-                       8, short_buff + 3 * srcStride, srcStride, IPF_vec_output_p, IPF_C_output_p, IPF_vec_output_p, IPF_C_output_p, dstStride, width, height);
+                       8, short_buff + 8 * srcStride, srcStride, IPF_vec_output_p, IPF_C_output_p, IPF_vec_output_p, IPF_C_output_p, dstStride, width, height);
     }
 
     if (opt.filterVmulti)
     {
         printf("Filter-H-multiplane\t");
         REPORT_SPEEDUP(opt.filterHmulti, ref.filterHmulti,
-                       8, pixel_buff + 3 * srcStride, srcStride, IPF_vec_output_s, IPF_C_output_s, IPF_vec_output_s, IPF_C_output_s, dstStride, width, height);
+                       8, pixel_buff + 8 * srcStride, srcStride, IPF_vec_output_s, IPF_C_output_s, IPF_vec_output_s, IPF_C_output_s, dstStride, width, height);
     }
 }

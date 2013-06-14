@@ -355,8 +355,8 @@ Void TEncCavlc::codeHrdParameters(TComHRD *hrd, Bool commonInfPresentFlag, UInt 
                     WRITE_UVLC(hrd->getCpbSizeValueMinus1(i, j, nalOrVcl), "cpb_size_value_minus1");
                     if (hrd->getSubPicCpbParamsPresentFlag())
                     {
-                        WRITE_UVLC(hrd->getDuBitRateValueMinus1(i, j, nalOrVcl), "bit_rate_du_value_minus1");
                         WRITE_UVLC(hrd->getDuCpbSizeValueMinus1(i, j, nalOrVcl), "cpb_size_du_value_minus1");
+                        WRITE_UVLC(hrd->getDuBitRateValueMinus1(i, j, nalOrVcl), "bit_rate_du_value_minus1");
                     }
                     WRITE_FLAG(hrd->getCbrFlag(i, j, nalOrVcl) ? 1 : 0, "cbr_flag");
                 }
@@ -407,7 +407,7 @@ Void TEncCavlc::codeSPS(TComSPS* pcSPS)
     {
         WRITE_UVLC(pcSPS->getMaxDecPicBuffering(i) - 1,       "sps_max_dec_pic_buffering_minus1[i]");
         WRITE_UVLC(pcSPS->getNumReorderPics(i),               "sps_num_reorder_pics[i]");
-        WRITE_UVLC(pcSPS->getMaxLatencyIncrease(i),           "sps_max_latency_increase[i]");
+        WRITE_UVLC(pcSPS->getMaxLatencyIncrease(i),           "sps_max_latency_increase_plus1[i]");
         if (!subLayerOrderingInfoPresentFlag)
         {
             break;
@@ -498,7 +498,7 @@ Void TEncCavlc::codeVPS(TComVPS* pcVPS)
     {
         WRITE_UVLC(pcVPS->getMaxDecPicBuffering(i) - 1,       "vps_max_dec_pic_buffering_minus1[i]");
         WRITE_UVLC(pcVPS->getNumReorderPics(i),               "vps_num_reorder_pics[i]");
-        WRITE_UVLC(pcVPS->getMaxLatencyIncrease(i),           "vps_max_latency_increase[i]");
+        WRITE_UVLC(pcVPS->getMaxLatencyIncrease(i),           "vps_max_latency_increase_plus1[i]");
         if (!subLayerOrderingInfoPresentFlag)
         {
             break;
@@ -610,30 +610,18 @@ Void TEncCavlc::codeSliceHeader(TComSlice* pcSlice)
             WRITE_CODE(picOrderCntLSB, pcSlice->getSPS()->getBitsForPOC(), "pic_order_cnt_lsb");
             TComReferencePictureSet* rps = pcSlice->getRPS();
 
-            // Deal with bitstream restriction stating that:
-            // - If the current picture is a BLA or CRA picture, the value of NumPocTotalCurr shall be equal to 0.
+            // check for bitstream restriction stating that:
+            // If the current picture is a BLA or CRA picture, the value of NumPocTotalCurr shall be equal to 0.
             // Ideally this process should not be repeated for each slice in a picture
-            TComReferencePictureSet altRps;
-            Bool useAltRps = false;
-            if (pcSlice->getRapPicFlag())
+            if (pcSlice->isIRAP())
             {
-                for (Int picIdx = 0; !useAltRps && picIdx < rps->getNumberOfPictures(); picIdx++)
+                for (Int picIdx = 0; picIdx < rps->getNumberOfPictures(); picIdx++)
                 {
-                    useAltRps = rps->getUsed(picIdx);
-                }
-
-                if (useAltRps)
-                {
-                    memcpy(&altRps, rps, sizeof(TComReferencePictureSet));
-                    rps = &altRps;
-                    for (Int picIdx = 0; picIdx < rps->getNumberOfPictures(); picIdx++)
-                    {
-                        rps->setUsed(picIdx, false);
-                    }
+                    assert (!rps->getUsed(picIdx));
                 }
             }
 
-            if (pcSlice->getRPSidx() < 0 || useAltRps)
+            if (pcSlice->getRPSidx() < 0)
             {
                 WRITE_FLAG(0, "short_term_ref_pic_set_sps_flag");
                 codeShortTermRefPicSet(pcSlice->getSPS(), rps, true, pcSlice->getSPS()->getRPSList()->getNumberOfReferencePictureSets());
