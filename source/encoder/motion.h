@@ -52,7 +52,7 @@ protected:
     intptr_t fencLumaStride;
 
     pixelcmp sad;
-    pixelcmp bufsad;
+    pixelcmp fullsad;
     pixelcmp satd;
     pixelcmp_x3 sad_x3;
     pixelcmp_x4 sad_x4;
@@ -66,11 +66,7 @@ protected:
 
 public:
 
-    MotionEstimate() : searchMethod(3), subsample(0)
-    {
-        // fenc must be 16 byte aligned
-        fenc = fenc_buf + ((16 - (size_t)(&fenc_buf[0])) & 15);
-    }
+    MotionEstimate();
 
     ~MotionEstimate() {}
 
@@ -89,7 +85,7 @@ public:
 
     void setSourcePU(int offset, int pwidth, int pheight);
 
-    int bufSAD(pixel *fref, intptr_t stride)  { return bufsad(fenc, FENC_STRIDE, fref, stride); }
+    int bufSAD(pixel *fref, intptr_t stride)  { return fullsad(fenc, FENC_STRIDE, fref, stride); }
 
     int motionEstimate(MotionReference *ref,
                        const MV &mvmin,
@@ -111,8 +107,8 @@ protected:
                                   int &bcost,
                                   int &bPointNr,
                                   int &bDistance,
-                                  int16_t dist,
-                                  const MV& omv);
+                                  int earlyExitIters,
+                                  int merange);
 };
 }
 

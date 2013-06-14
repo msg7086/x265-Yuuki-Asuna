@@ -859,11 +859,7 @@ Void TComTrQuant::xQuant(TComDataCU* pcCU,
         UInt uiBitDepth = eTType == TEXT_LUMA ? g_bitDepthY : g_bitDepthC;
         Int iTransformShift = MAX_TR_DYNAMIC_RANGE - uiBitDepth - uiLog2TrSize; // Represents scaling through forward transform
 
-        Int iQBits = QUANT_SHIFT + m_cQP.m_iPer + iTransformShift;            // Right shift of non-RDOQ quantizer;  level = (coeff*uiQ + offset)>>q_bits
-
-        iAdd = (pcCU->getSlice()->getSliceType() == I_SLICE ? 171 : 85) << (iQBits - 9);
-
-        iQBits = QUANT_SHIFT + cQpBase.m_iPer + iTransformShift;
+        Int iQBits = QUANT_SHIFT + cQpBase.m_iPer + iTransformShift;
         iAdd = (pcCU->getSlice()->getSliceType() == I_SLICE ? 171 : 85) << (iQBits - 9);
         Int iQBitsC = QUANT_SHIFT + cQpBase.m_iPer + iTransformShift - ARL_C_PRECISION;
         Int iAddC   = 1 << (iQBitsC - 1);
@@ -1130,8 +1126,8 @@ Void TComTrQuant::invRecurTransformNxN(TComDataCU* pcCU, UInt uiAbsPartIdx, Text
  */
 Void TComTrQuant::xT(Int bitDepth, UInt uiMode, Short* piBlkResi, UInt uiStride, Int* psCoeff, Int iWidth, Int iHeight)
 {
-    ALIGN_VAR_32(Short, block[64 * 64]);
-    ALIGN_VAR_32(Short, coeff[64 * 64]);
+    ALIGN_VAR_32(Short, block[32 * 32]);
+    ALIGN_VAR_32(Short, coeff[32 * 32]);
     Int j;
     for (j = 0; j < iHeight; j++)
     {
@@ -1154,7 +1150,7 @@ Void TComTrQuant::xT(Int bitDepth, UInt uiMode, Short* piBlkResi, UInt uiStride,
  */
 Void TComTrQuant::xIT(Int bitDepth, UInt uiMode, Int* plCoef, Short* pResidual, UInt uiStride, Int iWidth, Int iHeight)
 {
-    ALIGN_VAR_32(Short, coeff[64 * 64]);
+    ALIGN_VAR_32(Short, coeff[32 * 32]);
 
     x265::primitives.cvt32to16(plCoef, coeff, iWidth * iHeight);
 
@@ -1181,27 +1177,7 @@ Void TComTrQuant::xTransformSkip(Int bitDepth, Short* piBlkResi, UInt uiStride, 
     Int  j, k;
     if (shift >= 0)
     {
-#if 1
-        for (j = 0; j < height; j++)
-        {
-            x265::primitives.cvt16to32_shl(&psCoeff[j * height], &piBlkResi[j * uiStride], shift, width);
-        }
-
-#else
-        // faster but use intrinsic
-        for (j = 0; j < height; j++)
-        {
-            for (k = 0; k < width; k += 4)
-            {
-                __m128i T00 = _mm_loadl_epi64((__m128i*)&piBlkResi[j * uiStride + k]);
-                __m128i T01 = _mm_srai_epi32(_mm_unpacklo_epi16(T00, T00), 16);
-                __m128i T02 = _mm_slli_epi32(T01, shift);
-
-                _mm_storeu_si128((__m128i*)&psCoeff[j * height + k], T02);
-            }
-        }
-
-#endif // if 1
+        x265::primitives.cvt16to32_shl(psCoeff, piBlkResi, uiStride, shift, width);
     }
     else
     {
@@ -1277,9 +1253,7 @@ Void TComTrQuant::xRateDistOptQuant(TComDataCU* pcCU,
                                     TextType    eTType,
                                     UInt        uiAbsPartIdx)
 {
-    Double dTemp       = 0;
     UInt uiLog2TrSize = g_aucConvertToBit[uiWidth] + 2;
-    Int uiQ = g_quantScales[m_cQP.rem()];
 
     UInt uiBitDepth = eTType == TEXT_LUMA ? g_bitDepthY : g_bitDepthC;
     Int iTransformShift = MAX_TR_DYNAMIC_RANGE - uiBitDepth - uiLog2TrSize; // Represents scaling through forward transform
@@ -1292,7 +1266,6 @@ Void TComTrQuant::xRateDistOptQuant(TComDataCU* pcCU,
     assert(scalingListType < 6);
 
     Int iQBits = QUANT_SHIFT + m_cQP.m_iPer + iTransformShift;                 // Right shift of non-RDOQ quantizer;  level = (coeff*uiQ + offset)>>q_bits
-    Double dErrScale   = 0;
     Double *pdErrScaleOrg = getErrScaleCoeff(scalingListType, uiLog2TrSize - 2, m_cQP.m_iRem);
     Int *piQCoefOrg = getQuantCoeff(scalingListType, m_cQP.m_iRem, uiLog2TrSize - 2);
     Int *piQCoef = piQCoefOrg;
@@ -1333,7 +1306,6 @@ Void TComTrQuant::xRateDistOptQuant(TComDataCU* pcCU,
     Int     c2                  = 0;
     Double  d64BaseCost         = 0;
     Int     iLastScanPos        = -1;
-    dTemp                       = dErrScale;
 
     UInt    c1Idx     = 0;
     UInt    c2Idx     = 0;
@@ -1361,8 +1333,8 @@ Void TComTrQuant::xRateDistOptQuant(TComDataCU* pcCU,
             //===== quantization =====
             UInt    uiBlkPos          = scan[iScanPos];
             // set coeff
-            uiQ  = piQCoef[uiBlkPos];
-            dTemp = pdErrScale[uiBlkPos];
+            Int uiQ  = piQCoef[uiBlkPos];
+            Double dTemp = pdErrScale[uiBlkPos];
             Int lLevelDouble          = plSrcCoeff[uiBlkPos];
             lLevelDouble              = (Int)min<Int64>((Int64)abs((Int)lLevelDouble) * uiQ, MAX_INT - (1 << (iQBits - 1)));
 
