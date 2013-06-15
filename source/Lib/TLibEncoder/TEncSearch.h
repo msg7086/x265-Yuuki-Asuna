@@ -68,7 +68,7 @@ class TEncSearch : public TComPrediction
 private:
 
     x265::MotionEstimate m_me;
-    x265::BitCost        m_bc;
+    x265::BitCost        m_bc; // TODO: m_bc will go away with HM ME
 
     TCoeff**        m_ppcQTTempCoeffY;
     TCoeff**        m_ppcQTTempCoeffCb;
@@ -273,7 +273,7 @@ protected:
                               UInt &       ruiDistY,
                               UInt &       ruiDistC,
                               Bool         bCheckFirst,
-                              Double &     dRDCost);
+                              UInt64 &     dRDCost);
 
     Void  xSetIntraResultQT(TComDataCU* pcCU,
                             UInt        uiTrDepth,
@@ -430,11 +430,11 @@ protected:
     // -------------------------------------------------------------------------------------------------------------------
 
     Void xEncodeResidualQT(TComDataCU* pcCU, UInt uiAbsPartIdx, const UInt uiDepth, Bool bSubdivAndCbf, TextType eType);
-    Void xEstimateResidualQT(TComDataCU* pcCU, UInt uiQuadrant, UInt uiAbsPartIdx, UInt absTUPartIdx, TShortYUV* pcResi, const UInt uiDepth, Double &rdCost, UInt &ruiBits, UInt &ruiDist, UInt *puiZeroDist);
+    Void xEstimateResidualQT(TComDataCU* pcCU, UInt uiQuadrant, UInt uiAbsPartIdx, UInt absTUPartIdx, TShortYUV* pcResi, const UInt uiDepth, UInt64 &rdCost, UInt &ruiBits, UInt &ruiDist, UInt *puiZeroDist);
     Void xSetResidualQTData(TComDataCU* pcCU, UInt uiQuadrant, UInt uiAbsPartIdx, UInt absTUPartIdx, TShortYUV* pcResi, UInt uiDepth, Bool bSpatial);
 
     UInt  xModeBitsIntra(TComDataCU* pcCU, UInt uiMode, UInt uiPU, UInt uiPartOffset, UInt uiDepth, UInt uiInitTrDepth);
-    UInt  xUpdateCandList(UInt uiMode, Double uiCost, UInt uiFastCandNum, UInt * CandModeList, Double * CandCostList);
+    UInt  xUpdateCandList(UInt uiMode, UInt64 uiCost, UInt uiFastCandNum, UInt * CandModeList, UInt64 * CandCostList);
 
     // -------------------------------------------------------------------------------------------------------------------
     // compute symbol bits

@@ -56,6 +56,8 @@
 
 #include "TEncAnalyze.h"
 #include "TEncRateCtrl.h"
+#include "wavefront.h"
+
 #include <vector>
 
 //! \ingroup TLibEncoder
@@ -78,7 +80,6 @@ private:
     Bool                    m_ltRefPicUsedByCurrPicFlag[33];
     Int                     m_iLastIDR;
     Int                     m_iGopSize;
-    Int                     m_iNumPicCoded;
 
     //  Access channel
     TEncTop*                m_pcEncTop;
@@ -107,6 +108,7 @@ private:
     Bool                    m_pictureTimingSEIPresentInAU;
     Bool                    m_nestedBufferingPeriodSEIPresentInAU;
     Bool                    m_nestedPictureTimingSEIPresentInAU;
+    x265::EncodeFrame      *m_cFrameEncoders;
 
 public:
 
@@ -134,6 +136,8 @@ protected:
     TEncRateCtrl* getRateCtrl()       { return m_pcRateCtrl;  }
 
 protected:
+
+    x265::EncodeFrame*      getFrameEncoder(UInt i) { return &m_cFrameEncoders[i]; }
 
     Void  xCalculateAddPSNR(TComPic* pcPic, TComPicYuv* pcPicD, const AccessUnit&);
 
