@@ -38,10 +38,6 @@
 #ifndef __TENCGOP__
 #define __TENCGOP__
 
-#include <list>
-
-#include <stdlib.h>
-
 #include "TLibCommon/TComList.h"
 #include "TLibCommon/TComPic.h"
 #include "TLibCommon/TComBitCounter.h"
@@ -58,8 +54,6 @@
 #include "TEncRateCtrl.h"
 #include "wavefront.h"
 
-#include <vector>
-
 //! \ingroup TLibEncoder
 //! \{
 
@@ -74,35 +68,27 @@ class TEncGOP
 {
 private:
 
+    TEncTop*                m_pcEncTop;
+    TEncCfg*                m_pcCfg;
+    TEncRateCtrl*           m_pcRateCtrl;
+    x265::EncodeFrame*      m_cFrameEncoders;
+
     //  Data
     UInt                    m_numLongTermRefPicSPS;
     UInt                    m_ltRefPicPocLsbSps[33];
     Bool                    m_ltRefPicUsedByCurrPicFlag[33];
     Int                     m_iLastIDR;
-    Int                     m_iGopSize;
-
-    //  Access channel
-    TEncTop*                m_pcEncTop;
-    TEncCfg*                m_pcCfg;
-    TEncRateCtrl*           m_pcRateCtrl;
-    x265::EncodeFrame*      m_cFrameEncoders;
 
     SEIWriter               m_seiWriter;
 
     // clean decoding refresh
     Bool                    m_bRefreshPending;
     Int                     m_pocCRA;
-
     UInt                    m_lastBPSEI;
     UInt                    m_totalCoded;
     UInt                    m_cpbRemovalDelay;
     UInt                    m_tl0Idx;
     UInt                    m_rapIdx;
-    Bool                    m_activeParameterSetSEIPresentInAU;
-    Bool                    m_bufferingPeriodSEIPresentInAU;
-    Bool                    m_pictureTimingSEIPresentInAU;
-    Bool                    m_nestedBufferingPeriodSEIPresentInAU;
-    Bool                    m_nestedPictureTimingSEIPresentInAU;
 
 public:
 
@@ -120,11 +106,9 @@ public:
 
 protected:
 
-    NalUnitType        getNalUnitType(Int pocCurr, Int lastIdr);
-    x265::EncodeFrame* getFrameEncoder(UInt i) { return &m_cFrameEncoders[i]; }
+    NalUnitType getNalUnitType(Int pocCurr, Int lastIdr);
 
     Void   xCalculateAddPSNR(TComPic* pcPic, TComPicYuv* pcPicD, const AccessUnit&);
-    Double xCalculateRVM();
 
     SEIActiveParameterSets* xCreateSEIActiveParameterSets(TComSPS *sps);
     SEIDisplayOrientation*  xCreateSEIDisplayOrientation();
@@ -132,32 +116,12 @@ protected:
     Void arrangeLongtermPicturesInRPS(TComSlice *, TComList<TComPic*>&);
 
     Void xAttachSliceDataToNalUnit(TEncEntropy* pcEntropyCoder, OutputNALUnit& rNalu, TComOutputBitstream*& rpcBitstreamRedirect);
-    Void xCreateLeadingSEIMessages(TEncEntropy *pcEntropyCoder, AccessUnit &accessUnit, TComSPS *sps);
     Int  xGetFirstSeiLocation(AccessUnit &accessUnit);
-    Void xResetNonNestedSEIPresentFlags()
-    {
-        m_activeParameterSetSEIPresentInAU = false;
-        m_bufferingPeriodSEIPresentInAU    = false;
-        m_pictureTimingSEIPresentInAU      = false;
-    }
-
-    Void xResetNestedSEIPresentFlags()
-    {
-        m_nestedBufferingPeriodSEIPresentInAU    = false;
-        m_nestedPictureTimingSEIPresentInAU      = false;
-    }
-
-    Void dblMetric(TComPic* pcPic, UInt uiNumSlices);
 }; // END CLASS DEFINITION TEncGOP
 
 // ====================================================================================================================
 // Enumeration
 // ====================================================================================================================
-enum PROCESSING_STATE
-{
-    EXECUTE_INLOOPFILTER,
-    ENCODE_SLICE
-};
 
 enum SCALING_LIST_PARAMETER
 {

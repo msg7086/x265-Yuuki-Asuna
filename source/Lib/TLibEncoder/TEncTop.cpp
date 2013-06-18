@@ -55,17 +55,16 @@ TEncTop::TEncTop()
 {
     m_iPOCLast          = -1;
     m_framesToBeEncoded = INT_MAX;
-    m_iNumPicRcvd       =  0;
-    m_uiNumAllPicCoded  =  0;
+    m_iNumPicRcvd       = 0;
+    m_uiNumAllPicCoded  = 0;
     m_iMaxRefPicNum     = 0;
+    ContextModel::buildNextStateTable();
 
 #if ENC_DEC_TRACE
     g_hTrace = fopen("TraceEnc.txt", "wb");
     g_bJustDoIt = g_bEncDecTraceDisable;
     g_nSymbolCounter = 0;
 #endif
-
-    ContextModel::buildNextStateTable();
 }
 
 TEncTop::~TEncTop()
@@ -141,8 +140,6 @@ Void TEncTop::init()
     // initialize processing unit classes
     m_iNumSubstreams = (getSourceHeight() + m_cSPS.getMaxCUHeight() - 1) / m_cSPS.getMaxCUHeight();
     m_cGOPEncoder.init(this);
-
-    m_iMaxRefPicNum = 0;
 
     m_gcAnalyzeAll.setFrmRate(getFrameRate());
     m_gcAnalyzeI.setFrmRate(getFrameRate());
@@ -304,7 +301,7 @@ Void TEncTop::xGetNewPicBuffer(TComPic*& rpcPic)
         for (Int i = 0; i < iSize; i++)
         {
             rpcPic = *(iterPic++);
-            if (rpcPic->getSlice(0)->isReferenced() == false)
+            if (rpcPic->getSlice()->isReferenced() == false)
             {
                 break;
             }
@@ -316,7 +313,7 @@ Void TEncTop::xGetNewPicBuffer(TComPic*& rpcPic)
         {
             TEncPic* pcEPic = new TEncPic;
             pcEPic->create(m_iSourceWidth, m_iSourceHeight, g_uiMaxCUWidth, g_uiMaxCUHeight, g_uiMaxCUDepth, m_cPPS.getMaxCuDQPDepth() + 1,
-                           m_conformanceWindow, m_defaultDisplayWindow, m_numReorderPics);
+                           m_conformanceWindow, m_defaultDisplayWindow);
             rpcPic = pcEPic;
         }
         else
@@ -324,7 +321,7 @@ Void TEncTop::xGetNewPicBuffer(TComPic*& rpcPic)
             rpcPic = new TComPic;
 
             rpcPic->create(m_iSourceWidth, m_iSourceHeight, g_uiMaxCUWidth, g_uiMaxCUHeight, g_uiMaxCUDepth,
-                           m_conformanceWindow, m_defaultDisplayWindow, m_numReorderPics);
+                           m_conformanceWindow, m_defaultDisplayWindow);
         }
         if (getUseSAO())
         {
@@ -332,12 +329,7 @@ Void TEncTop::xGetNewPicBuffer(TComPic*& rpcPic)
         }
         m_cListPic.pushBack(rpcPic);
     }
-    rpcPic->setReconMark(false);
-
-    m_iPOCLast++;
-
-    rpcPic->getSlice(0)->setPOC(m_iPOCLast);
-    // mark it should be extended
+    rpcPic->getSlice()->setPOC(++m_iPOCLast);
     rpcPic->getPicYuvRec()->setBorderExtension(false);
 }
 
@@ -527,18 +519,7 @@ Void TEncTop::xInitPPS()
     m_cPPS.setWPBiPred(m_useWeightedBiPred);
     m_cPPS.setOutputFlagPresentFlag(false);
     m_cPPS.setSignHideFlag(getSignHideFlag());
-    if (getDeblockingFilterMetric())
-    {
-        m_cPPS.setDeblockingFilterControlPresentFlag(true);
-        m_cPPS.setDeblockingFilterOverrideEnabledFlag(true);
-        m_cPPS.setPicDisableDeblockingFilterFlag(false);
-        m_cPPS.setDeblockingFilterBetaOffsetDiv2(0);
-        m_cPPS.setDeblockingFilterTcOffsetDiv2(0);
-    }
-    else
-    {
-        m_cPPS.setDeblockingFilterControlPresentFlag(m_DeblockingFilterControlPresent);
-    }
+    m_cPPS.setDeblockingFilterControlPresentFlag(m_DeblockingFilterControlPresent);
     m_cPPS.setLog2ParallelMergeLevelMinus2(m_log2ParallelMergeLevelMinus2);
     m_cPPS.setCabacInitPresentFlag(CABAC_INIT_PRESENT_FLAG);
     Int histogram[MAX_NUM_REF + 1];

@@ -60,18 +60,12 @@ namespace x265 { class EncodeFrame; }
 // ====================================================================================================================
 
 /// slice encoder class
-class TEncSlice
-    : public WeightPredAnalysis
+class TEncSlice : public WeightPredAnalysis
 {
 private:
 
     // encoder configuration
     TEncCfg*                m_pcCfg;                            ///< encoder configuration class
-
-    // pictures
-    TComPicYuv*             m_apcPicYuvPred;                    ///< prediction picture buffer
-    TComPicYuv*             m_apcPicYuvResi;                    ///< residual picture buffer
-
     UInt                    m_uiSliceIdx;
     std::vector<TEncSbac*>  CTXMem;
 
@@ -90,9 +84,9 @@ public:
     Void    resetQP(TComPic* pic, x265::EncodeFrame *pcEncodeFrame, Int sliceQP, Double lambda);
 
     // compress and encode slice
-    Void    compressSlice(TComPic* rpcPic, x265::EncodeFrame* pcEncodeFrame);        ///< analysis stage of slice
+    Void    compressSlice(TComPic* pcPic, x265::EncodeFrame* pcEncodeFrame);        ///< analysis stage of slice
 
-    Void    encodeSlice(TComPic*& rpcPic, TComOutputBitstream* pcSubstreams, x265::EncodeFrame* pcEncodeFrame);
+    Void    encodeSlice(TComPic* rpcPic, TComOutputBitstream* pcSubstreams, x265::EncodeFrame* pcEncodeFrame);
 
     // misc. functions
     Void    setSearchRange(TComSlice* pcSlice, x265::EncodeFrame *pcEncodeframe);    ///< set ME range adaptively

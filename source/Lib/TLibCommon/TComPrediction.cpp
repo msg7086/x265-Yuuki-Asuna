@@ -53,26 +53,6 @@ const UChar m_aucIntraFilter[5] =
     10, //64x64
 };
 
-const short TComPrediction::m_lumaFilter[4][8] =
-{
-    {  0, 0,   0, 64,  0,   0, 0,  0 },
-    { -1, 4, -10, 58, 17,  -5, 1,  0 },
-    { -1, 4, -11, 40, 40, -11, 4, -1 },
-    {  0, 1,  -5, 17, 58, -10, 4, -1 }
-};
-
-const short TComPrediction::m_chromaFilter[8][4] =
-{
-    {  0, 64,  0,  0 },
-    { -2, 58, 10, -2 },
-    { -4, 54, 16, -2 },
-    { -6, 46, 28, -4 },
-    { -4, 36, 36, -4 },
-    { -4, 28, 46, -6 },
-    { -2, 16, 54, -4 },
-    { -2, 10, 58, -2 }
-};
-
 // ====================================================================================================================
 // Constructor / destructor / initialize
 // ====================================================================================================================
@@ -390,19 +370,17 @@ Void TComPrediction::predIntraChromaAng(Pel* piSrc, UInt uiDirMode, Pel* piPred,
     }
     else
     {
-         //Create the prediction
-        int k;
+        // Create the prediction
         Pel refAbv[3 * MAX_CU_SIZE];
         Pel refLft[3 * MAX_CU_SIZE];
-        int limit = ( uiDirMode <=25 && uiDirMode >=11 )? (iWidth + 1) : (2*iWidth+1);
+        int limit = (uiDirMode <= 25 && uiDirMode >= 11) ? (iWidth + 1) : (2*iWidth+1);
         memcpy(refAbv + iWidth - 1, ptrSrc, (limit) * sizeof(Pel));
-        for (k = 0; k < limit; k++)
+        for (int k = 0; k < limit; k++)
         {
-               refLft[k + iWidth - 1] = ptrSrc[k * sw];
+            refLft[k + iWidth - 1] = ptrSrc[k * sw];
         }
 
         primitives.getIPredAng(g_bitDepthC, (pixel*)pDst, uiStride, iWidth, uiDirMode, false, (pixel*)refLft + iWidth -1, (pixel*)refAbv + iWidth -1);
-  
     }
 }
 
@@ -608,21 +586,21 @@ Void TComPrediction::xPredInterChromaBlk(TComDataCU *cu, TComPicYuv *refPic, UIn
 {
     assert(bi == false);
 
-    Int     refStride  = refPic->getCStride();
-    Int     dstStride  = dstPic->getCStride();
+    Int refStride = refPic->getCStride();
+    Int dstStride = dstPic->getCStride();
 
-    Int     refOffset  = (mv->getHor() >> 3) + (mv->getVer() >> 3) * refStride;
+    Int refOffset = (mv->getHor() >> 3) + (mv->getVer() >> 3) * refStride;
 
-    Pel*    refCb     =  refPic->getCbAddr(cu->getAddr(), cu->getZorderIdxInCU() + partAddr) + refOffset;
-    Pel*    refCr     =  refPic->getCrAddr(cu->getAddr(), cu->getZorderIdxInCU() + partAddr) + refOffset;
+    Pel* refCb = refPic->getCbAddr(cu->getAddr(), cu->getZorderIdxInCU() + partAddr) + refOffset;
+    Pel* refCr = refPic->getCrAddr(cu->getAddr(), cu->getZorderIdxInCU() + partAddr) + refOffset;
 
-    Pel* dstCb =  dstPic->getCbAddr(partAddr);
-    Pel* dstCr =  dstPic->getCrAddr(partAddr);
+    Pel* dstCb = dstPic->getCbAddr(partAddr);
+    Pel* dstCr = dstPic->getCrAddr(partAddr);
 
-    Int     xFrac  = mv->getHor() & 0x7;
-    Int     yFrac  = mv->getVer() & 0x7;
-    UInt    cxWidth  = width  >> 1;
-    UInt    cxHeight = height >> 1;
+    Int xFrac = mv->getHor() & 0x7;
+    Int yFrac = mv->getVer() & 0x7;
+    UInt cxWidth = width >> 1;
+    UInt cxHeight = height >> 1;
 
     Int filterSize = NTAPS_CHROMA;
 
@@ -637,25 +615,25 @@ Void TComPrediction::xPredInterChromaBlk(TComDataCU *cu, TComPicYuv *refPic, UIn
         }
         else
         {
-            primitives.ipFilter_p_p[FILTER_H_P_P_4](g_bitDepthC, (pixel*)refCb, refStride, (pixel*)dstCb,  dstStride, cxWidth, cxHeight, m_chromaFilter[xFrac]);
-            primitives.ipFilter_p_p[FILTER_H_P_P_4](g_bitDepthC, (pixel*)refCr, refStride, (pixel*)dstCr,  dstStride, cxWidth, cxHeight, m_chromaFilter[xFrac]);
+            primitives.ipFilter_p_p[FILTER_H_P_P_4](g_bitDepthC, (pixel*)refCb, refStride, (pixel*)dstCb,  dstStride, cxWidth, cxHeight, m_if.m_chromaFilter[xFrac]);
+            primitives.ipFilter_p_p[FILTER_H_P_P_4](g_bitDepthC, (pixel*)refCr, refStride, (pixel*)dstCr,  dstStride, cxWidth, cxHeight, m_if.m_chromaFilter[xFrac]);
         }
     }
     else if (xFrac == 0)
     {
-        primitives.ipFilter_p_p[FILTER_V_P_P_4](g_bitDepthC, (pixel*)refCb, refStride, (pixel*)dstCb, dstStride, cxWidth, cxHeight, m_chromaFilter[yFrac]);
-        primitives.ipFilter_p_p[FILTER_V_P_P_4](g_bitDepthC, (pixel*)refCr, refStride, (pixel*)dstCr, dstStride, cxWidth, cxHeight, m_chromaFilter[yFrac]);
+        primitives.ipFilter_p_p[FILTER_V_P_P_4](g_bitDepthC, (pixel*)refCb, refStride, (pixel*)dstCb, dstStride, cxWidth, cxHeight, m_if.m_chromaFilter[yFrac]);
+        primitives.ipFilter_p_p[FILTER_V_P_P_4](g_bitDepthC, (pixel*)refCr, refStride, (pixel*)dstCr, dstStride, cxWidth, cxHeight, m_if.m_chromaFilter[yFrac]);
     }
     else
     {
         Int     extStride = cxWidth;
         Short*  extY      = (Short*)xMalloc(Short, cxWidth * (cxHeight + filterSize - 1));
 
-        primitives.ipFilter_p_s[FILTER_H_P_S_4](g_bitDepthC, (pixel*)(refCb - (halfFilterSize - 1) * refStride), refStride, extY, extStride, cxWidth, cxHeight + filterSize - 1, m_chromaFilter[xFrac]);
-        primitives.ipFilter_s_p[FILTER_V_S_P_4](g_bitDepthC, extY + (halfFilterSize - 1) * extStride, extStride, (pixel*)dstCb, dstStride, cxWidth, cxHeight, m_chromaFilter[yFrac]);
+        primitives.ipFilter_p_s[FILTER_H_P_S_4](g_bitDepthC, (pixel*)(refCb - (halfFilterSize - 1) * refStride), refStride, extY, extStride, cxWidth, cxHeight + filterSize - 1, m_if.m_chromaFilter[xFrac]);
+        primitives.ipFilter_s_p[FILTER_V_S_P_4](g_bitDepthC, extY + (halfFilterSize - 1) * extStride, extStride, (pixel*)dstCb, dstStride, cxWidth, cxHeight, m_if.m_chromaFilter[yFrac]);
 
-        primitives.ipFilter_p_s[FILTER_H_P_S_4](g_bitDepthC, (pixel*)(refCr - (halfFilterSize - 1) * refStride), refStride, extY, extStride, cxWidth, cxHeight + filterSize - 1,  m_chromaFilter[xFrac]);
-        primitives.ipFilter_s_p[FILTER_V_S_P_4](g_bitDepthC, extY + (halfFilterSize - 1) * extStride, extStride, (pixel*)dstCr, dstStride, cxWidth, cxHeight,  m_chromaFilter[yFrac]);
+        primitives.ipFilter_p_s[FILTER_H_P_S_4](g_bitDepthC, (pixel*)(refCr - (halfFilterSize - 1) * refStride), refStride, extY, extStride, cxWidth, cxHeight + filterSize - 1,  m_if.m_chromaFilter[xFrac]);
+        primitives.ipFilter_s_p[FILTER_V_S_P_4](g_bitDepthC, extY + (halfFilterSize - 1) * extStride, extStride, (pixel*)dstCr, dstStride, cxWidth, cxHeight,  m_if.m_chromaFilter[yFrac]);
 
         xFree(extY);
     }

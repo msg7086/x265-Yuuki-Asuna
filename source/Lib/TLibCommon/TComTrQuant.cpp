@@ -84,7 +84,7 @@ TComTrQuant::TComTrQuant()
 
     // allocate temporary buffers
     // OPT_ME: I may reduce this to short and output matched, bug I am not sure it is right.
-    m_plTempCoeff  = new Int[MAX_CU_SIZE * MAX_CU_SIZE];
+    m_plTempCoeff  = (Int*)xMalloc(Int, MAX_CU_SIZE * MAX_CU_SIZE);
 
     // allocate bit estimation class  (for RDOQ)
     m_pcEstBitsSbac = new estBitsSbacStruct;
@@ -96,7 +96,7 @@ TComTrQuant::~TComTrQuant()
     // delete temporary buffers
     if (m_plTempCoeff)
     {
-        delete [] m_plTempCoeff;
+        xFree(m_plTempCoeff);
         m_plTempCoeff = NULL;
     }
 
@@ -972,7 +972,13 @@ Void TComTrQuant::transformNxN(TComDataCU* pcCU,
     }
     else
     {
-        xT(bitDepth, uiMode, pcResidual, uiStride, m_plTempCoeff, uiWidth, uiHeight);
+        // CHECK_ME: we can't use Short when HIGH_BIT_DEPTH=1
+        assert(bitDepth == 8);
+
+        const UInt uiLog2BlockSize = g_aucConvertToBit[uiWidth];
+        x265::primitives.dct[x265::DCT_4x4 + uiLog2BlockSize - ((uiWidth==4) && (uiMode != REG_DCT))](pcResidual, m_plTempCoeff, uiStride);
+
+        assert(uiWidth == uiHeight);
     }
     xQuant(pcCU, m_plTempCoeff, rpcCoeff, rpcArlCoeff, uiWidth, uiHeight, uiAbsSum, eTType, uiAbsPartIdx);
 }
@@ -1014,7 +1020,11 @@ Void TComTrQuant::invtransformNxN(Bool transQuantBypass, TextType eText, UInt ui
     }
     else
     {
-        xIT(bitDepth, uiMode, m_plTempCoeff, rpcResidual, uiStride, uiWidth, uiHeight);
+        // ChECK_ME: I assume we don't use HIGH_BIT_DEPTH here
+        assert( bitDepth == 8 );
+
+        const UInt uiLog2BlockSize = g_aucConvertToBit[uiWidth];
+        x265::primitives.idct[x265::IDCT_4x4 + uiLog2BlockSize - ((uiWidth==4) && (uiMode != REG_DCT))](m_plTempCoeff, rpcResidual, uiStride);
     }
 }
 
@@ -1073,28 +1083,6 @@ Void TComTrQuant::invRecurTransformNxN(TComDataCU* pcCU, UInt uiAbsPartIdx, Text
 // Logical transform
 // ------------------------------------------------------------------------------------------------
 
-/** Wrapper function between HM interface and core NxN forward transform (2D)
- *  \param piBlkResi input data (residual)
- *  \param psCoeff output data (transform coefficients)
- *  \param uiStride stride of input residual data
- *  \param iSize transform size (iSize x iSize)
- *  \param uiMode is Intra Prediction mode used in Mode-Dependent DCT/DST only
- */
-Void TComTrQuant::xT(Int bitDepth, UInt uiMode, Short* piBlkResi, UInt uiStride, Int* psCoeff, Int iWidth, Int iHeight)
-{
-    ALIGN_VAR_32(Short, coeff[32 * 32]);
-
-    // CHECK_ME: we can't use Short when HIGH_BIT_DEPTH=1
-    assert(bitDepth == 8);
-
-    const UInt uiLog2BlockSize = g_aucConvertToBit[iWidth];
-    x265::primitives.dct[x265::DCT_4x4 + uiLog2BlockSize - ((iWidth==4) && (uiMode != REG_DCT))](piBlkResi, coeff, uiStride);
-
-    assert(iWidth == iHeight);
-    assert(((iWidth * iHeight) % 8) == 0);
-    x265::primitives.cvt16to32(coeff, psCoeff, iWidth * iHeight);
-}
-
 /** Wrapper function between HM interface and core NxN inverse transform (2D)
  *  \param plCoef input data (transform coefficients)
  *  \param pResidual output data (residual)
@@ -1104,16 +1092,12 @@ Void TComTrQuant::xT(Int bitDepth, UInt uiMode, Short* piBlkResi, UInt uiStride,
  */
 Void TComTrQuant::xIT(Int bitDepth, UInt uiMode, Int* plCoef, Short* pResidual, UInt uiStride, Int iWidth, Int iHeight)
 {
-    ALIGN_VAR_32(Short, coeff[32 * 32]);
-
-    x265::primitives.cvt32to16(plCoef, coeff, iWidth * iHeight);
-
     // ChECK_ME: I assume we don't use HIGH_BIT_DEPTH here
     assert( bitDepth == 8 );
 
     //xITrMxN(bitDepth, coeff, block, iWidth, iHeight, uiMode);
     const UInt uiLog2BlockSize = g_aucConvertToBit[iWidth];
-    x265::primitives.dct[x265::IDCT_4x4 + uiLog2BlockSize - ((iWidth==4) && (uiMode != REG_DCT))](coeff, pResidual, uiStride);
+    x265::primitives.idct[x265::IDCT_4x4 + uiLog2BlockSize - ((iWidth==4) && (uiMode != REG_DCT))](plCoef, pResidual, uiStride);
 }
 
 /** Wrapper function between HM interface and core 4x4 transform skipping

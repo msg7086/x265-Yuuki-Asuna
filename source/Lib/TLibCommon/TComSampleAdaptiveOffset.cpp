@@ -535,16 +535,12 @@ inline Int xSign(Int x)
  */
 Void TComSampleAdaptiveOffset::createPicSaoInfo(TComPic* pcPic)
 {
-    m_pcPic   = pcPic;
-    m_bUseNIF = (pcPic->getIndependentSliceBoundaryForNDBFilter() || pcPic->getIndependentTileBoundaryForNDBFilter());
-    if (m_bUseNIF)
-    {
-        m_pcYuvTmp = pcPic->getYuvPicBufferForIndependentBoundaryProcessing();
-    }
+    m_pcPic = pcPic;
 }
 
 Void TComSampleAdaptiveOffset::destroyPicSaoInfo()
-{}
+{
+}
 
 /** sample adaptive offset process for one LCU
  * \param   iAddr, iSaoType, iYCbCr
@@ -1421,9 +1417,9 @@ Void TComSampleAdaptiveOffset::PCMLFDisableProcess(TComPic* pcPic)
  */
 Void TComSampleAdaptiveOffset::xPCMRestoration(TComPic* pcPic)
 {
-    Bool  bPCMFilter = (pcPic->getSlice(0)->getSPS()->getUsePCM() && pcPic->getSlice(0)->getSPS()->getPCMFilterDisableFlag()) ? true : false;
+    Bool  bPCMFilter = (pcPic->getSlice()->getSPS()->getUsePCM() && pcPic->getSlice()->getSPS()->getPCMFilterDisableFlag()) ? true : false;
 
-    if (bPCMFilter || pcPic->getSlice(0)->getPPS()->getTransquantBypassEnableFlag())
+    if (bPCMFilter || pcPic->getSlice()->getPPS()->getTransquantBypassEnableFlag())
     {
         for (UInt uiCUAddr = 0; uiCUAddr < pcPic->getNumCUsInFrame(); uiCUAddr++)
         {
@@ -1461,7 +1457,7 @@ Void TComSampleAdaptiveOffset::xPCMCURestoration(TComDataCU* pcCU, UInt uiAbsZor
     }
 
     // restore PCM samples
-    if ((pcCU->getIPCMFlag(uiAbsZorderIdx) && pcPic->getSlice(0)->getSPS()->getPCMFilterDisableFlag()) || pcCU->isLosslessCoded(uiAbsZorderIdx))
+    if ((pcCU->getIPCMFlag(uiAbsZorderIdx) && pcPic->getSlice()->getSPS()->getPCMFilterDisableFlag()) || pcCU->isLosslessCoded(uiAbsZorderIdx))
     {
         xPCMSampleRestoration(pcCU, uiAbsZorderIdx, uiDepth, TEXT_LUMA);
         xPCMSampleRestoration(pcCU, uiAbsZorderIdx, uiDepth, TEXT_CHROMA_U);

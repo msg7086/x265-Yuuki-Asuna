@@ -424,100 +424,205 @@ void CDECL partialButterfly4(Short *src, Short *dst, Int shift, Int line)
     }
 }
 
-void CDECL xIDST4_C(short *pSrc, short *pDst, intptr_t stride)
-{
-    const int shift_1st = 7;
-    const int shift_2nd = 12;
-    ALIGN_VAR_32(Short, tmp[4 * 4]);
-    ALIGN_VAR_32(Short, tmp2[4 * 4]);
-
-    inversedst(pSrc, tmp, shift_1st); // Forward DST BY FAST ALGORITHM, block input, tmp output
-    inversedst(tmp, tmp2, shift_2nd); // Forward DST BY FAST ALGORITHM, tmp input, coeff output
-    for(int i=0; i<4; i++)
-    {
-        memcpy(&pDst[i * stride], &tmp2[i * 4], 4 * sizeof(short));
-    }
-}
-
-void CDECL xDST4_C(short *pSrc, short *pDst, intptr_t nStride)
+void CDECL xDST4_C(short *pSrc, int *pDst, intptr_t nStride)
 {
     const int shift_1st = 1;
     const int shift_2nd = 8;
     ALIGN_VAR_32(Short, tmp [4 * 4]);
     ALIGN_VAR_32(Short, tmp1[4 * 4]);
 
-    fastForwardDst(pSrc, tmp, shift_1st);
-    fastForwardDst(tmp, tmp1, shift_2nd);
-
     for(int i=0; i<4; i++)
     {
-        memcpy(&pDst[i*nStride], &tmp1[i*4], 4*sizeof(short));
+        memcpy(&tmp1[i*4], &pSrc[i*nStride], 4*sizeof(short));
     }
+
+    fastForwardDst(tmp1, tmp, shift_1st);
+    fastForwardDst(tmp, tmp1, shift_2nd);
+
+#define N (4)
+    for(int i=0; i<N; i++)
+    {
+        for(int j=0; j<N; j++)
+        {
+            pDst[i*N+j] = tmp1[i*N+j];
+        }
+    }
+#undef N
 }
 
-void CDECL xDCT4_C(short *pSrc, short *pDst, intptr_t)
+void CDECL xDCT4_C(short *pSrc, int *pDst, intptr_t nStride)
 {
     const int shift_1st = 1;
     const int shift_2nd = 8;
     ALIGN_VAR_32(Short, tmp[4 * 4]);
+    ALIGN_VAR_32(Short, tmp1[4 * 4]);
 
-    partialButterfly4(pSrc, tmp, shift_1st, 4);
-    partialButterfly4(tmp, pDst, shift_2nd, 4);
+    for(int i=0; i<4; i++)
+    {
+        memcpy(&tmp1[i*4], &pSrc[i*nStride], 4*sizeof(short));
+    }
+
+    partialButterfly4(tmp1, tmp, shift_1st, 4);
+    partialButterfly4(tmp, tmp1, shift_2nd, 4);
+#define N (4)
+    for(int i=0; i<N; i++)
+    {
+        for(int j=0; j<N; j++)
+        {
+            pDst[i*N+j] = tmp1[i*N+j];
+        }
+    }
+#undef N
 }
 
-void CDECL xIDCT4_C(short *pSrc, short *pDst, intptr_t stride)
+void CDECL xDCT8_C(short *pSrc, int *pDst, intptr_t nStride)
+{
+    const int shift_1st = 2;
+    const int shift_2nd = 9;
+    ALIGN_VAR_32(Short, tmp [8 * 8]);
+    ALIGN_VAR_32(Short, tmp1[8 * 8]);
+
+    for(int i=0; i<8; i++)
+    {
+        memcpy(&tmp1[i*8], &pSrc[i*nStride], 8*sizeof(short));
+    }
+
+    partialButterfly8(tmp1, tmp, shift_1st, 8);
+    partialButterfly8(tmp, tmp1, shift_2nd, 8);
+
+#define N (8)
+    for(int i=0; i<N; i++)
+    {
+        for(int j=0; j<N; j++)
+        {
+            pDst[i*N+j] = tmp1[i*N+j];
+        }
+    }
+#undef N
+}
+
+void CDECL xDCT16_C(short *pSrc, int *pDst, intptr_t nStride)
+{
+    const int shift_1st = 3;
+    const int shift_2nd = 10;
+    ALIGN_VAR_32(Short, tmp [16 * 16]);
+    ALIGN_VAR_32(Short, tmp1[16 * 16]);
+
+    for(int i=0; i<16; i++)
+    {
+        memcpy(&tmp1[i*16], &pSrc[i*nStride], 16*sizeof(short));
+    }
+
+    partialButterfly16(tmp1, tmp, shift_1st, 16);
+    partialButterfly16(tmp, tmp1, shift_2nd, 16);
+
+#define N (16)
+    for(int i=0; i<N; i++)
+    {
+        for(int j=0; j<N; j++)
+        {
+            pDst[i*N+j] = tmp1[i*N+j];
+        }
+    }
+#undef N
+}
+
+void CDECL xDCT32_C(short *pSrc, int *pDst, intptr_t nStride)
+{
+    const int shift_1st = 4;
+    const int shift_2nd = 11;
+    ALIGN_VAR_32(Short, tmp [32 * 32]);
+    ALIGN_VAR_32(Short, tmp1[32 * 32]);
+
+    for(int i=0; i<32; i++)
+    {
+        memcpy(&tmp1[i*32], &pSrc[i*nStride], 32*sizeof(short));
+    }
+
+    partialButterfly32(tmp1, tmp, shift_1st, 32);
+    partialButterfly32(tmp, tmp1, shift_2nd, 32);
+
+#define N (32)
+    for(int i=0; i<N; i++)
+    {
+        for(int j=0; j<N; j++)
+        {
+            pDst[i*N+j] = tmp1[i*N+j];
+        }
+    }
+#undef N
+}
+
+void CDECL xIDST4_C(int *pSrc, short *pDst, intptr_t stride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12;
     ALIGN_VAR_32(Short, tmp[4 * 4]);
     ALIGN_VAR_32(Short, tmp2[4 * 4]);
 
-    partialButterflyInverse4(pSrc, tmp, shift_1st, 4); // Forward DST BY FAST ALGORITHM, block input, tmp output
-    partialButterflyInverse4(tmp, tmp2, shift_2nd, 4); // Forward DST BY FAST ALGORITHM, tmp input, coeff output
+#define N (4)
+    for(int i=0; i<N; i++)
+    {
+        for(int j=0; j<N; j++)
+        {
+            tmp2[i*N+j] = (short)pSrc[i*N+j];
+        }
+    }
+#undef N
+
+    inversedst(tmp2, tmp, shift_1st); // Forward DST BY FAST ALGORITHM, block input, tmp output
+    inversedst(tmp, tmp2, shift_2nd); // Forward DST BY FAST ALGORITHM, tmp input, coeff output
+
     for(int i=0; i<4; i++)
     {
         memcpy(&pDst[i * stride], &tmp2[i * 4], 4 * sizeof(short));
     }
 }
 
-void CDECL xDCT8_C(short *pSrc, short *pDst, intptr_t)
+void CDECL xIDCT4_C(int *pSrc, short *pDst, intptr_t stride)
 {
-    const int shift_1st = 2;
-    const int shift_2nd = 9;
-    ALIGN_VAR_32(Short, tmp[64 * 64]);
+    const int shift_1st = 7;
+    const int shift_2nd = 12;
+    ALIGN_VAR_32(Short, tmp[4 * 4]);
+    ALIGN_VAR_32(Short, tmp2[4 * 4]);
 
-    partialButterfly8(pSrc, tmp, shift_1st, 8);
-    partialButterfly8(tmp, pDst, shift_2nd, 8);
+#define N (4)
+    for(int i=0; i<N; i++)
+    {
+        for(int j=0; j<N; j++)
+        {
+            tmp2[i*N+j] = (short)pSrc[i*N+j];
+        }
+    }
+#undef N
+
+    partialButterflyInverse4(tmp2, tmp, shift_1st, 4); // Forward DST BY FAST ALGORITHM, block input, tmp output
+    partialButterflyInverse4(tmp, tmp2, shift_2nd, 4); // Forward DST BY FAST ALGORITHM, tmp input, coeff output
+
+    for(int i=0; i<4; i++)
+    {
+        memcpy(&pDst[i * stride], &tmp2[i * 4], 4 * sizeof(short));
+    }
 }
 
-void CDECL xDCT16_C(short *pSrc, short *pDst, intptr_t)
-{
-    const int shift_1st = 3;
-    const int shift_2nd = 10;
-    ALIGN_VAR_32(Short, tmp[16 * 16]);
-
-    partialButterfly16(pSrc, tmp, shift_1st, 16);
-    partialButterfly16(tmp, pDst, shift_2nd, 16);
-}
-
-void CDECL xDCT32_C(short *pSrc, short *pDst, intptr_t)
-{
-    const int shift_1st = 4;
-    const int shift_2nd = 11;
-    ALIGN_VAR_32(Short, tmp[32 * 32]);
-
-    partialButterfly32(pSrc, tmp, shift_1st, 32);
-    partialButterfly32(tmp, pDst, shift_2nd, 32);
-}
-
-void CDECL xIDCT8_C(short *pSrc, short *pDst, intptr_t stride)
+void CDECL xIDCT8_C(int *pSrc, short *pDst, intptr_t stride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12;
     ALIGN_VAR_32(Short, tmp[8 * 8]);
     ALIGN_VAR_32(Short, tmp2[8 * 8]);
 
-    partialButterflyInverse8(pSrc, tmp, shift_1st, 8);
+#define N (8)
+    for(int i=0; i<N; i++)
+    {
+        for(int j=0; j<N; j++)
+        {
+            tmp2[i*N+j] = (short)pSrc[i*N+j];
+        }
+    }
+#undef N
+
+    partialButterflyInverse8(tmp2, tmp, shift_1st, 8);
     partialButterflyInverse8(tmp, tmp2, shift_2nd, 8);
     for(int i=0; i<8; i++)
     {
@@ -525,14 +630,24 @@ void CDECL xIDCT8_C(short *pSrc, short *pDst, intptr_t stride)
     }
 }
 
-void CDECL xIDCT16_C(short *pSrc, short *pDst, intptr_t stride)
+void CDECL xIDCT16_C(int *pSrc, short *pDst, intptr_t stride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12;
     ALIGN_VAR_32(Short, tmp[16 * 16]);
     ALIGN_VAR_32(Short, tmp2[16 * 16]);
 
-    partialButterflyInverse16(pSrc, tmp, shift_1st, 16);
+#define N (16)
+    for(int i=0; i<N; i++)
+    {
+        for(int j=0; j<N; j++)
+        {
+            tmp2[i*N+j] = (short)pSrc[i*N+j];
+        }
+    }
+#undef N
+
+    partialButterflyInverse16(tmp2, tmp, shift_1st, 16);
     partialButterflyInverse16(tmp, tmp2, shift_2nd, 16);
     for(int i=0; i<16; i++)
     {
@@ -540,15 +655,26 @@ void CDECL xIDCT16_C(short *pSrc, short *pDst, intptr_t stride)
     }
 }
 
-void CDECL xIDCT32_C(short *pSrc, short *pDst, intptr_t stride)
+void CDECL xIDCT32_C(int *pSrc, short *pDst, intptr_t stride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12;
     ALIGN_VAR_32(Short, tmp[32 * 32]);
     ALIGN_VAR_32(Short, tmp2[32 * 32]);
 
-    partialButterflyInverse32(pSrc, tmp, shift_1st, 32);
+#define N (32)
+    for(int i=0; i<N; i++)
+    {
+        for(int j=0; j<N; j++)
+        {
+            tmp2[i*N+j] = (short)pSrc[i*N+j];
+        }
+    }
+#undef N
+
+    partialButterflyInverse32(tmp2, tmp, shift_1st, 32);
     partialButterflyInverse32(tmp, tmp2, shift_2nd, 32);
+
     for(int i=0; i<32; i++)
     {
         memcpy(&pDst[i * stride], &tmp2[i * 32], 32 * sizeof(short));
@@ -629,10 +755,10 @@ void Setup_C_DCTPrimitives(EncoderPrimitives& p)
     p.dct[DCT_8x8] = xDCT8_C;
     p.dct[DCT_16x16] = xDCT16_C;
     p.dct[DCT_32x32] = xDCT32_C;
-    p.dct[IDST_4x4] = xIDST4_C;
-    p.dct[IDCT_4x4] = xIDCT4_C;
-    p.dct[IDCT_8x8] = xIDCT8_C;
-    p.dct[IDCT_16x16] = xIDCT16_C;
-    p.dct[IDCT_32x32] = xIDCT32_C;
+    p.idct[IDST_4x4] = xIDST4_C;
+    p.idct[IDCT_4x4] = xIDCT4_C;
+    p.idct[IDCT_8x8] = xIDCT8_C;
+    p.idct[IDCT_16x16] = xIDCT16_C;
+    p.idct[IDCT_32x32] = xIDCT32_C;
 }
 }
