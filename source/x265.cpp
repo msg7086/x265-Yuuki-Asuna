@@ -57,7 +57,7 @@
 using namespace x265;
 using namespace std;
 
-static const char short_options[] = "h:o:f:r:i:s:d:q:w:V:";
+static const char short_options[] = "h:o:f:r:i:s:d:q:w:V";
 static struct option long_options[] =
 {
 #define HELP(message)
@@ -229,29 +229,30 @@ struct CLIOptions
         va_end(arg);
     }
 
-    void print_version()
+    void print_version(x265_param_t *param)
     {
 #define XSTR(x) STR(x)
 #define STR(x) #x
-        printf("x265: HEVC encoder version %s\n", XSTR(X265_VERSION));
-        printf("x265: build info ");
-        printf(NVM_ONOS);
-        printf(NVM_COMPILEDBY);
-        printf(NVM_BITS);
+        fprintf(stderr, "x265 [info]: HEVC encoder version %s\n", XSTR(X265_VERSION));
+        fprintf(stderr, "x265 [info]: build info ");
+        fprintf(stderr, NVM_ONOS);
+        fprintf(stderr, NVM_COMPILEDBY);
+        fprintf(stderr, NVM_BITS);
 #if HIGH_BIT_DEPTH
-        printf("16bpp");
+        fprintf(stderr, "16bpp");
 #else
-        printf("8bpp");
+        fprintf(stderr, "8bpp");
 #endif
-        printf("\n");
+        fprintf(stderr, "\n");
+        x265_setup_primitives(param, 0);
     }
 
-    void do_help()
+    void do_help(x265_param_t *param)
     {
-        print_version();
-        printf("Syntax: x265 [options] infile [-o] outfile\n");
+        print_version(param);
+        printf("\nSyntax: x265 [options] infile [-o] outfile\n");
         printf("    infile can be YUV or Y4M\n");
-        printf("    outfile is raw HEVC stream only\n");
+        printf("    outfile is raw HEVC bitstream\n");
         printf("Options:\n");
 
 #define HELP(message) printf("\n%s\n", message);
@@ -289,9 +290,9 @@ struct CLIOptions
             switch (c)
             {
             case 'h':
-                do_help();
+                do_help(param);
             case 'V':
-                print_version();
+                print_version(param);
                 exit(0);
             default:
                 if (long_options_index < 0 && c > 0)
@@ -341,7 +342,7 @@ struct CLIOptions
         }
 
         if (argc <= 1 || help)
-            do_help();
+            do_help(param);
 
         if (inputfn == NULL || bitstreamfn == NULL)
         {

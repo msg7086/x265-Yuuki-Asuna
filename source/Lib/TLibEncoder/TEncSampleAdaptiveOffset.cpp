@@ -114,7 +114,6 @@ Void TEncSampleAdaptiveOffset::rdoSaoOnePart(SAOQTPart *psQTPart, Int iPartIdx, 
     Int     currentDistortionTableBo[MAX_NUM_SAO_CLASS];
     Double  currentRdCostTableBo[MAX_NUM_SAO_CLASS];
 
-    Int addr;
     Int allowMergeLeft;
     Int allowMergeUp;
     Int frameWidthInCU = m_pcPic->getFrameWidthInCU();
@@ -133,26 +132,9 @@ Void TEncSampleAdaptiveOffset::rdoSaoOnePart(SAOQTPart *psQTPart, Int iPartIdx, 
             {
                 for (Int rx = pOnePart->StartCUX; rx <= pOnePart->EndCUX; rx++)
                 {
-                    addr = ry * frameWidthInCU + rx;
-
                     // get bits for iTypeIdx = -1
                     allowMergeLeft = 1;
                     allowMergeUp   = 1;
-                    if (rx != 0)
-                    {
-                        // check tile id and slice id
-                        if ((m_pcPic->getCU(addr - 1)->getSlice()->getSliceIdx() != m_pcPic->getCU(addr)->getSlice()->getSliceIdx()))
-                        {
-                            allowMergeLeft = 0;
-                        }
-                    }
-                    if (ry != 0)
-                    {
-                        if ((m_pcPic->getCU(addr - m_iNumCuInWidth)->getSlice()->getSliceIdx() != m_pcPic->getCU(addr)->getSlice()->getSliceIdx()))
-                        {
-                            allowMergeUp = 0;
-                        }
-                    }
 
                     // reset
                     resetSaoUnit(&saoLcuParamRdo);
@@ -211,26 +193,9 @@ Void TEncSampleAdaptiveOffset::rdoSaoOnePart(SAOQTPart *psQTPart, Int iPartIdx, 
             {
                 for (Int rx = pOnePart->StartCUX; rx <= pOnePart->EndCUX; rx++)
                 {
-                    addr = ry * frameWidthInCU + rx;
-
                     // get bits for iTypeIdx = -1
                     allowMergeLeft = 1;
                     allowMergeUp   = 1;
-                    if (rx != 0)
-                    {
-                        // check tile id and slice id
-                        if ((m_pcPic->getCU(addr - 1)->getSlice()->getSliceIdx() != m_pcPic->getCU(addr)->getSlice()->getSliceIdx()))
-                        {
-                            allowMergeLeft = 0;
-                        }
-                    }
-                    if (ry != 0)
-                    {
-                        if ((m_pcPic->getCU(addr - m_iNumCuInWidth)->getSlice()->getSliceIdx() != m_pcPic->getCU(addr)->getSlice()->getSliceIdx()))
-                        {
-                            allowMergeUp = 0;
-                        }
-                    }
 
                     // reset
                     resetSaoUnit(&saoLcuParamRdo);
@@ -646,7 +611,7 @@ Void TEncSampleAdaptiveOffset::startSaoEnc(TComPic* pcPic, TEncEntropy* pcEntrop
     m_pcEntropyCoder = pcEntropyCoder;
 
     m_pcRDGoOnSbacCoder = pcRDGoOnSbacCoder;
-    m_pcEntropyCoder->setEntropyCoder(m_pcRDGoOnSbacCoder, pcPic->getSlice(0));
+    m_pcEntropyCoder->setEntropyCoder(m_pcRDGoOnSbacCoder, pcPic->getSlice());
     m_pcEntropyCoder->resetEntropy();
     m_pcEntropyCoder->resetBits();
 
@@ -973,7 +938,7 @@ Void TEncSampleAdaptiveOffset::calcSaoStatsCuOrg(Int iAddr, Int iPartIdx, Int iY
 {
     Int x, y;
     TComDataCU *pTmpCu = m_pcPic->getCU(iAddr);
-    TComSPS *pTmpSPS =  m_pcPic->getSlice(0)->getSPS();
+    TComSPS *pTmpSPS =  m_pcPic->getSlice()->getSPS();
 
     Pel* pOrg;
     Pel* pRec;
@@ -1244,7 +1209,7 @@ Void TEncSampleAdaptiveOffset::calcSaoStatsCu_BeforeDblk(TComPic* pcPic)
 {
     Int addr, yCbCr;
     Int x, y;
-    TComSPS *pTmpSPS =  pcPic->getSlice(0)->getSPS();
+    TComSPS *pTmpSPS =  pcPic->getSlice()->getSPS();
 
     Pel* pOrg;
     Pel* pRec;
@@ -1871,26 +1836,11 @@ Void TEncSampleAdaptiveOffset::rdoSaoUnitAll(SAOParam *saoParam, Double lambda, 
             Int allowMergeUp   = 1;
             UInt rate;
             Double bestCost, mergeCost;
-            if (idxX != 0)
-            {
-                // check tile id and slice id
-                if ((m_pcPic->getCU(addr - 1)->getSlice()->getSliceIdx() != m_pcPic->getCU(addr)->getSlice()->getSliceIdx()))
-                {
-                    allowMergeLeft = 0;
-                }
-            }
-            else
+            if (idxX == 0)
             {
                 allowMergeLeft = 0;
             }
-            if (idxY != 0)
-            {
-                if ((m_pcPic->getCU(addr - m_iNumCuInWidth)->getSlice()->getSliceIdx() != m_pcPic->getCU(addr)->getSlice()->getSliceIdx()))
-                {
-                    allowMergeUp = 0;
-                }
-            }
-            else
+            if (idxY == 0)
             {
                 allowMergeUp = 0;
             }

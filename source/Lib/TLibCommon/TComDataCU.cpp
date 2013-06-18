@@ -325,7 +325,7 @@ const NDBFBlockInfo& NDBFBlockInfo::operator =(const NDBFBlockInfo& src)
 Void TComDataCU::initCU(TComPic* pcPic, UInt iCUAddr)
 {
     m_pcPic              = pcPic;
-    m_pcSlice            = pcPic->getSlice(pcPic->getCurrSliceIdx());
+    m_pcSlice            = pcPic->getSlice();
     m_uiCUAddr           = iCUAddr;
     m_uiCUPelX           = (iCUAddr % pcPic->getFrameWidthInCU()) * g_uiMaxCUWidth;
     m_uiCUPelY           = (iCUAddr / pcPic->getFrameWidthInCU()) * g_uiMaxCUHeight;
@@ -558,7 +558,7 @@ Void TComDataCU::initSubCU(TComDataCU* pcCU, UInt uiPartUnitIdx, UInt uiDepth, I
     UInt uiPartOffset = (pcCU->getTotalNumPart() >> 2) * uiPartUnitIdx;
 
     m_pcPic              = pcCU->getPic();
-    m_pcSlice            = m_pcPic->getSlice(m_pcPic->getCurrSliceIdx());
+    m_pcSlice            = m_pcPic->getSlice();
     m_uiCUAddr           = pcCU->getAddr();
     m_uiAbsIdxInLCU      = pcCU->getZorderIdxInCU() + uiPartOffset;
 
@@ -745,8 +745,6 @@ Void TComDataCU::copyCU(TComDataCU* pcCU)
     m_uiTotalBins        = pcCU->getTotalBins();
     m_uiNumPartition     = pcCU->getTotalNumPart();
     m_unitSize           = pcCU->getUnitSize();
-
-    m_piSliceSUMap       = pcCU->getSliceSUMap();
 
     Int numElements = m_uiNumPartition;
     for (Int ui = 0; ui < numElements; ui++)
@@ -1782,7 +1780,7 @@ Void TComDataCU::setQPSubCUs(Int qp, TComDataCU* pcCU, UInt absPartIdx, UInt dep
 Void TComDataCU::setQPSubParts(Int qp, UInt uiAbsPartIdx, UInt uiDepth)
 {
     UInt uiCurrPartNumb = m_pcPic->getNumPartInCU() >> (uiDepth << 1);
-    TComSlice * pcSlice = getPic()->getSlice(getPic()->getCurrSliceIdx());
+    TComSlice * pcSlice = getPic()->getSlice();
 
     for (UInt uiSCUIdx = uiAbsPartIdx; uiSCUIdx < uiAbsPartIdx + uiCurrPartNumb; uiSCUIdx++)
     {
@@ -3422,7 +3420,6 @@ Void TComDataCU::setNDBFilterBlockBorderAvailability(UInt numLCUInPicWidth, UInt
                                                      , Bool bIndependentTileBoundaryEnabled)
 {
     UInt numSUInLCU = numSUInLCUWidth * numSUInLCUHeight;
-    Int* pSliceIDMapLCU = m_piSliceSUMap;
     UInt uiLPelX, uiTPelY;
     UInt width, height;
     Bool bPicRBoundary, bPicBBoundary, bPicTBoundary, bPicLBoundary;
