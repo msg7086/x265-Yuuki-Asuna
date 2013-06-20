@@ -87,38 +87,19 @@ Void TEncTop::create()
 
     // create processing unit classes
     m_cGOPEncoder.create();
-    if (m_bUseSAO)
-    {
-        m_cEncSAO.setSaoLcuBoundary(getSaoLcuBoundary());
-        m_cEncSAO.setSaoLcuBasedOptimization(getSaoLcuBasedOptimization());
-        m_cEncSAO.setMaxNumOffsetsPerPic(getMaxNumOffsetsPerPic());
-        m_cEncSAO.create(getSourceWidth(), getSourceHeight(), g_uiMaxCUWidth, g_uiMaxCUHeight);
-        m_cEncSAO.createEncBuffer();
-    }
 
     if (m_RCEnableRateControl)
     {
         m_cRateCtrl.init(m_framesToBeEncoded, m_RCTargetBitrate, m_iFrameRate, m_iGOPSize, m_iSourceWidth, m_iSourceHeight,
                          g_uiMaxCUWidth, g_uiMaxCUHeight, m_RCKeepHierarchicalBit, m_RCUseLCUSeparateModel, m_GOPList);
     }
-
-    m_recon = new x265_picture_t[m_iGOPSize];
 }
 
 Void TEncTop::destroy()
 {
     // destroy processing unit classes
     m_cGOPEncoder.destroy();
-    if (getUseSAO())
-    {
-        m_cEncSAO.destroy();
-        m_cEncSAO.destroyEncBuffer();
-    }
     m_cRateCtrl.destroy();
-
-    if (m_recon)
-        delete [] m_recon;
-    deletePicBuffer();
 
     // destroy ROM
     destroyROM();
@@ -143,21 +124,6 @@ Void TEncTop::init()
 // Public member functions
 // ====================================================================================================================
 
-Void TEncTop::deletePicBuffer()
-{
-    TComList<TComPic*>::iterator iterPic = m_cListPic.begin();
-    Int iSize = Int(m_cListPic.size());
-
-    for (Int i = 0; i < iSize; i++)
-    {
-        TComPic* pcPic = *(iterPic++);
-
-        pcPic->destroy();
-        delete pcPic;
-        pcPic = NULL;
-    }
-}
-
 /**
  - Application has picture buffer list with size of GOP + 1
  - Picture buffer list acts like as ring buffer
@@ -173,10 +139,9 @@ int TEncTop::encode(Bool flush, const x265_picture_t* pic, x265_picture_t **pic_
 {
     if (pic)
     {
-        m_iNumPicRcvd++;
-        
         // get original YUV
-        TComPic* pcPicCurr = xGetNewPicBuffer();
+        TComPic* pcPicCurr = m_cGOPEncoder.xGetNewPicBuffer();
+        pcPicCurr->getSlice()->setPOC(++m_iPOCLast);
         pcPicCurr->getPicYuvOrg()->copyFromPicture(*pic);
 
         // compute image characteristics
@@ -184,41 +149,21 @@ int TEncTop::encode(Bool flush, const x265_picture_t* pic, x265_picture_t **pic_
         {
             m_cPreanalyzer.xPreanalyze(dynamic_cast<TEncPic*>(pcPicCurr));
         }
+        m_iNumPicRcvd++;
     }
 
     // Wait until we have a full GOP of pictures
     if (!m_iNumPicRcvd || (!flush && m_iPOCLast != 0 && m_iNumPicRcvd != m_iGOPSize && m_iGOPSize))
-    {
         return 0;
-    }
     if (flush)
-    {
         m_framesToBeEncoded = m_iNumPicRcvd + m_uiNumAllPicCoded;
-    }
 
     // compress GOP
-    m_cGOPEncoder.compressGOP(m_iPOCLast, m_iNumPicRcvd, m_cListPic, accessUnitsOut);
+    m_cGOPEncoder.compressGOP(m_iPOCLast, m_iNumPicRcvd, accessUnitsOut);
 
     if (pic_out)
-    {
-        *pic_out = m_recon;
-        // make references to the last N TComPic's recon frames
-        TComList<TComPic*>::iterator iterPic = m_cListPic.end();
-        for (int i = 0; i < m_iNumPicRcvd; i++)
-            iterPic--;
-        for (int i = 0; i < m_iNumPicRcvd; i++)
-        {
-            TComPicYuv *recpic = (*iterPic++)->getPicYuvRec();
-            x265_picture_t& recon = m_recon[i];
-            recon.planes[0] = recpic->getLumaAddr();
-            recon.stride[0] = recpic->getStride();
-            recon.planes[1] = recpic->getCbAddr();
-            recon.stride[1] = recpic->getCStride();
-            recon.planes[2] = recpic->getCrAddr();
-            recon.stride[2] = recpic->getCStride();
-            recon.bitDepth = sizeof(Pel) * 8;
-        }
-    }
+        *pic_out = m_cGOPEncoder.getReconPictures(m_iPOCLast - m_iNumPicRcvd + 1, m_iNumPicRcvd);
+
     m_uiNumAllPicCoded += m_iNumPicRcvd;
     Int iNumEncoded = m_iNumPicRcvd;
     m_iNumPicRcvd = 0;
@@ -292,58 +237,6 @@ Double TEncTop::xCalculateRVM()
 // ====================================================================================================================
 // Protected member functions
 // ====================================================================================================================
-
-/**
- - Application has picture buffer list with size of GOP + 1
- - Picture buffer list acts like as ring buffer
- - End of the list has the latest picture
- .
- \retval rpcPic obtained picture buffer
- */
-TComPic* TEncTop::xGetNewPicBuffer()
-{
-    TComSlice::sortPicList(m_cListPic);
-    TComPic *pcPic = NULL;
-
-    if (m_cListPic.size() >= (UInt)(m_iGOPSize + getMaxDecPicBuffering(MAX_TLAYER - 1) + 2))
-    {
-        TComList<TComPic*>::iterator iterPic  = m_cListPic.begin();
-        Int iSize = Int(m_cListPic.size());
-        for (Int i = 0; i < iSize; i++)
-        {
-            pcPic = *(iterPic++);
-            if (pcPic->getSlice()->isReferenced() == false)
-            {
-                break;
-            }
-        }
-    }
-    if (pcPic == NULL)
-    {
-        if (getUseAdaptiveQP())
-        {
-            TEncPic* pcEPic = new TEncPic;
-            pcEPic->create(m_iSourceWidth, m_iSourceHeight, g_uiMaxCUWidth, g_uiMaxCUHeight, g_uiMaxCUDepth, /* m_cPPS. */ getMaxCuDQPDepth() + 1,
-                           m_conformanceWindow, m_defaultDisplayWindow);
-            pcPic = pcEPic;
-        }
-        else
-        {
-            pcPic = new TComPic;
-
-            pcPic->create(m_iSourceWidth, m_iSourceHeight, g_uiMaxCUWidth, g_uiMaxCUHeight, g_uiMaxCUDepth,
-                          m_conformanceWindow, m_defaultDisplayWindow);
-        }
-        if (getUseSAO())
-        {
-            pcPic->getPicSym()->allocSaoParam(&m_cEncSAO);
-        }
-        m_cListPic.pushBack(pcPic);
-    }
-    pcPic->getSlice()->setPOC(++m_iPOCLast);
-    pcPic->getPicYuvRec()->setBorderExtension(false);
-    return pcPic;
-}
 
 Void TEncTop::xInitSPS(TComSPS *pcSPS)
 {

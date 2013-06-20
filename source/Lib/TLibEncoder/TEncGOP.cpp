@@ -124,11 +124,25 @@ Void  TEncGOP::create()
 
 Void  TEncGOP::destroy()
 {
+    TComList<TComPic*>::iterator iterPic = m_cListPic.begin();
+    Int iSize = Int(m_cListPic.size());
+    for (Int i = 0; i < iSize; i++)
+    {
+        TComPic* pcPic = *(iterPic++);
+
+        pcPic->destroy();
+        delete pcPic;
+        pcPic = NULL;
+    }
+
     if (m_cFrameEncoders)
     {
         m_cFrameEncoders->destroy();
         delete m_cFrameEncoders;
     }
+
+    if (m_recon)
+        delete [] m_recon;
 }
 
 Void TEncGOP::init(TEncTop* pcTEncTop)
@@ -149,6 +163,73 @@ Void TEncGOP::init(TEncTop* pcTEncTop)
     int numRows = (m_pcCfg->getSourceHeight() + m_cSPS.getMaxCUHeight() - 1) / m_cSPS.getMaxCUHeight();
     m_cFrameEncoders = new x265::EncodeFrame(pcTEncTop->getThreadPool());
     m_cFrameEncoders->init(pcTEncTop, numRows);
+
+    int maxGOP = m_pcCfg->getIntraPeriod() > 1 ? m_pcCfg->getIntraPeriod() : 1;
+    m_recon = new x265_picture_t[maxGOP];
+
+    // make references to the last N TComPic's recon frames
+    for (int i = 0; i < maxGOP; i++)
+    {
+        TComPic *pcPic;
+        if (m_pcCfg->getUseAdaptiveQP())
+        {
+            TEncPic* pcEPic = new TEncPic;
+            pcEPic->create(m_pcCfg->getSourceWidth(), m_pcCfg->getSourceHeight(), g_uiMaxCUWidth, g_uiMaxCUHeight, g_uiMaxCUDepth,
+                           m_cPPS.getMaxCuDQPDepth() + 1, m_pcCfg->getConformanceWindow(), m_pcCfg->getDefaultDisplayWindow());
+            pcPic = pcEPic;
+        }
+        else
+        {
+            pcPic = new TComPic;
+            pcPic->create(m_pcCfg->getSourceWidth(), m_pcCfg->getSourceHeight(), g_uiMaxCUWidth, g_uiMaxCUHeight, g_uiMaxCUDepth,
+                          m_pcCfg->getConformanceWindow(), m_pcCfg->getDefaultDisplayWindow());
+        }
+        if (m_pcCfg->getUseSAO())
+        {
+            pcPic->getPicSym()->allocSaoParam(m_cFrameEncoders->getSAO());
+        }
+        m_cListPic.pushBack(pcPic);
+    }
+}
+
+x265_picture_t *TEncGOP::getReconPictures(UInt POC, UInt count)
+{
+    for (UInt i = 0; i < count; i++)
+    {
+        TComList<TComPic*>::iterator iterPic = m_cListPic.begin();
+        while (iterPic != m_cListPic.end() && (*iterPic)->getPOC() != POC)
+            iterPic++;
+        POC++;
+        TComPicYuv *recpic = (*iterPic)->getPicYuvRec();
+        x265_picture_t& recon = m_recon[i];
+        recon.planes[0] = recpic->getLumaAddr();
+        recon.stride[0] = recpic->getStride();
+        recon.planes[1] = recpic->getCbAddr();
+        recon.stride[1] = recpic->getCStride();
+        recon.planes[2] = recpic->getCrAddr();
+        recon.stride[2] = recpic->getCStride();
+        recon.bitDepth = sizeof(Pel) * 8;
+    }
+    return m_recon;
+}
+
+TComPic* TEncGOP::xGetNewPicBuffer()
+{
+    TComSlice::sortPicList(m_cListPic);
+    TComPic *pcPic = NULL;
+
+    TComList<TComPic*>::iterator iterPic  = m_cListPic.begin();
+    Int iSize = Int(m_cListPic.size());
+    for (Int i = 0; i < iSize; i++)
+    {
+        pcPic = *(iterPic++);
+        if (pcPic->getSlice()->isReferenced() == false)
+        {
+            pcPic->getPicYuvRec()->setBorderExtension(false);
+            return pcPic;
+        }
+    }
+    return NULL;
 }
 
 SEIActiveParameterSets* TEncGOP::xCreateSEIActiveParameterSets(TComSPS *sps)
@@ -178,7 +259,7 @@ SEIDisplayOrientation* TEncGOP::xCreateSEIDisplayOrientation()
 // ====================================================================================================================
 // Public member functions
 // ====================================================================================================================
-Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcListPic, std::list<AccessUnit>& accessUnitsInGOP)
+Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, std::list<AccessUnit>& accessUnitsInGOP)
 {
     PPAScopeEvent(TEncGOP_compressGOP);
 
@@ -277,11 +358,9 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
 
         /////////////////////////////////////////////////////////////////////////////////////////////////// Initial to start encoding
         Int pocCurr = iPOCLast - iNumPicRcvd + m_pcCfg->getGOPEntry(iGOPid).m_POC;
-        Int iTimeOffset = m_pcCfg->getGOPEntry(iGOPid).m_POC;
         if (iPOCLast == 0)
         {
             pocCurr = 0;
-            iTimeOffset = 1;
         }
         if (pocCurr >= m_pcCfg->getFramesToBeEncoded())
         {
@@ -301,8 +380,8 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
         {
             // Locate input picture with the correct POC (makes no assumption on
             // input picture ordering)
-            TComList<TComPic*>::iterator iterPic = rcListPic.begin();
-            while (iterPic != rcListPic.end())
+            TComList<TComPic*>::iterator iterPic = m_cListPic.begin();
+            while (iterPic != m_cListPic.end())
             {
                 pcPic = *(iterPic++);
                 if (pcPic->getPOC() == pocCurr)
@@ -382,19 +461,19 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
         }
 
         // Do decoding refresh marking if any
-        pcSlice->decodingRefreshMarking(m_pocCRA, m_bRefreshPending, rcListPic);
+        pcSlice->decodingRefreshMarking(m_pocCRA, m_bRefreshPending, m_cListPic);
         selectReferencePictureSet(pcSlice, pocCurr, iGOPid);
         pcSlice->getRPS()->setNumberOfLongtermPictures(0);
 
-        if ((pcSlice->checkThatAllRefPicsAreAvailable(rcListPic, pcSlice->getRPS(), false) != 0) || (pcSlice->isIRAP()))
+        if ((pcSlice->checkThatAllRefPicsAreAvailable(m_cListPic, pcSlice->getRPS(), false) != 0) || (pcSlice->isIRAP()))
         {
-            pcSlice->createExplicitReferencePictureSetFromReference(rcListPic, pcSlice->getRPS(), pcSlice->isIRAP());
+            pcSlice->createExplicitReferencePictureSetFromReference(m_cListPic, pcSlice->getRPS(), pcSlice->isIRAP());
         }
-        pcSlice->applyReferencePictureSet(rcListPic, pcSlice->getRPS());
+        pcSlice->applyReferencePictureSet(m_cListPic, pcSlice->getRPS());
 
         if (pcSlice->getTLayer() > 0)
         {
-            if (pcSlice->isTemporalLayerSwitchingPoint(rcListPic) || pcSlice->getSPS()->getTemporalIdNestingFlag())
+            if (pcSlice->isTemporalLayerSwitchingPoint(m_cListPic) || pcSlice->getSPS()->getTemporalIdNestingFlag())
             {
                 if (pcSlice->getTemporalLayerNonReferenceFlag())
                 {
@@ -405,7 +484,7 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
                     pcSlice->setNalUnitType(NAL_UNIT_CODED_SLICE_TLA_R);
                 }
             }
-            else if (pcSlice->isStepwiseTemporalLayerSwitchingPointCandidate(rcListPic))
+            else if (pcSlice->isStepwiseTemporalLayerSwitchingPointCandidate(m_cListPic))
             {
                 Bool isSTSA = true;
                 for (Int ii = iGOPid + 1; (ii < m_pcCfg->getGOPSize() && isSTSA == true); ii++)
@@ -450,7 +529,7 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
                 }
             }
         }
-        arrangeLongtermPicturesInRPS(pcSlice, rcListPic);
+        arrangeLongtermPicturesInRPS(pcSlice);
         TComRefPicListModification* refPicListModification = pcSlice->getRefPicListModification();
         refPicListModification->setRefPicListModificationFlagL0(false);
         refPicListModification->setRefPicListModificationFlagL1(false);
@@ -458,7 +537,7 @@ Void TEncGOP::compressGOP(Int iPOCLast, Int iNumPicRcvd, TComList<TComPic*>& rcL
         pcSlice->setNumRefIdx(REF_PIC_LIST_1, min(m_pcCfg->getGOPEntry(iGOPid).m_numRefPicsActive, pcSlice->getRPS()->getNumberOfPictures()));
 
         //  Set reference list
-        pcSlice->setRefPicList(rcListPic);
+        pcSlice->setRefPicList(m_cListPic);
 
         //  Slice info. refinement
         if ((pcSlice->getSliceType() == B_SLICE) && (pcSlice->getNumRefIdx(REF_PIC_LIST_1) == 0))
@@ -1757,7 +1836,7 @@ Void TEncGOP::xAttachSliceDataToNalUnit(TEncEntropy* pcEntropyCoder, OutputNALUn
 
 // Function will arrange the long-term pictures in the decreasing order of poc_lsb_lt,
 // and among the pictures with the same lsb, it arranges them in increasing delta_poc_msb_cycle_lt value
-Void TEncGOP::arrangeLongtermPicturesInRPS(TComSlice *pcSlice, TComList<TComPic*>& rcListPic)
+Void TEncGOP::arrangeLongtermPicturesInRPS(TComSlice *pcSlice)
 {
     TComReferencePictureSet *rps = pcSlice->getRPS();
 
@@ -1811,9 +1890,9 @@ Void TEncGOP::arrangeLongtermPicturesInRPS(TComSlice *pcSlice, TComList<TComPic*
     {
         // Check if MSB present flag should be enabled.
         // Check if the buffer contains any pictures that have the same LSB.
-        TComList<TComPic*>::iterator  iterPic = rcListPic.begin();
-        TComPic*                      pcPic;
-        while (iterPic != rcListPic.end())
+        TComList<TComPic*>::iterator iterPic = m_cListPic.begin();
+        TComPic* pcPic;
+        while (iterPic != m_cListPic.end())
         {
             pcPic = *iterPic;
             if ((getLSB(pcPic->getPOC(), maxPicOrderCntLSB) == longtermPicsLSB[i])   && // Same LSB
