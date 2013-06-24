@@ -4,6 +4,7 @@
  * Authors: Steve Borho <steve@borho.org>
  *          Mandar Gurav <mandar@multicorewareinc.com>
  *          Mahesh Pittala <mahesh@multicorewareinc.com>
+ *          Min Chen <min.chen@multicorewareinc.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -214,7 +215,161 @@ void CDECL convert32to16_shr(short *piDst, int *psOrg, int shift, int num)
         piDst += 4;
     }
 }
+
+template <int blockSize>
+void CDECL transpose(pixel* pDst, pixel* pSrc, intptr_t nStride)
+{
+    for (int k = 0; k < blockSize; k++)
+    {
+        for (int l = 0; l < blockSize; l++)
+        {
+            pDst[k * blockSize + l] = pSrc[l * nStride + k];
+        }
+    }
 }
+
+#if !HIGH_BIT_DEPTH
+void CDECL transpose4(pixel* pDst, pixel* pSrc, intptr_t nStride)
+{
+    __m128i T00, T01, T02, T03;
+
+    T00 = _mm_cvtsi32_si128(*(int*)&pSrc[0*nStride]);   // [03 02 01 00]
+    T01 = _mm_cvtsi32_si128(*(int*)&pSrc[1*nStride]);   // [13 12 11 10]
+    T02 = _mm_cvtsi32_si128(*(int*)&pSrc[2*nStride]);   // [23 22 21 20]
+    T03 = _mm_cvtsi32_si128(*(int*)&pSrc[3*nStride]);   // [33 32 31 30]
+
+    T00 = _mm_unpacklo_epi8(T00, T01);
+    T01 = _mm_unpacklo_epi8(T02, T03);
+
+    T00 = _mm_unpacklo_epi16(T00, T01);
+
+    _mm_store_si128((__m128i*)pDst, T00);
+}
+
+#define TRANSPOSE_8X8(in0, in1, in2, in3, in4, in5, in6, in7, \
+                      out0, out1, out2, out3) \
+  {                                                     \
+    const __m128i tr0_0 = _mm_unpacklo_epi8(in0, in1); \
+    const __m128i tr0_1 = _mm_unpacklo_epi8(in2, in3); \
+    const __m128i tr0_2 = _mm_unpacklo_epi8(in4, in5); \
+    const __m128i tr0_3 = _mm_unpacklo_epi8(in6, in7); \
+                                                        \
+    const __m128i tr1_0 = _mm_unpacklo_epi16(tr0_0, tr0_1); \
+    const __m128i tr1_1 = _mm_unpackhi_epi16(tr0_0, tr0_1); \
+    const __m128i tr1_2 = _mm_unpacklo_epi16(tr0_2, tr0_3); \
+    const __m128i tr1_3 = _mm_unpackhi_epi16(tr0_2, tr0_3); \
+                                                            \
+    out0 = _mm_unpacklo_epi32(tr1_0, tr1_2); \
+    out1 = _mm_unpackhi_epi32(tr1_0, tr1_2); \
+    out2 = _mm_unpacklo_epi32(tr1_1, tr1_3); \
+    out3 = _mm_unpackhi_epi32(tr1_1, tr1_3); \
+}
+
+void CDECL transpose8(pixel* pDst, pixel* pSrc, intptr_t nStride)
+{
+    __m128i T00, T01, T02, T03, T04, T05, T06, T07;
+
+    T00 = _mm_loadl_epi64((__m128i*)&pSrc[0*nStride]);   // [07 06 05 04 03 02 01 00]
+    T01 = _mm_loadl_epi64((__m128i*)&pSrc[1*nStride]);   // [17 16 15 14 13 12 11 10]
+    T02 = _mm_loadl_epi64((__m128i*)&pSrc[2*nStride]);   // [27 26 25 24 23 22 21 20]
+    T03 = _mm_loadl_epi64((__m128i*)&pSrc[3*nStride]);   // [37 36 35 34 33 32 31 30]
+    T04 = _mm_loadl_epi64((__m128i*)&pSrc[4*nStride]);   // [47 46 45 44 43 42 41 40]
+    T05 = _mm_loadl_epi64((__m128i*)&pSrc[5*nStride]);   // [57 56 55 54 53 52 51 50]
+    T06 = _mm_loadl_epi64((__m128i*)&pSrc[6*nStride]);   // [67 66 65 64 63 62 61 60]
+    T07 = _mm_loadl_epi64((__m128i*)&pSrc[7*nStride]);   // [77 76 75 74 73 72 71 70]
+
+    TRANSPOSE_8X8(T00, T01, T02, T03, T04, T05, T06, T07, T00, T01, T02, T03);
+
+    _mm_store_si128((__m128i*)&pDst[0*8], T00);
+    _mm_store_si128((__m128i*)&pDst[2*8], T01);
+    _mm_store_si128((__m128i*)&pDst[4*8], T02);
+    _mm_store_si128((__m128i*)&pDst[6*8], T03);
+}
+
+ALWAYSINLINE void CDECL transpose16_dummy(pixel* pDst, intptr_t nStrideD, pixel* pSrc, intptr_t nStrideS)
+{
+    __m128i T00, T01, T02, T03, T04, T05, T06, T07;
+
+    T00 = _mm_loadl_epi64((__m128i*)&pSrc[ 0 * nStrideS]);
+    T01 = _mm_loadl_epi64((__m128i*)&pSrc[ 1 * nStrideS]);
+    T02 = _mm_loadl_epi64((__m128i*)&pSrc[ 2 * nStrideS]);
+    T03 = _mm_loadl_epi64((__m128i*)&pSrc[ 3 * nStrideS]);
+    T04 = _mm_loadl_epi64((__m128i*)&pSrc[ 4 * nStrideS]);
+    T05 = _mm_loadl_epi64((__m128i*)&pSrc[ 5 * nStrideS]);
+    T06 = _mm_loadl_epi64((__m128i*)&pSrc[ 6 * nStrideS]);
+    T07 = _mm_loadl_epi64((__m128i*)&pSrc[ 7 * nStrideS]);
+    TRANSPOSE_8X8(T00, T01, T02, T03, T04, T05, T06, T07, T00, T01, T02, T03);
+    _mm_storel_epi64((__m128i*)&pDst[ 8 * nStrideD + 8], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[ 9 * nStrideD + 8], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[10 * nStrideD + 8], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[11 * nStrideD + 8], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[12 * nStrideD + 8], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[13 * nStrideD + 8], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[14 * nStrideD + 8], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[15 * nStrideD + 8], _mm_castsi128_ps(T00));
+
+    T00 = _mm_loadl_epi64((__m128i*)&pSrc[ 0 * nStrideS + 8]);
+    T01 = _mm_loadl_epi64((__m128i*)&pSrc[ 1 * nStrideS + 8]);
+    T02 = _mm_loadl_epi64((__m128i*)&pSrc[ 2 * nStrideS + 8]);
+    T03 = _mm_loadl_epi64((__m128i*)&pSrc[ 3 * nStrideS + 8]);
+    T04 = _mm_loadl_epi64((__m128i*)&pSrc[ 4 * nStrideS + 8]);
+    T05 = _mm_loadl_epi64((__m128i*)&pSrc[ 5 * nStrideS + 8]);
+    T06 = _mm_loadl_epi64((__m128i*)&pSrc[ 6 * nStrideS + 8]);
+    T07 = _mm_loadl_epi64((__m128i*)&pSrc[ 7 * nStrideS + 8]);
+    TRANSPOSE_8X8(T00, T01, T02, T03, T04, T05, T06, T07, T00, T01, T02, T03);
+    _mm_storel_epi64((__m128i*)&pDst[ 8 * nStrideD], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[ 9 * nStrideD], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[10 * nStrideD], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[11 * nStrideD], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[12 * nStrideD], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[13 * nStrideD], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[14 * nStrideD], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[15 * nStrideD], _mm_castsi128_ps(T00));
+
+    T00 = _mm_loadl_epi64((__m128i*)&pSrc[ 8 * nStrideS + 8]);
+    T01 = _mm_loadl_epi64((__m128i*)&pSrc[ 9 * nStrideS + 8]);
+    T02 = _mm_loadl_epi64((__m128i*)&pSrc[10 * nStrideS + 8]);
+    T03 = _mm_loadl_epi64((__m128i*)&pSrc[11 * nStrideS + 8]);
+    T04 = _mm_loadl_epi64((__m128i*)&pSrc[12 * nStrideS + 8]);
+    T05 = _mm_loadl_epi64((__m128i*)&pSrc[13 * nStrideS + 8]);
+    T06 = _mm_loadl_epi64((__m128i*)&pSrc[14 * nStrideS + 8]);
+    T07 = _mm_loadl_epi64((__m128i*)&pSrc[15 * nStrideS + 8]);
+    TRANSPOSE_8X8(T00, T01, T02, T03, T04, T05, T06, T07, T00, T01, T02, T03);
+    _mm_storel_epi64((__m128i*)&pDst[ 0 * nStrideD], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[ 1 * nStrideD], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[ 2 * nStrideD], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[ 3 * nStrideD], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[ 4 * nStrideD], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[ 5 * nStrideD], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[ 6 * nStrideD], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[ 7 * nStrideD], _mm_castsi128_ps(T00));
+
+    T00 = _mm_loadl_epi64((__m128i*)&pSrc[ 8 * nStrideS]);
+    T01 = _mm_loadl_epi64((__m128i*)&pSrc[ 9 * nStrideS]);
+    T02 = _mm_loadl_epi64((__m128i*)&pSrc[10 * nStrideS]);
+    T03 = _mm_loadl_epi64((__m128i*)&pSrc[11 * nStrideS]);
+    T04 = _mm_loadl_epi64((__m128i*)&pSrc[12 * nStrideS]);
+    T05 = _mm_loadl_epi64((__m128i*)&pSrc[13 * nStrideS]);
+    T06 = _mm_loadl_epi64((__m128i*)&pSrc[14 * nStrideS]);
+    T07 = _mm_loadl_epi64((__m128i*)&pSrc[15 * nStrideS]);
+    TRANSPOSE_8X8(T00, T01, T02, T03, T04, T05, T06, T07, T00, T01, T02, T03);
+    _mm_storel_epi64((__m128i*)&pDst[ 0 * nStrideD + 8], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[ 1 * nStrideD + 8], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[ 2 * nStrideD + 8], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[ 3 * nStrideD + 8], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[ 4 * nStrideD + 8], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[ 5 * nStrideD + 8], _mm_castsi128_ps(T00));
+    _mm_storel_epi64((__m128i*)&pDst[ 6 * nStrideD + 8], T00);
+    _mm_storeh_pi(     (__m64*)&pDst[ 7 * nStrideD + 8], _mm_castsi128_ps(T00));
+}
+
+void CDECL transpose16(pixel* pDst, pixel* pSrc, intptr_t nStrideS)
+{
+    transpose16_dummy(pDst, 16, pSrc, nStrideS);
+}
+#endif !HIGH_BIT_DEPTH
+
+}  // end anonymous namespace
 
 #include "utils.h"
 #include "sse.inc"
@@ -248,14 +403,22 @@ void NAME(Setup_Vec_PixelPrimitives)(EncoderPrimitives &p)
 
     p.calcresidual[BLOCK_4x4] = getResidual4;
     p.calcresidual[BLOCK_8x8] = getResidual8;
-    p.calcresidual[BLOCK_16x16] = getResidual<16>;
-    p.calcresidual[BLOCK_32x32] = getResidual<32>;
-    p.calcresidual[BLOCK_64x64] = getResidual<64>;
+    p.calcresidual[BLOCK_16x16] = getResidual16;
+    p.calcresidual[BLOCK_32x32] = getResidual32;
+    p.calcresidual[BLOCK_64x64] = getResidual64;
     p.calcrecon[BLOCK_4x4] = calcRecons4;
     p.calcrecon[BLOCK_8x8] = calcRecons8;
     p.calcrecon[BLOCK_16x16] = calcRecons<16>;
     p.calcrecon[BLOCK_32x32] = calcRecons<32>;
     p.calcrecon[BLOCK_64x64] = calcRecons<64>;
 #endif /* if HIGH_BIT_DEPTH */
+
+#if !HIGH_BIT_DEPTH
+    p.transpose[0] = transpose4;
+    p.transpose[1] = transpose8;
+    p.transpose[2] = transpose16;
+    p.transpose[3] = transpose<32>;
+    p.transpose[4] = transpose<64>;
+#endif
 }
 }

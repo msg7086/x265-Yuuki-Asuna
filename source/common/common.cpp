@@ -162,6 +162,12 @@ int x265_check_params(x265_param_t *param)
     if (param->iWaveFrontSynchro == 0)
         param->poolNumThreads = 1;
 
+    if (param->searchMethod != X265_ORIG_SEARCH && (param->useWeightedPred || param->useWeightedBiPred))
+    {
+        x265_log(param, X265_LOG_WARNING, "Weighted prediction only supported by HM ME, forcing --me 4\n");
+        param->searchMethod = X265_ORIG_SEARCH;
+    }
+
 #if !HIGH_BIT_DEPTH
     CONFIRM(param->internalBitDepth != 8,
             "InternalBitDepth must be 8");
@@ -170,8 +176,8 @@ int x265_check_params(x265_param_t *param)
             "QP exceeds supported range (-QpBDOffsety to 51)");
     CONFIRM(param->iFrameRate <= 0,
             "Frame rate must be more than 1");
-    CONFIRM(param->searchMethod<0 || param->searchMethod> X265_ORIG_SEARCH,
-            "Search method is not supported value (0:DIA 1:HEX 2:UMH 3:HM 4:ORIG)");
+    CONFIRM(param->searchMethod<0 || param->searchMethod> X265_FULL_SEARCH,
+            "Search method is not supported value (0:DIA 1:HEX 2:UMH 3:HM 4:ORIG 5:FULL)");
     CONFIRM(param->iSearchRange < 0,
             "Search Range must be more than 0");
     CONFIRM(param->iSearchRange >= 32768,

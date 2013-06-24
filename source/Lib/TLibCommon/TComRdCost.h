@@ -126,7 +126,6 @@ public:
 
     Bool            bApplyWeight;   // whether weithed prediction is used or not
     wpScalingParam  *wpCur;         // weithed prediction scaling parameters for current ref
-    UInt            uiComp;         // uiComp = 0 (luma Y), 1 (chroma U), 2 (chroma V)
 
     // (vertical) subsampling shift (for reducing complexity)
     // - 0 = no subsampling, 1 = even rows, 2 = every 4th, etc.
@@ -189,8 +188,6 @@ public:
     Void setCrDistortionWeight(Double crDistortionWeight);
 
     Double  getSqrtLambda()                               { return m_sqrtLambda; }
-
-    Double  getLambda()                                   { return m_dLambda; }
 
     inline UInt64  calcRdCost(UInt distortion, UInt bits) { return distortion + ((bits * m_uiLambdaMotionSSE + 32768) >> 16); }
 

@@ -209,7 +209,7 @@ public:
     Void xEncPCM(TComDataCU* pcCU, UInt uiAbsPartIdx, Pel* piOrg, Pel* piPCM, Pel* piPred, Short* piResi, Pel* piReco, UInt uiStride, UInt uiWidth, UInt uiHeight, TextType eText);
     Void IPCMSearch(TComDataCU* pcCU, TComYuv* pcOrgYuv, TComYuv*& rpcPredYuv, TShortYUV*& rpcResiYuv, TComYuv*& rpcRecoYuv);
 
-      UInt estimateHeaderBits(TComDataCU* pcCU, UInt uiAbsPartIdx);
+    UInt estimateHeaderBits(TComDataCU* pcCU, UInt uiAbsPartIdx);
 
 protected:
 
@@ -380,17 +380,8 @@ protected:
                            UInt&       ruiCost,
                            Bool        bBi = false);
 
-    Void xTZSearch(TComDataCU*  pcCU,
-                   TComPattern* pcPatternKey,
-                   Pel*         piRefY,
-                   Int          iRefStride,
-                   TComMv*      pcMvSrchRngLT,
-                   TComMv*      pcMvSrchRngRB,
-                   TComMv&      rcMv,
-                   UInt&        ruiSAD);
-
     Void xSetSearchRange(TComDataCU* pcCU,
-                         TComMv&     cMvPred,
+                         TComMv      cMvPred,
                          Int         iSrchRng,
                          TComMv&     rcMvSrchRngLT,
                          TComMv&     rcMvSrchRngRB);
@@ -449,7 +440,6 @@ protected:
                              TShortYUV*& rpcYuvResi);
 
     Void  setWpScalingDistParam(TComDataCU* pcCU, Int iRefIdx, RefPicList eRefPicListCur);
-    inline  Void  setDistParamComp(UInt uiComp)  { m_cDistParam.uiComp = uiComp; }
 }; // END CLASS DEFINITION TEncSearch
 
 //! \}

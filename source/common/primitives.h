@@ -32,7 +32,7 @@
 
 #define FENC_STRIDE 64
 
-// from cpu-a.asm, if ASM primitives are compiled.  Else primitives.cpp
+// from cpu-a.asm, if ASM primitives are compiled, else primitives.cpp
 extern "C" void x265_cpu_emms(void);
 
 #if _MSC_VER && _WIN64
@@ -101,7 +101,7 @@ enum SquareBlocks   // Routines can be indexed using log2n(width)
     BLOCK_16x16,
     BLOCK_32x32,
     BLOCK_64x64,
-    NUM_BLOCKS
+    NUM_SQUARE_BLOCKS
 };
 
 enum FilterConf
@@ -128,7 +128,7 @@ enum FilterConf
     NUM_FILTER
 };
 
-// NOTE: Not all DCT functions support Dest Stride
+// NOTE: Not all DCT functions support dest stride
 enum Dcts
 {
     DST_4x4,
@@ -162,6 +162,8 @@ enum IPFilterConf_P_S
 {
     FILTER_H_P_S_8,
     FILTER_H_P_S_4,
+    FILTER_V_P_S_8,
+    FILTER_V_P_S_4,
     NUM_IPFILTER_P_S
 };
 
@@ -170,6 +172,13 @@ enum IPFilterConf_S_P
     FILTER_V_S_P_8,
     FILTER_V_S_P_4,
     NUM_IPFILTER_S_P
+};
+
+enum IPFilterConf_S_S
+{
+    FILTER_V_S_S_8,
+    FILTER_V_S_S_4,
+    NUM_IPFILTER_S_S
 };
 
 // Returns a Partitions enum if the size matches a supported performance primitive,
@@ -185,6 +194,7 @@ typedef void (CDECL * IPFilter)(const short *coeff, short *src, int srcStride, s
 typedef void (CDECL * IPFilter_p_p)(int bit_Depth, pixel *src, int srcStride, pixel *dst, int dstStride, int width, int height, short const *coeff);
 typedef void (CDECL * IPFilter_p_s)(int bit_Depth, pixel *src, int srcStride, short *dst, int dstStride, int width, int height, short const *coeff);
 typedef void (CDECL * IPFilter_s_p)(int bit_Depth, short *src, int srcStride, pixel *dst, int dstStride, int width, int height, short const *coeff);
+typedef void (CDECL * IPFilter_s_s)(int bitDepth, short *src, int srcStride, short *dst, int dstStride, int width, int height, short const *coeff);
 typedef void (CDECL * IPFilterConvert_p_s)(int bit_Depth, pixel *src, int srcStride, short *dst, int dstStride, int width, int height);
 typedef void (CDECL * IPFilterConvert_s_p)(int bit_Depth, short *src, int srcStride, pixel *dst, int dstStride, int width, int height);
 typedef void (CDECL * blockcpy_p_p)(int bx, int by, pixel *dst, intptr_t dstride, pixel *src, intptr_t sstride); // dst is aligned
@@ -205,6 +215,7 @@ typedef void (CDECL * dct_t)(short *pSrc, int *pDst, intptr_t stride);
 typedef void (CDECL * idct_t)(int *pSrc, short *pDst, intptr_t stride);
 typedef void (CDECL * calcresidual_t)(pixel *piOrig, pixel *piPred, short *piRes, int stride);
 typedef void (CDECL * calcrecon_t)(pixel* piPred, short* piResi,pixel*  piReco, short* piRecQt, pixel *piRecIPred, int uiStride, int uiRecQtStride, int uiRecIPredStride);
+typedef void (CDECL * transpose_t)(pixel* pDst, pixel* pSrc, intptr_t nStride);
 typedef void (CDECL * filterVmulti_t)(int bitDepth, short *src, int srcStride, pixel *dstE, pixel *dstI, pixel *dstP, int dstStride, int block_width, int block_height,int marginX, int marginY);
 typedef void (CDECL * filterHmulti_t)(int bitDepth, pixel *src, int srcStride, short *midF, short* midA, short* midB, short* midC, int midStride, pixel *pDstA, pixel *pDstB, pixel *pDstC, int pDstStride, int block_width, int block_height);
 
@@ -214,19 +225,20 @@ typedef void (CDECL * filterHmulti_t)(int bitDepth, pixel *src, int srcStride, s
 struct EncoderPrimitives
 {
     /* All pixel comparison functions take the same arguments */
-    pixelcmp sad[NUM_PARTITIONS];   // Sum of Differences for each size
-    pixelcmp_x3 sad_x3[NUM_PARTITIONS];   // Sum of Differences for each size
-    pixelcmp_x4 sad_x4[NUM_PARTITIONS];   // Sum of Differences for each size
-    pixelcmp sse_pp[NUM_PARTITIONS];   // SSE (pixel, pixel) fenc alignment not assumed
-    pixelcmp_ss sse_ss[NUM_PARTITIONS]; // SSE (short, short) fenc alignment not assumed
-    pixelcmp_sp sse_sp[NUM_PARTITIONS]; // SSE (short, pixel) fenc alignment not assumed
-    pixelcmp satd[NUM_PARTITIONS];  // Sum of Transformed differences (HADAMARD)
+    pixelcmp sad[NUM_PARTITIONS];        // Sum of Differences for each size
+    pixelcmp_x3 sad_x3[NUM_PARTITIONS];  // Sum of Differences 3x for each size
+    pixelcmp_x4 sad_x4[NUM_PARTITIONS];  // Sum of Differences 4x for each size
+    pixelcmp sse_pp[NUM_PARTITIONS];     // Sum of Square Error (pixel, pixel) fenc alignment not assumed
+    pixelcmp_ss sse_ss[NUM_PARTITIONS];  // Sum of Square Error (short, short) fenc alignment not assumed
+    pixelcmp_sp sse_sp[NUM_PARTITIONS];  // Sum of Square Error (short, pixel) fenc alignment not assumed
+    pixelcmp satd[NUM_PARTITIONS];       // Sum of Transformed differences (HADAMARD)
     pixelcmp sa8d_inter[NUM_PARTITIONS]; // sa8d primitives for motion search partitions
-    pixelcmp sa8d[NUM_BLOCKS];           // sa8d primitives for square intra blocks
+    pixelcmp sa8d[NUM_SQUARE_BLOCKS];    // sa8d primitives for square intra blocks
     IPFilter filter[NUM_FILTER];
     IPFilter_p_p ipFilter_p_p[NUM_IPFILTER_P_P];
     IPFilter_p_s ipFilter_p_s[NUM_IPFILTER_P_S];
     IPFilter_s_p ipFilter_s_p[NUM_IPFILTER_S_P];
+    IPFilter_s_s ipFilter_s_s[NUM_IPFILTER_S_S];
     IPFilterConvert_p_s ipfilterConvert_p_s;
     IPFilterConvert_s_p ipfilterConvert_s_p;
     blockcpy_p_p cpyblock;     // pixel from pixel
@@ -236,7 +248,7 @@ struct EncoderPrimitives
     getIPredDC_t getIPredDC;
     getIPredPlanar_t getIPredPlanar;
     getIPredAng_p getIPredAng;
-    getIPredAngs_t getIPredAngs[5];
+    getIPredAngs_t getIPredAngs[NUM_SQUARE_BLOCKS];
     quant deQuant;
     dct_t dct[NUM_DCTS];
     idct_t idct[NUM_IDCTS];
@@ -245,8 +257,9 @@ struct EncoderPrimitives
     cvt16to16_shl_t cvt16to16_shl;
     cvt32to16_t cvt32to16;
     cvt32to16_shr_t cvt32to16_shr;
-    calcresidual_t calcresidual[NUM_BLOCKS];
-    calcrecon_t calcrecon[NUM_BLOCKS];
+    calcresidual_t calcresidual[NUM_SQUARE_BLOCKS];
+    calcrecon_t calcrecon[NUM_SQUARE_BLOCKS];
+    transpose_t transpose[NUM_SQUARE_BLOCKS];
     filterVmulti_t filterVmulti;
     filterHmulti_t filterHmulti;
 };
