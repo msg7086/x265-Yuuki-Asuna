@@ -47,6 +47,9 @@
 //! \ingroup TLibCommon
 //! \{
 
+namespace x265 {
+// private namespace
+
 // ====================================================================================================================
 // Class definition
 // ====================================================================================================================
@@ -56,12 +59,12 @@ class TComBitIf
 {
 public:
 
-    virtual Void        writeAlignOne() {}
+    virtual void        writeAlignOne() {}
 
-    virtual Void        writeAlignZero() {}
+    virtual void        writeAlignZero() {}
 
-    virtual Void        write(UInt uiBits, UInt uiNumberOfBits)  = 0;
-    virtual Void        resetBits()                              = 0;
+    virtual void        write(UInt uiBits, UInt uiNumberOfBits)  = 0;
+    virtual void        resetBits()                              = 0;
     virtual UInt getNumberOfWrittenBits() const = 0;
     virtual ~TComBitIf() {}
 };
@@ -97,13 +100,13 @@ public:
      * append uiNumberOfBits least significant bits of uiBits to
      * the current bitstream
      */
-    Void        write(UInt uiBits, UInt uiNumberOfBits);
+    void        write(UInt uiBits, UInt uiNumberOfBits);
 
     /** insert one bits until the bitstream is byte-aligned */
-    Void        writeAlignOne();
+    void        writeAlignOne();
 
     /** insert zero bits until the bitstream is byte-aligned */
-    Void        writeAlignZero();
+    void        writeAlignZero();
 
     /** this function should never be called */
     void resetBits() { assert(0); }
@@ -116,7 +119,7 @@ public:
      * NB, data is arranged such that subsequent bytes in the
      * bytestream are stored in ascending addresses.
      */
-    Char* getByteStream() const;
+    char* getByteStream() const;
 
     /**
      * Return the number of valid bytes available from  getByteStream()
@@ -126,13 +129,13 @@ public:
     /**
      * Reset all internal state.
      */
-    Void clear();
+    void clear();
 
     /**
      * returns the number of bits that need to be written to
      * achieve byte alignment.
      */
-    Int getNumBitsUntilByteAligned() { return (8 - m_num_held_bits) & 0x7; }
+    int getNumBitsUntilByteAligned() { return (8 - m_num_held_bits) & 0x7; }
 
     /**
      * Return the number of bits that have been written since the last clear()
@@ -152,13 +155,13 @@ public:
     /** Return a reference to the internal fifo */
     std::vector<uint8_t>& getFIFO() const { return *m_fifo; }
 
-    Void          addSubstream(TComOutputBitstream* pcSubstream);
-    Void writeByteAlignment();
+    void          addSubstream(TComOutputBitstream* pcSubstream);
+    void writeByteAlignment();
 
     //! returns the number of start code emulations contained in the current buffer
-    Int countStartCodeEmulations();
+    int countStartCodeEmulations();
 };
-
+}
 //! \}
 
 #endif // ifndef __COMBITSTREAM__

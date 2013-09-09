@@ -70,7 +70,7 @@ void blockcopy_p_p(int bx, int by, pixel *dst, intptr_t dstride, pixel *src, int
 {
     size_t aligncheck = (size_t)dst | (size_t)src | bx | sstride | dstride;
 
-#if INSTRSET >= 8
+#if INSTRSET >= X265_CPU_LEVEL_AVX2
     if (!(aligncheck & 31))
     {
         // fast path, multiples of 32 pixel wide blocks
@@ -121,7 +121,7 @@ void blockcopy_p_s(int bx, int by, pixel *dst, intptr_t dstride, short *src, int
 {
     size_t aligncheck = (size_t)dst | (size_t)src | bx | sstride | dstride;
 
-#if INSTRSET >= 8 && 0
+#if INSTRSET >= X265_CPU_LEVEL_AVX2 && 0
     if (!(aligncheck & 31))
     {
         // fast path, multiples of 32 pixel wide blocks
@@ -179,7 +179,7 @@ void blockcopy_p_s(int bx, int by, pixel *dst, intptr_t dstride, short *src, int
 void blockcopy_s_p(int bx, int by, short *dst, intptr_t dstride, uint8_t *src, intptr_t sstride)
 {
     size_t aligncheck = (size_t)dst | (size_t)src | bx | sstride | dstride;
-#if INSTRSET >= 8 && 0
+#if INSTRSET >= X265_CPU_LEVEL_AVX2 && 0
     if (!(aligncheck & 31))
     {
         // fast path, multiples of 32 pixel wide blocks
@@ -236,7 +236,7 @@ void pixelsub_sp(int bx, int by, short *dst, intptr_t dstride, uint8_t *src0, ui
 {
     size_t aligncheck = (size_t)dst | (size_t)src0 | bx | sstride0 | dstride;
 
-#if INSTRSET >= 8 && 0
+#if INSTRSET >= X265_CPU_LEVEL_AVX2 && 0
     if (!(aligncheck & 31))
     {
         // fast path, multiples of 32 pixel wide blocks
@@ -260,7 +260,7 @@ void pixelsub_sp(int bx, int by, short *dst, intptr_t dstride, uint8_t *src0, ui
         }
     }
     else
-#endif /* if INSTRSET >= 8 && 0 */
+#endif /* if INSTRSET >= X265_CPU_LEVEL_AVX2 && 0 */
     if (!(aligncheck & 15))
     {
         // fast path, multiples of 16 pixel wide blocks
@@ -304,7 +304,7 @@ void pixeladd_ss(int bx, int by, short *dst, intptr_t dstride, short *src0, shor
 {
     size_t aligncheck = (size_t)dst | (size_t)src0 | sstride0 | dstride;
 
-#if INSTRSET >= 8 && 0
+#if INSTRSET >= X265_CPU_LEVEL_AVX2 && 0
     if (!(aligncheck & 31) && !(bx & 15))
     {
         Vec16s zero(0), maxval((1 << X265_DEPTH) - 1); 
@@ -330,7 +330,7 @@ void pixeladd_ss(int bx, int by, short *dst, intptr_t dstride, short *src0, shor
         }
     }
     else
-#endif /* if INSTRSET >= 8 && 0 */
+#endif /* if INSTRSET >= X265_CPU_LEVEL_AVX2 && 0 */
     if ( !(aligncheck & 15) && !(bx & 7))
     {
         Vec8s zero(0), maxval((1 << X265_DEPTH) - 1);
@@ -405,7 +405,7 @@ void pixeladd_pp(int bx, int by, pixel *dst, intptr_t dstride, pixel *src0, pixe
 {
     size_t aligncheck = (size_t)dst | (size_t)src0 | bx | sstride0 | dstride;
 
-#if INSTRSET >= 8 && 0
+#if INSTRSET >= X265_CPU_LEVEL_AVX2 && 0
     if (!(aligncheck & 31))
     {
          Vec32uc zero(0), maxval((1 << X265_DEPTH) - 1); 
@@ -430,7 +430,7 @@ void pixeladd_pp(int bx, int by, pixel *dst, intptr_t dstride, pixel *src0, pixe
         }
     }
     else
-#endif /* if INSTRSET >= 8 && 0 */
+#endif /* if INSTRSET >= X265_CPU_LEVEL_AVX2 && 0 */
     if (!(aligncheck & 15))
     {
         Vec16uc zero(0), maxval((1 << X265_DEPTH) - 1); 
@@ -507,10 +507,10 @@ void NAME(Setup_Vec_BlockCopyPrimitives)(EncoderPrimitives &p)
 #if HIGH_BIT_DEPTH
     // At high bit depth, a pixel is a short
     p.blockcpy_pp = blockcopy_p_p;
-    p.blockcpy_ps = (x265::blockcpy_ps_t)blockcopy_p_p;
-    p.blockcpy_sp = (x265::blockcpy_sp_t)blockcopy_p_p;
-    p.blockcpy_sc = (x265::blockcpy_sc_t)blockcopy_s_p;
-    p.pixeladd_pp = (x265::pixeladd_pp_t)pixeladd_ss;
+    p.blockcpy_ps = (blockcpy_ps_t)blockcopy_p_p;
+    p.blockcpy_sp = (blockcpy_sp_t)blockcopy_p_p;
+    p.blockcpy_sc = (blockcpy_sc_t)blockcopy_s_p;
+    p.pixeladd_pp = (pixeladd_pp_t)pixeladd_ss;
     p.pixeladd_ss = pixeladd_ss;
 #else
     p.blockcpy_pp = blockcopy_p_p;

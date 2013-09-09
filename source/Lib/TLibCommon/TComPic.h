@@ -42,6 +42,11 @@
 #include "CommonDef.h"
 #include "TComPicSym.h"
 #include "TComPicYuv.h"
+#include "lowres.h"
+#include "threading.h"
+
+namespace x265 {
+// private namespace
 
 //! \ingroup TLibCommon
 //! \{
@@ -62,41 +67,44 @@ private:
     Window                m_conformanceWindow;
     Window                m_defaultDisplayWindow;
 
-    UInt                  m_tlayer;               // Temporal layer
-    Bool                  m_bUsedByCurr;          // Used by current picture
-    Bool                  m_bIsLongTerm;          // IS long term picture
-    Bool                  m_bCheckLTMSB;
+    bool                  m_bUsedByCurr;          // Used by current picture
+    bool                  m_bIsLongTerm;          // IS long term picture
+    bool                  m_bCheckLTMSB;
 
 public:
+
+    //** Frame Parallelism - notification between FrameEncoders of available motion reference rows **
+    volatile uint32_t     m_reconRowCount;      // count of CTU rows completely reconstructed and extended for motion reference
+    volatile uint32_t     m_countRefEncoders;   // count of FrameEncoder threads monitoring m_reconRowCount
+    Event                 m_reconRowWait;       // event triggered m_countRefEncoders times each time a recon row is completed
+    void*                 m_userData;           // user provided pointer passed in with this picture
+
+    Lowres                m_lowres;
 
     TComPic();
     virtual ~TComPic();
 
-    Void          create(Int width, Int height, UInt maxWidth, UInt maxHeight, UInt maxDepth, Window &conformanceWindow, Window &defaultDisplayWindow);
+    void          create(int width, int height, UInt maxWidth, UInt maxHeight, UInt maxDepth, Window &conformanceWindow, Window &defaultDisplayWindow, int bframes);
 
-    virtual Void  destroy();
+    virtual void  destroy();
 
-    UInt          getTLayer()               { return m_tlayer; }
+    bool          getUsedByCurr()           { return m_bUsedByCurr; }
 
-    Void          setTLayer(UInt tlayer)    { m_tlayer = tlayer; }
+    void          setUsedByCurr(bool bUsed) { m_bUsedByCurr = bUsed; }
 
-    Bool          getUsedByCurr()           { return m_bUsedByCurr; }
+    bool          getIsLongTerm()           { return m_bIsLongTerm; }
 
-    Void          setUsedByCurr(Bool bUsed) { m_bUsedByCurr = bUsed; }
+    void          setIsLongTerm(bool lt)    { m_bIsLongTerm = lt; }
 
-    Bool          getIsLongTerm()           { return m_bIsLongTerm; }
+    void          setCheckLTMSBPresent(bool b) { m_bCheckLTMSB = b; }
 
-    Void          setIsLongTerm(Bool lt)    { m_bIsLongTerm = lt; }
-
-    Void          setCheckLTMSBPresent(Bool b) { m_bCheckLTMSB = b; }
-
-    Bool          getCheckLTMSBPresent()  { return m_bCheckLTMSB; }
+    bool          getCheckLTMSBPresent()  { return m_bCheckLTMSB; }
 
     TComPicSym*   getPicSym()             { return m_picSym; }
 
     TComSlice*    getSlice()              { return m_picSym->getSlice(); }
 
-    Int           getPOC()                { return m_picSym->getSlice()->getPOC(); }
+    int           getPOC()                { return m_picSym->getSlice()->getPOC(); }
 
     TComDataCU*   getCU(UInt cuAddr)    { return m_picSym->getCU(cuAddr); }
 
@@ -124,21 +132,19 @@ public:
 
     UInt          getParPelY(UChar partIdx) { return getParPelX(partIdx); }
 
-    Int           getStride()             { return m_reconPicYuv->getStride(); }
+    int           getStride()             { return m_reconPicYuv->getStride(); }
 
-    Int           getCStride()            { return m_reconPicYuv->getCStride(); }
-
-    Void          compressMotion();
+    int           getCStride()            { return m_reconPicYuv->getCStride(); }
 
     Window&       getConformanceWindow()  { return m_conformanceWindow; }
 
     Window&       getDefDisplayWindow()   { return m_defaultDisplayWindow; }
 
-    Void          createNonDBFilterInfo(Int lastSliceCUAddr, Int sliceGranularityDepth);
-    Void          createNonDBFilterInfoLCU(Int sliceID, TComDataCU* cu, UInt startSU, UInt endSU, Int sliceGranularyDepth, UInt picWidth, UInt picHeight);
-    Void          destroyNonDBFilterInfo();
+    void          createNonDBFilterInfo(int lastSliceCUAddr, int sliceGranularityDepth);
+    void          createNonDBFilterInfoLCU(int sliceID, TComDataCU* cu, UInt startSU, UInt endSU, int sliceGranularyDepth, UInt picWidth, UInt picHeight);
+    void          destroyNonDBFilterInfo();
 }; // END CLASS DEFINITION TComPic
-
+}
 //! \}
 
 #endif // __TCOMPIC__

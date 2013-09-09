@@ -38,6 +38,9 @@
 #include <vector>
 #include <cstring>
 
+namespace x265 {
+// private namespace
+
 //! \ingroup TLibCommon
 //! \{
 class TComSPS;
@@ -139,11 +142,11 @@ public:
 
     virtual ~SEIActiveParameterSets() {}
 
-    Int activeVPSId;
-    Bool m_fullRandomAccessFlag;
-    Bool m_noParamSetUpdateFlag;
-    Int numSpsIdsMinus1;
-    std::vector<Int> activeSeqParamSetId;
+    int activeVPSId;
+    bool m_fullRandomAccessFlag;
+    bool m_noParamSetUpdateFlag;
+    int numSpsIdsMinus1;
+    int activeSeqParamSetId;
 };
 
 class SEIBufferingPeriod : public SEI
@@ -167,14 +170,14 @@ public:
     virtual ~SEIBufferingPeriod() {}
 
     UInt m_bpSeqParameterSetId;
-    Bool m_rapCpbParamsPresentFlag;
-    Bool m_cpbDelayOffset;
-    Bool m_dpbDelayOffset;
+    bool m_rapCpbParamsPresentFlag;
+    bool m_cpbDelayOffset;
+    bool m_dpbDelayOffset;
     UInt m_initialCpbRemovalDelay[MAX_CPB_CNT][2];
     UInt m_initialCpbRemovalDelayOffset[MAX_CPB_CNT][2];
     UInt m_initialAltCpbRemovalDelay[MAX_CPB_CNT][2];
     UInt m_initialAltCpbRemovalDelayOffset[MAX_CPB_CNT][2];
-    Bool m_concatenationFlag;
+    bool m_concatenationFlag;
     UInt m_auCpbRemovalDelayDelta;
 };
 
@@ -207,13 +210,13 @@ public:
 
     UInt  m_picStruct;
     UInt  m_sourceScanType;
-    Bool  m_duplicateFlag;
+    bool  m_duplicateFlag;
 
     UInt  m_auCpbRemovalDelay;
     UInt  m_picDpbOutputDelay;
     UInt  m_picDpbOutputDuDelay;
     UInt  m_numDecodingUnitsMinus1;
-    Bool  m_duCommonCpbRemovalDelayFlag;
+    bool  m_duCommonCpbRemovalDelayFlag;
     UInt  m_duCommonCpbRemovalDelayMinus1;
     UInt* m_numNalusInDuMinus1;
     UInt* m_duCpbRemovalDelayMinus1;
@@ -234,10 +237,10 @@ public:
 
     virtual ~SEIDecodingUnitInfo() {}
 
-    Int m_decodingUnitIdx;
-    Int m_duSptCpbRemovalDelay;
-    Bool m_dpbOutputDuDelayPresentFlag;
-    Int m_picSptDpbOutputDuDelay;
+    int m_decodingUnitIdx;
+    int m_duSptCpbRemovalDelay;
+    bool m_dpbOutputDuDelayPresentFlag;
+    int m_picSptDpbOutputDuDelay;
 };
 
 class SEIRecoveryPoint : public SEI
@@ -250,9 +253,9 @@ public:
 
     virtual ~SEIRecoveryPoint() {}
 
-    Int  m_recoveryPocCnt;
-    Bool m_exactMatchingFlag;
-    Bool m_brokenLinkFlag;
+    int  m_recoveryPocCnt;
+    bool m_exactMatchingFlag;
+    bool m_brokenLinkFlag;
 };
 
 class SEIDisplayOrientation : public SEI
@@ -269,30 +272,13 @@ public:
 
     virtual ~SEIDisplayOrientation() {}
 
-    Bool cancelFlag;
-    Bool horFlip;
-    Bool verFlip;
+    bool cancelFlag;
+    bool horFlip;
+    bool verFlip;
 
     UInt anticlockwiseRotation;
-    Bool persistenceFlag;
-    Bool extensionFlag;
-};
-
-class SEITemporalLevel0Index : public SEI
-{
-public:
-
-    PayloadType payloadType() const { return TEMPORAL_LEVEL0_INDEX; }
-
-    SEITemporalLevel0Index()
-        : tl0Idx(0)
-        , rapIdx(0)
-    {}
-
-    virtual ~SEITemporalLevel0Index() {}
-
-    UInt tl0Idx;
-    UInt rapIdx;
+    bool persistenceFlag;
+    bool extensionFlag;
 };
 
 class SEIGradualDecodingRefreshInfo : public SEI
@@ -307,26 +293,7 @@ public:
 
     virtual ~SEIGradualDecodingRefreshInfo() {}
 
-    Bool m_gdrForegroundFlag;
-};
-
-class SEISOPDescription : public SEI
-{
-public:
-
-    PayloadType payloadType() const { return SOP_DESCRIPTION; }
-
-    SEISOPDescription() {}
-
-    virtual ~SEISOPDescription() {}
-
-    UInt m_sopSeqParameterSetId;
-    UInt m_numPicsInSopMinus1;
-
-    UInt m_sopDescVclNaluType[MAX_NUM_PICS_IN_SOP];
-    UInt m_sopDescTemporalId[MAX_NUM_PICS_IN_SOP];
-    UInt m_sopDescStRpsIdx[MAX_NUM_PICS_IN_SOP];
-    Int m_sopDescPocDelta[MAX_NUM_PICS_IN_SOP];
+    bool m_gdrForegroundFlag;
 };
 
 typedef std::list<SEI*> SEIMessages;
@@ -338,40 +305,8 @@ SEIMessages getSeisByType(SEIMessages &seiList, SEI::PayloadType seiType);
 SEIMessages extractSeisByType(SEIMessages &seiList, SEI::PayloadType seiType);
 
 /// delete list of SEI messages (freeing the referenced objects)
-Void deleteSEIs(SEIMessages &seiList);
-
-class SEIScalableNesting : public SEI
-{
-public:
-
-    PayloadType payloadType() const { return SCALABLE_NESTING; }
-
-    SEIScalableNesting() {}
-
-    virtual ~SEIScalableNesting()
-    {
-        if (!m_callerOwnsSEIs)
-        {
-            deleteSEIs(m_nestedSEIs);
-        }
-    }
-
-    Bool  m_bitStreamSubsetFlag;
-    Bool  m_nestingOpFlag;
-    Bool  m_defaultOpFlag;                           //value valid if m_nestingOpFlag != 0
-    UInt  m_nestingNumOpsMinus1;                     // -"-
-    UInt  m_nestingMaxTemporalIdPlus1[MAX_TLAYER];   // -"-
-    UInt  m_nestingOpIdx[MAX_NESTING_NUM_OPS];       // -"-
-
-    Bool  m_allLayersFlag;                           //value valid if m_nestingOpFlag == 0
-    UInt  m_nestingNoOpMaxTemporalIdPlus1;           //value valid if m_nestingOpFlag == 0 and m_allLayersFlag == 0
-    UInt  m_nestingNumLayersMinus1;                  //value valid if m_nestingOpFlag == 0 and m_allLayersFlag == 0
-    UChar m_nestingLayerId[MAX_NESTING_NUM_LAYER];   //value valid if m_nestingOpFlag == 0 and m_allLayersFlag == 0. This can e.g. be a static array of 64 unsigned char values
-
-    Bool  m_callerOwnsSEIs;
-    SEIMessages m_nestedSEIs;
-};
-
+void deleteSEIs(SEIMessages &seiList);
+}
 //! \}
 
 #endif // ifndef _SEI_

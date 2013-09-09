@@ -37,6 +37,9 @@
 
 #include "TComPic.h"
 #include "SEI.h"
+#include "mv.h"
+
+using namespace x265;
 
 //! \ingroup TLibCommon
 //! \{
@@ -49,16 +52,19 @@ TComPic::TComPic()
     : m_picSym(NULL)
     , m_origPicYuv(NULL)
     , m_reconPicYuv(NULL)
-    , m_tlayer(0)
     , m_bUsedByCurr(false)
     , m_bIsLongTerm(false)
     , m_bCheckLTMSB(false)
-{}
+{
+    m_reconRowCount = 0;
+    m_countRefEncoders = 0;
+    memset(&m_lowres, 0, sizeof(m_lowres));
+}
 
 TComPic::~TComPic()
 {}
 
-Void TComPic::create(Int width, Int height, UInt maxWidth, UInt maxHeight, UInt maxDepth, Window &conformanceWindow, Window &defaultDisplayWindow)
+void TComPic::create(int width, int height, UInt maxWidth, UInt maxHeight, UInt maxDepth, Window &conformanceWindow, Window &defaultDisplayWindow, int bframes)
 {
     m_picSym = new TComPicSym;
     m_picSym->create(width, height, maxWidth, maxHeight, maxDepth);
@@ -74,9 +80,12 @@ Void TComPic::create(Int width, Int height, UInt maxWidth, UInt maxHeight, UInt 
 
     /* store display window parameters with picture */
     m_defaultDisplayWindow = defaultDisplayWindow;
+
+    /* configure lowres dimensions */
+    m_lowres.create(this, bframes);
 }
 
-Void TComPic::destroy()
+void TComPic::destroy()
 {
     if (m_picSym)
     {
@@ -98,17 +107,8 @@ Void TComPic::destroy()
         delete m_reconPicYuv;
         m_reconPicYuv = NULL;
     }
-}
 
-Void TComPic::compressMotion()
-{
-    TComPicSym* sym = getPicSym();
-
-    for (UInt cuAddr = 0; cuAddr < sym->getFrameHeightInCU() * sym->getFrameWidthInCU(); cuAddr++)
-    {
-        TComDataCU* cu = sym->getCU(cuAddr);
-        cu->compressMV();
-    }
+    m_lowres.destroy();
 }
 
 /** Create non-deblocked filter information
@@ -118,14 +118,14 @@ Void TComPic::compressMotion()
  * \param bNDBFilterCrossSliceBoundary cross-slice-boundary in-loop filtering; true for "cross".
  * \param numTiles number of tiles in picture
  */
-Void TComPic::createNonDBFilterInfo(Int lastSlicecuAddr, Int sliceGranularityDepth)
+void TComPic::createNonDBFilterInfo(int lastSlicecuAddr, int sliceGranularityDepth)
 {
     UInt maxNumSUInLCU = getNumPartInCU();
     UInt numLCUInPic   = getNumCUsInFrame();
     UInt picWidth      = getSlice()->getSPS()->getPicWidthInLumaSamples();
     UInt picHeight     = getSlice()->getSPS()->getPicHeightInLumaSamples();
-    Int  numLCUsInPicWidth = getFrameWidthInCU();
-    Int  numLCUsInPicHeight = getFrameHeightInCU();
+    int  numLCUsInPicWidth = getFrameWidthInCU();
+    int  numLCUsInPicHeight = getFrameHeightInCU();
     UInt maxNumSUInLCUWidth = getNumPartInWidth();
     UInt maxNumSUInLCUHeight = getNumPartInHeight();
 
@@ -158,7 +158,7 @@ Void TComPic::createNonDBFilterInfo(Int lastSlicecuAddr, Int sliceGranularityDep
     TPelY     = LCUY + g_rasterToPelY[g_zscanToRaster[firstCUInStartLCU]];
     currSU    = firstCUInStartLCU;
 
-    Bool bMoveToNextLCU = false;
+    bool bMoveToNextLCU = false;
 
     while (!(LPelX < picWidth) || !(TPelY < picHeight))
     {
@@ -215,7 +215,7 @@ Void TComPic::createNonDBFilterInfo(Int lastSlicecuAddr, Int sliceGranularityDep
  * \param picWidth picture width
  * \param picHeight picture height
  */
-Void TComPic::createNonDBFilterInfoLCU(Int sliceID, TComDataCU* cu, UInt startSU, UInt endSU, Int sliceGranularyDepth, UInt picWidth, UInt picHeight)
+void TComPic::createNonDBFilterInfoLCU(int sliceID, TComDataCU* cu, UInt startSU, UInt endSU, int sliceGranularyDepth, UInt picWidth, UInt picHeight)
 {
     UInt LCUX          = cu->getCUPelX();
     UInt LCUY          = cu->getCUPelY();
@@ -289,7 +289,7 @@ Void TComPic::createNonDBFilterInfoLCU(Int sliceID, TComDataCU* cu, UInt startSU
 
 /** destroy non-deblocked filter information for LCU
  */
-Void TComPic::destroyNonDBFilterInfo()
+void TComPic::destroyNonDBFilterInfo()
 {
     for (UInt cuAddr = 0; cuAddr < getNumCUsInFrame(); cuAddr++)
     {

@@ -7,6 +7,8 @@
  *          Mahesh Pittala <mahesh@multicorewareinc.com>
  *          Rajesh Paulraj <rajesh@multicorewareinc.com>
  *          Min Chen <min.chen@multicorewareinc.com>
+ *          Praveen Kumar Tiwari <praveen@multicorewareinc.com>
+ *          Nabajit Deka <nabajit@multicorewareinc.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -29,18 +31,19 @@
 // Vector class versions of macroblock performance primitives
 
 #include "primitives.h"
-#include "TLibCommon/TypeDef.h"    // TCoeff, Int, UInt
+#include "TLibCommon/TypeDef.h"    // TCoeff, int, UInt
 #include "TLibCommon/TComRom.h"
 
 #include <assert.h>
 #include <string.h>
 #include <algorithm>
-#if INSTRSET > 4
+#if INSTRSET > X265_CPU_LEVEL_SSSE3
 #include <smmintrin.h>
 #endif
 
-namespace {
+using namespace x265;
 
+namespace {
 void dequant(const int* quantCoef, int* coef, int width, int height, int per, int rem, bool useScalingList, unsigned int log2TrSize, int *deQuantCoef)
 {
     int invQuantScales[6] = { 40, 45, 51, 57, 64, 72 };
@@ -159,7 +162,7 @@ void dequant(const int* quantCoef, int* coef, int width, int height, int per, in
     }
 }
 
-#if INSTRSET >= 4
+#if INSTRSET >= X265_CPU_LEVEL_SSSE3
 ALIGN_VAR_32(static const short, tab_dst_4[][8]) =
 {
     { 29, 55, 74, 84, 29, 55, 74, 84 },
@@ -227,7 +230,7 @@ void dst4(short *src, int *dst, intptr_t stride)
     _mm_store_si128((__m128i*)&dst[3 * 4], T61);
 }
 
-#endif // INSTRSET >=4
+#endif // INSTRSET >= X265_CPU_LEVEL_SSSE3
 
 ALIGN_VAR_32(static const short, tab_dct_4[][8]) =
 {
@@ -310,7 +313,7 @@ void dct4(short *src, int *dst, intptr_t stride)
     _mm_storeu_si128((__m128i*)&dst[3 * 4], T73);
 }
 
-#if INSTRSET < 4
+#if INSTRSET < X265_CPU_LEVEL_SSSE3
 inline void partialButterfly8(short *src, short *dst, int shift, int line)
 {
     int j;
@@ -373,8 +376,8 @@ void dct8(short *src, int *dst, intptr_t stride)
     const int shift_1st = 2;
     const int shift_2nd = 9;
 
-    ALIGN_VAR_32(Short, coef[8 * 8]);
-    ALIGN_VAR_32(Short, block[8 * 8]);
+    ALIGN_VAR_32(short, coef[8 * 8]);
+    ALIGN_VAR_32(short, block[8 * 8]);
 
     for (int i = 0; i < 8; i++)
     {
@@ -395,7 +398,7 @@ void dct8(short *src, int *dst, intptr_t stride)
 #undef N
 }
 
-#else // INSTRSET >= 4
+#else // INSTRSET >= X265_CPU_LEVEL_SSSE3
 
 ALIGN_VAR_32(static const short, tab_dct_8[][8]) =
 {
@@ -596,9 +599,9 @@ void dct8(short *src, int *dst, intptr_t stride)
 #undef MAKE_ODD
 }
 
-#endif // INSTRSET >= 4
+#endif // INSTRSET >= X265_CPU_LEVEL_SSSE3
 
-#if INSTRSET < 4
+#if INSTRSET < X265_CPU_LEVEL_SSSE3
 inline void partialButterfly16(short *src, short *dst, int shift, int line)
 {
     int j;
@@ -752,8 +755,8 @@ void dct16(short *src, int *dst, intptr_t stride)
     const int shift_1st = 3;
     const int shift_2nd = 10;
 
-    ALIGN_VAR_32(Short, coef[16 * 16]);
-    ALIGN_VAR_32(Short, block[16 * 16]);
+    ALIGN_VAR_32(short, coef[16 * 16]);
+    ALIGN_VAR_32(short, block[16 * 16]);
 
     for (int i = 0; i < 16; i++)
     {
@@ -774,7 +777,7 @@ void dct16(short *src, int *dst, intptr_t stride)
 #undef N
 }
 
-#else //INSTRSET >= 4
+#else //INSTRSET >= X265_CPU_LEVEL_SSSE3
 
 ALIGN_VAR_32(static const short, tab_dct_16_0[][8]) =
 {
@@ -1224,9 +1227,9 @@ void dct16(short *src, int *dst, intptr_t stride)
     }
 }
 
-#endif // INSTRSET >= 4
+#endif // INSTRSET >= X265_CPU_LEVEL_SSSE3
 
-#if INSTRSET < 4
+#if INSTRSET < X265_CPU_LEVEL_SSSE3
 void partialButterfly32(short *src, short *dst, int shift, int line)
 {
     int j;
@@ -1509,8 +1512,8 @@ void dct32(short *src, int *dst, intptr_t stride)
     const int shift_1st = 4;
     const int shift_2nd = 11;
 
-    ALIGN_VAR_32(Short, coef[32 * 32]);
-    ALIGN_VAR_32(Short, block[32 * 32]);
+    ALIGN_VAR_32(short, coef[32 * 32]);
+    ALIGN_VAR_32(short, block[32 * 32]);
 
     for (int i = 0; i < 32; i++)
     {
@@ -1532,7 +1535,7 @@ void dct32(short *src, int *dst, intptr_t stride)
 #undef N
 }
 
-#else // INSTRSET >= 4
+#else // INSTRSET >= X265_CPU_LEVEL_SSSE3
 
 ALIGN_VAR_32(static const short, tab_dct_32_0[][8]) =
 {
@@ -2119,9 +2122,9 @@ void dct32(short *src, int *dst, intptr_t stride)
     }
 }
 
-#endif // INSTRSET >= 4
+#endif // INSTRSET >= X265_CPU_LEVEL_SSSE3
 
-#if INSTRSET < 5
+#if INSTRSET < X265_CPU_LEVEL_SSE41
 inline void inversedst(short *tmp, short *block, int shift)  // input tmp, output block
 {
     int rnd_factor = 1 << (shift - 1);
@@ -2159,8 +2162,8 @@ void idst4(int *src, short *dst, intptr_t stride)
     const int shift_1st = 7;
     const int shift_2nd = 12;
 
-    ALIGN_VAR_32(Short, coef[4 * 4]);
-    ALIGN_VAR_32(Short, block[4 * 4]);
+    ALIGN_VAR_32(short, coef[4 * 4]);
+    ALIGN_VAR_32(short, block[4 * 4]);
 #define N (4)
     for (int i = 0; i < N; i++)
     {
@@ -2180,7 +2183,7 @@ void idst4(int *src, short *dst, intptr_t stride)
     }
 }
 
-#else // INSTRSET >= 5
+#else // INSTRSET >= X265_CPU_LEVEL_SSE41
 
 ALIGN_VAR_32(static const short, tab_idst_4x4[8][8]) =
 {
@@ -2290,7 +2293,7 @@ void idst4(int *src, short *dst, intptr_t stride)
     _mm_storeh_pi((__m64*)&dst[3 * stride], _mm_castsi128_ps(m128iBD));
 }
 
-#endif // INSTRSET >= 5
+#endif // INSTRSET >= X265_CPU_LEVEL_SSE41
 
 ALIGN_VAR_32(static const short, tab_idct_4x4[4][8]) =
 {
@@ -3900,70 +3903,84 @@ void idct32(int *src, short *dst, intptr_t stride)
     }
 }
 
+#if INSTRSET >= X265_CPU_LEVEL_SSE41
 uint32_t quant(int* coef,
                int* quantCoeff,
                int* deltaU,
                int* qCoef,
                int  qBits,
                int  add,
-               int  numCoeff)
+               int  numCoeff,
+               int* lastPos)
 {
     int qBits8 = qBits - 8;
     uint32_t acSum = 0;
     int dstOffset = 0;
+    __m128i acSum4 = _mm_setzero_si128();
+    __m128i addVec = _mm_set1_epi32(add);
+    __m128i maskPos4 = _mm_setr_epi32(0, 1, 2, 3);
+    __m128i posNext4 = _mm_set1_epi32(4);
+    __m128i lastPos4 = _mm_set1_epi32(-1);
 
-    for (int blockpos = 0; blockpos < numCoeff; blockpos = blockpos + 4)
+    for (int blockpos = 0; blockpos < numCoeff; blockpos += 8)
     {
-        Vec4i addVec(add);
+        __m128i maskZero;
+        __m128i level1 = _mm_loadu_si128((__m128i*)(coef + blockpos));
 
-        Vec4i zero(0);
-        Vec4i one(1);
+        __m128i sign1 = _mm_cmplt_epi32(level1, _mm_setzero_si128());
 
-        Vec4i level1;
-        level1.load(coef + blockpos);
+        __m128i qCoeff1 = _mm_loadu_si128((__m128i*)(quantCoeff + blockpos));
+        __m128i tmplevel1 = _mm_mullo_epi32(_mm_abs_epi32(level1), qCoeff1);
+        level1 = _mm_srai_epi32(_mm_add_epi32(tmplevel1, addVec), qBits);
+        __m128i deltaU1 = _mm_srai_epi32(_mm_sub_epi32(tmplevel1, _mm_slli_epi32(level1, qBits)), qBits8);
+        _mm_storeu_si128((__m128i*)(deltaU + blockpos), deltaU1);
+        acSum4 = _mm_add_epi32(acSum4, level1);
 
-        Vec4i sign1;
-        sign1 = level1 < zero;
-        sign1 = sign1 | one;
+        maskZero = _mm_cmpeq_epi32(level1, _mm_setzero_si128());
+        //lastPos4 = _mm_or_si128(_mm_andnot_si128(maskZero, maskPos4), _mm_and_si128(maskZero, lastPos4));
+        //lastPos4 = _mm_blendv_epi8(maskPos4, lastPos4, maskZero);
+        lastPos4 = _mm_max_epi32(lastPos4, _mm_or_si128(maskZero, maskPos4));
+        maskPos4 = _mm_add_epi32(maskPos4, posNext4);
 
-        Vec4i qCoeff1;
-        qCoeff1.load(quantCoeff + blockpos);
-        Vec4i tmplevel1 = abs(level1) * qCoeff1;
-        level1 = (tmplevel1 + addVec) >> qBits;
-        Vec4i deltaU1 = ((tmplevel1 - (level1 << qBits)) >> qBits8);
-        deltaU1.store(deltaU + blockpos);
-        acSum = acSum + horizontal_add(level1);
-        level1 = level1 * sign1;
+        level1 = _mm_sub_epi32(_mm_xor_si128(level1, sign1), sign1);
+        level1 = _mm_cvtepi16_epi32(_mm_packs_epi32(level1, level1));
+        _mm_storeu_si128((__m128i*)(qCoef + dstOffset), level1);
 
-        blockpos += 4;
 
-        Vec4i level2;
-        level2.load(coef + blockpos);
+        __m128i level2 = _mm_loadu_si128((__m128i*)(coef + blockpos + 4));
+        __m128i sign2 = _mm_cmplt_epi32(level2, _mm_setzero_si128());
 
-        Vec4i sign2;
-        sign2 = level2 < zero;
-        sign2 = sign2 | one;
+        __m128i qCoeff2 = _mm_loadu_si128((__m128i*)(quantCoeff + blockpos + 4));
+        __m128i tmplevel2 = _mm_mullo_epi32(_mm_abs_epi32(level2), qCoeff2);
+        level2 = _mm_srai_epi32(_mm_add_epi32(tmplevel2, addVec), qBits);
+        __m128i deltaU2 = _mm_srai_epi32(_mm_sub_epi32(tmplevel2, _mm_slli_epi32(level2, qBits)), qBits8);
+        _mm_storeu_si128((__m128i*)(deltaU + blockpos + 4), deltaU2);
+        acSum4 = _mm_add_epi32(acSum4, level2);
 
-        Vec4i qCoeff2;
-        qCoeff2.load(quantCoeff + blockpos);
-        Vec4i tmplevel2 = abs(level2) * qCoeff2;
-        level2 = (tmplevel2 + addVec) >> qBits;
-        Vec4i deltaU2 = ((tmplevel2 - (level2 << qBits)) >> qBits8);
-        deltaU2.store(deltaU + blockpos);
-        acSum = acSum + horizontal_add(level2);
-        level2 = level2 * sign2;
+        maskZero = _mm_cmpeq_epi32(level2, _mm_setzero_si128());
+        //lastPos4 = _mm_or_si128(_mm_andnot_si128(maskZero, maskPos4), _mm_and_si128(maskZero, lastPos4));
+        //lastPos4 = _mm_blendv_epi8(maskPos4, lastPos4, maskZero);
+        lastPos4 = _mm_max_epi32(lastPos4, _mm_or_si128(maskZero, maskPos4));
+        maskPos4 = _mm_add_epi32(maskPos4, posNext4);
 
-        Vec8s level = compress_saturated(level1, level2);
-        Vec4i qCoef_n0_n3 = extend_low(level);
-        Vec4i qCoef_n4_n7 = extend_high(level);
-        qCoef_n0_n3.store(qCoef + dstOffset);
-        dstOffset += 4;
-        qCoef_n4_n7.store(qCoef + dstOffset);
-        dstOffset += 4;
+        level2 = _mm_sub_epi32(_mm_xor_si128(level2, sign2), sign2);
+        level2 = _mm_cvtepi16_epi32(_mm_packs_epi32(level2, level2));
+        _mm_storeu_si128((__m128i*)(qCoef + dstOffset + 4), level2);
+
+        dstOffset += 8;
     }
+    acSum4 = _mm_hadd_epi32(acSum4, acSum4);
+    acSum4 = _mm_hadd_epi32(acSum4, acSum4);
+    acSum  = _mm_cvtsi128_si32(acSum4);
+
+    lastPos4 = _mm_max_epi32(lastPos4, _mm_shuffle_epi32(lastPos4, 0x0E));
+    lastPos4 = _mm_max_epi32(lastPos4, _mm_shuffle_epi32(lastPos4, 0x01));
+    int tmp = _mm_cvtsi128_si32(lastPos4);
+    *lastPos = tmp;
 
     return acSum;
 }
+#endif
 }
 
 #include "utils.h"
@@ -3974,9 +3991,11 @@ namespace x265 {
 void NAME(Setup_Vec_DCTPrimitives)(EncoderPrimitives &p)
 {
     p.dequant = dequant;
+#if INSTRSET >= X265_CPU_LEVEL_SSE41
     p.quant = quant;
+#endif
 
-#if !HIGH_BIT_DEPTH && INSTRSET > 4
+#if !HIGH_BIT_DEPTH && INSTRSET > X265_CPU_LEVEL_SSSE3
     p.dct[DST_4x4] = dst4;
     p.dct[DCT_4x4] = dct4;
     p.dct[DCT_8x8] = dct8;

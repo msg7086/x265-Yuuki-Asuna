@@ -48,15 +48,16 @@
 
 #include "TEncEntropy.h"
 #include "TEncSearch.h"
-#include "TEncRateCtrl.h"
 
 //! \ingroup TLibEncoder
 //! \{
 
+namespace x265 {
+// private namespace
+
 class TEncTop;
 class TEncSbac;
 class TEncCavlc;
-class TEncSlice;
 
 // ====================================================================================================================
 // Class definition
@@ -101,79 +102,79 @@ private:
     // SBAC RD
     TEncSbac***  m_rdSbacCoders;
     TEncSbac*    m_rdGoOnSbacCoder;
-    TEncRateCtrl* m_rateControl;
 
     UInt         m_LCUPredictionSAD;
-    Int          m_addSADDepth;
-    Int          m_temporalSAD;
+    int          m_addSADDepth;
+    int          m_temporalSAD;
     UChar        m_totalDepth;
 
-    Bool         m_bEncodeDQP;
-    Bool         m_abortFlag; // aborts recursion when the child CU costs more than parent CU
+    bool         m_bEncodeDQP;
+    bool         m_abortFlag; // aborts recursion when the child CU costs more than parent CU
 
 public:
 
     TEncCu();
 
-    Void init(TEncTop* top);
-    Void create(UChar totalDepth, UInt maxWidth);
-    Void destroy();
-    Void compressCU(TComDataCU* cu);
-    Void encodeCU(TComDataCU* cu);
+    void init(TEncTop* top);
+    void create(UChar totalDepth, UInt maxWidth);
+    void destroy();
+    void compressCU(TComDataCU* cu);
+    void encodeCU(TComDataCU* cu);
 
-    Void setRDSbacCoder(TEncSbac*** rdSbacCoder) { m_rdSbacCoders = rdSbacCoder; }
+    void setRDSbacCoder(TEncSbac*** rdSbacCoder) { m_rdSbacCoders = rdSbacCoder; }
 
-    Void setEntropyCoder(TEncEntropy* entropyCoder) { m_entropyCoder = entropyCoder; }
+    void setEntropyCoder(TEncEntropy* entropyCoder) { m_entropyCoder = entropyCoder; }
 
-    Void setPredSearch(TEncSearch* predSearch) { m_search = predSearch; }
+    void setPredSearch(TEncSearch* predSearch) { m_search = predSearch; }
 
-    Void setRDGoOnSbacCoder(TEncSbac* rdGoOnSbacCoder) { m_rdGoOnSbacCoder = rdGoOnSbacCoder; }
+    void setRDGoOnSbacCoder(TEncSbac* rdGoOnSbacCoder) { m_rdGoOnSbacCoder = rdGoOnSbacCoder; }
 
-    Void setTrQuant(TComTrQuant* trQuant) { m_trQuant = trQuant; }
+    void setTrQuant(TComTrQuant* trQuant) { m_trQuant = trQuant; }
 
-    Void setRdCost(TComRdCost* rdCost) { m_rdCost = rdCost; }
+    void setRdCost(TComRdCost* rdCost) { m_rdCost = rdCost; }
 
-    Void setBitCounter(TComBitCounter* pcBitCounter) { m_bitCounter = pcBitCounter; }
+    void setBitCounter(TComBitCounter* pcBitCounter) { m_bitCounter = pcBitCounter; }
 
     UInt getLCUPredictionSAD() { return m_LCUPredictionSAD; }
 
 protected:
 
-    Void finishCU(TComDataCU* cu, UInt absPartIdx, UInt depth);
-    Void xCompressCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, UInt depth, PartSize parentSize = SIZE_NONE);
-    Void xCompressIntraCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, UInt depth);
-    Void xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TComDataCU*& cu, UInt depth, UInt partitionIndex);
-    Void xEncodeCU(TComDataCU* cu, UInt absPartIdx, UInt depth);
-    Int  xComputeQP(TComDataCU* cu);
-    Void xCheckBestMode(TComDataCU*& outBestCU, TComDataCU*& outTempCU, UInt depth);
+    void finishCU(TComDataCU* cu, UInt absPartIdx, UInt depth);
+    void xCompressCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, UInt depth, PartSize parentSize = SIZE_NONE);
+    void xCompressIntraCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, UInt depth);
+    void xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TComDataCU*& cu, UInt depth, UInt partitionIndex);
+    void xEncodeCU(TComDataCU* cu, UInt absPartIdx, UInt depth);
+    int  xComputeQP(TComDataCU* cu);
+    void xCheckBestMode(TComDataCU*& outBestCU, TComDataCU*& outTempCU, UInt depth);
 
-    Void xCheckRDCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTempCU, Bool *earlyDetectionSkipMode,
+    void xCheckRDCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTempCU, bool *earlyDetectionSkipMode,
                                 TComYuv*& outBestPredYuv, TComYuv*& rpcYuvReconBest);
-    Void xComputeCostIntraInInter(TComDataCU*& outTempCU, PartSize partSize);
-    Void xCheckRDCostInter(TComDataCU*& outBestCU, TComDataCU*& outTempCU, PartSize partSize, Bool bUseMRG = false);
-    Void xComputeCostInter(TComDataCU* outTempCU, TComYuv* outPredYUV, PartSize partSize, Bool bUseMRG = false);
-    Void xEncodeIntraInInter(TComDataCU* cu, TComYuv* fencYuv, TComYuv* predYuv, TShortYUV* outResiYuv, TComYuv* outReconYuv);
-    Void xCheckRDCostIntra(TComDataCU*& outBestCU, TComDataCU*& outTempCU, PartSize partSize);
-    Void xCheckRDCostIntraInInter(TComDataCU*& outBestCU, TComDataCU*& outTempCU, PartSize partSize);
-    Void xCheckDQP(TComDataCU* cu);
+    void xComputeCostIntraInInter(TComDataCU*& outTempCU, PartSize partSize);
+    void xCheckRDCostInter(TComDataCU*& outBestCU, TComDataCU*& outTempCU, PartSize partSize, bool bUseMRG = false);
+    void xComputeCostInter(TComDataCU* outTempCU, TComYuv* outPredYUV, PartSize partSize, bool bUseMRG = false);
+    void xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTempCU, bool* earlyDetectionSkip, TComYuv*& bestPredYuv, TComYuv*& tmpPredYuv);
+    void xEncodeIntraInInter(TComDataCU* cu, TComYuv* fencYuv, TComYuv* predYuv, TShortYUV* outResiYuv, TComYuv* outReconYuv);
+    void xCheckRDCostIntra(TComDataCU*& outBestCU, TComDataCU*& outTempCU, PartSize partSize);
+    void xCheckRDCostIntraInInter(TComDataCU*& outBestCU, TComDataCU*& outTempCU, PartSize partSize);
+    void xCheckDQP(TComDataCU* cu);
 
-    Void xCheckIntraPCM(TComDataCU*& outBestCU, TComDataCU*& outTempCU);
-    Void xCopyAMVPInfo(AMVPInfo* src, AMVPInfo* dst);
-    Void xCopyYuv2Pic(TComPic* outPic, UInt cuAddr, UInt absPartIdx, UInt depth, UInt uiSrcDepth, TComDataCU* cu,
+    void xCheckIntraPCM(TComDataCU*& outBestCU, TComDataCU*& outTempCU);
+    void xCopyAMVPInfo(AMVPInfo* src, AMVPInfo* dst);
+    void xCopyYuv2Pic(TComPic* outPic, UInt cuAddr, UInt absPartIdx, UInt depth, UInt uiSrcDepth, TComDataCU* cu,
                       UInt lpelx, UInt tpely);
-    Void xCopyYuv2Tmp(UInt uhPartUnitIdx, UInt depth);
-    Void xCopyYuv2Best(UInt partUnitIdx, UInt uiNextDepth);
+    void xCopyYuv2Tmp(UInt uhPartUnitIdx, UInt depth);
+    void xCopyYuv2Best(UInt partUnitIdx, UInt uiNextDepth);
 
-    Bool getdQPFlag()        { return m_bEncodeDQP; }
+    bool getdQPFlag()        { return m_bEncodeDQP; }
 
-    Void setdQPFlag(Bool b)  { m_bEncodeDQP = b; }
+    void setdQPFlag(bool b)  { m_bEncodeDQP = b; }
 
-    Void deriveTestModeAMP(TComDataCU* bestCU, PartSize parentSize, Bool &bTestAMP_Hor, Bool &bTestAMP_Ver,
-                           Bool &bTestMergeAMP_Hor, Bool &bTestMergeAMP_Ver);
+    void deriveTestModeAMP(TComDataCU* bestCU, PartSize parentSize, bool &bTestAMP_Hor, bool &bTestAMP_Ver,
+                           bool &bTestMergeAMP_Hor, bool &bTestMergeAMP_Ver);
 
-    Void xFillPCMBuffer(TComDataCU* outCU, TComYuv* origYuv);
+    void xFillPCMBuffer(TComDataCU* outCU, TComYuv* origYuv);
 };
-
+}
 //! \}
 
 #endif // __TENCMB__

@@ -40,6 +40,7 @@ private:
 
     // bitmap of rows queued for processing, uses atomic intrinsics
     uint64_t volatile *m_queuedBitmap;
+    uint64_t volatile *m_enableBitmap;
 
     // number of words in the bitmap
     int m_numWords;
@@ -63,6 +64,14 @@ public:
     // Enqueue a row to be processed. A worker thread will later call ProcessRow(row)
     // This provider must be enqueued in the pool before enqueuing a row
     void enqueueRow(int row);
+
+    void enableRow(int row);
+
+    void clearEnabledRowMask();
+
+    // Returns true if a row above curRow is available for processing.  The processRow()
+    // method may call this function periodically and voluntarily exit
+    bool checkHigherPriorityRow(int curRow);
 
     // Start or resume encode processing of this row, must be implemented by
     // derived classes.

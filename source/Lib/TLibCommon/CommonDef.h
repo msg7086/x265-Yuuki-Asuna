@@ -126,7 +126,6 @@
 #define REG_DCT                     65535
 
 #define CABAC_INIT_PRESENT_FLAG     1
-#define LAMBDA_PARTITION_SELECT     0.6
 
 #define _SUMMARY_OUT_               0           ///< print-out PSNR results of all slices to summary.txt
 #define _SUMMARY_PIC_               0           ///< print-out PSNR results for each slice type to summary.txt
@@ -165,7 +164,6 @@ extern void *x265_malloc(size_t size);
 
 // Explicit temporal layer QP offset
 #define MAX_TLAYER                  8 ///< max number of temporal layer
-#define HB_LAMBDA_FOR_LDC           1 ///< use of B-style lambda for non-key pictures in low-delay mode
 
 // Adaptive search range depending on POC difference
 #define ADAPT_SR_SCALE              1 ///< division factor for adaptive search range

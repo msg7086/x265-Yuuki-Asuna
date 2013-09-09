@@ -60,14 +60,12 @@ TComPicYuv::TComPicYuv()
     m_picOrgV = NULL;
 
     m_refList = NULL;
-
-    m_bIsBorderExtended = false;
 }
 
 TComPicYuv::~TComPicYuv()
 {}
 
-Void TComPicYuv::create(Int picWidth, Int picHeight, UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth)
+void TComPicYuv::create(int picWidth, int picHeight, UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth)
 {
     m_picWidth  = picWidth;
     m_picHeight = picHeight;
@@ -76,8 +74,11 @@ Void TComPicYuv::create(Int picWidth, Int picHeight, UInt maxCUWidth, UInt maxCU
     m_cuWidth  = maxCUWidth;
     m_cuHeight = maxCUHeight;
 
-    Int numCuInWidth  = m_picWidth  / m_cuWidth  + (m_picWidth  % m_cuWidth  != 0);
-    Int numCuInHeight = m_picHeight / m_cuHeight + (m_picHeight % m_cuHeight != 0);
+    int numCuInWidth  = (m_picWidth + m_cuWidth - 1)  / m_cuWidth;
+    int numCuInHeight = (m_picHeight + m_cuHeight - 1) / m_cuHeight;
+
+    m_numCuInWidth = numCuInWidth;
+    m_numCuInHeight = numCuInHeight;
 
     m_lumaMarginX = g_maxCUWidth  + 16; // for 16-byte alignment
     m_lumaMarginY = g_maxCUHeight + 16; // margin for 8-tap filter and infinite padding
@@ -95,24 +96,22 @@ Void TComPicYuv::create(Int picWidth, Int picHeight, UInt maxCUWidth, UInt maxCU
     m_picOrgU = m_picBufU + m_chromaMarginY * getCStride() + m_chromaMarginX;
     m_picOrgV = m_picBufV + m_chromaMarginY * getCStride() + m_chromaMarginX;
 
-    m_bIsBorderExtended = false;
-
-    m_cuOffsetY = new Int[numCuInWidth * numCuInHeight];
-    m_cuOffsetC = new Int[numCuInWidth * numCuInHeight];
-    for (Int cuRow = 0; cuRow < numCuInHeight; cuRow++)
+    m_cuOffsetY = new int[numCuInWidth * numCuInHeight];
+    m_cuOffsetC = new int[numCuInWidth * numCuInHeight];
+    for (int cuRow = 0; cuRow < numCuInHeight; cuRow++)
     {
-        for (Int cuCol = 0; cuCol < numCuInWidth; cuCol++)
+        for (int cuCol = 0; cuCol < numCuInWidth; cuCol++)
         {
             m_cuOffsetY[cuRow * numCuInWidth + cuCol] = getStride() * cuRow * m_cuHeight + cuCol * m_cuWidth;
             m_cuOffsetC[cuRow * numCuInWidth + cuCol] = getCStride() * cuRow * (m_cuHeight / 2) + cuCol * (m_cuWidth / 2);
         }
     }
 
-    m_buOffsetY = new Int[(size_t)1 << (2 * maxCUDepth)];
-    m_buOffsetC = new Int[(size_t)1 << (2 * maxCUDepth)];
-    for (Int buRow = 0; buRow < (1 << maxCUDepth); buRow++)
+    m_buOffsetY = new int[(size_t)1 << (2 * maxCUDepth)];
+    m_buOffsetC = new int[(size_t)1 << (2 * maxCUDepth)];
+    for (int buRow = 0; buRow < (1 << maxCUDepth); buRow++)
     {
-        for (Int buCol = 0; buCol < (1 << maxCUDepth); buCol++)
+        for (int buCol = 0; buCol < (1 << maxCUDepth); buCol++)
         {
             m_buOffsetY[(buRow << maxCUDepth) + buCol] = getStride() * buRow * (maxCUHeight >> maxCUDepth) + buCol * (maxCUWidth  >> maxCUDepth);
             m_buOffsetC[(buRow << maxCUDepth) + buCol] = getCStride() * buRow * (maxCUHeight / 2 >> maxCUDepth) + buCol * (maxCUWidth / 2 >> maxCUDepth);
@@ -120,7 +119,7 @@ Void TComPicYuv::create(Int picWidth, Int picHeight, UInt maxCUWidth, UInt maxCU
     }
 }
 
-Void TComPicYuv::destroy()
+void TComPicYuv::destroy()
 {
     m_picOrgY = NULL;
     m_picOrgU = NULL;
@@ -135,19 +134,25 @@ Void TComPicYuv::destroy()
     delete[] m_buOffsetY;
     delete[] m_buOffsetC;
 
-    if (m_refList)
+    while (m_refList)
+    {
+        MotionReference *mref = m_refList->m_next;
         delete m_refList;
+        m_refList = mref;
+    }
 }
 
-Void  TComPicYuv::clearReferences()
+void  TComPicYuv::clearReferences()
 {
-    // TODO: reclaim these into a GOP encoder pool
-    if (m_refList)
+    while (m_refList)
+    {
+        MotionReference *mref = m_refList->m_next;
         delete m_refList;
-    m_refList = NULL;
+        m_refList = mref;
+    }
 }
 
-Void TComPicYuv::createLuma(Int picWidth, Int picHeight, UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth)
+void TComPicYuv::createLuma(int picWidth, int picHeight, UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth)
 {
     m_picWidth  = picWidth;
     m_picHeight = picHeight;
@@ -155,8 +160,8 @@ Void TComPicYuv::createLuma(Int picWidth, Int picHeight, UInt maxCUWidth, UInt m
     m_cuWidth  = maxCUWidth;
     m_cuHeight = maxCUHeight;
 
-    Int numCuInWidth  = m_picWidth  / m_cuWidth  + (m_picWidth  % m_cuWidth  != 0);
-    Int numCuInHeight = m_picHeight / m_cuHeight + (m_picHeight % m_cuHeight != 0);
+    int numCuInWidth  = m_picWidth  / m_cuWidth  + (m_picWidth  % m_cuWidth  != 0);
+    int numCuInHeight = m_picHeight / m_cuHeight + (m_picHeight % m_cuHeight != 0);
 
     m_lumaMarginX = g_maxCUWidth  + 16; // for 16-byte alignment
     m_lumaMarginY = g_maxCUHeight + 16; // margin for 8-tap filter and infinite padding
@@ -164,28 +169,28 @@ Void TComPicYuv::createLuma(Int picWidth, Int picHeight, UInt maxCUWidth, UInt m
     m_picBufY = (Pel*)X265_MALLOC(Pel, (m_picWidth + (m_lumaMarginX << 1)) * (m_picHeight + (m_lumaMarginY << 1)));
     m_picOrgY = m_picBufY + m_lumaMarginY * getStride() + m_lumaMarginX;
 
-    m_cuOffsetY = new Int[numCuInWidth * numCuInHeight];
+    m_cuOffsetY = new int[numCuInWidth * numCuInHeight];
     m_cuOffsetC = NULL;
-    for (Int cuRow = 0; cuRow < numCuInHeight; cuRow++)
+    for (int cuRow = 0; cuRow < numCuInHeight; cuRow++)
     {
-        for (Int cuCol = 0; cuCol < numCuInWidth; cuCol++)
+        for (int cuCol = 0; cuCol < numCuInWidth; cuCol++)
         {
             m_cuOffsetY[cuRow * numCuInWidth + cuCol] = getStride() * cuRow * m_cuHeight + cuCol * m_cuWidth;
         }
     }
 
-    m_buOffsetY = new Int[(size_t)1 << (2 * maxCUDepth)];
+    m_buOffsetY = new int[(size_t)1 << (2 * maxCUDepth)];
     m_buOffsetC = NULL;
-    for (Int buRow = 0; buRow < (1 << maxCUDepth); buRow++)
+    for (int buRow = 0; buRow < (1 << maxCUDepth); buRow++)
     {
-        for (Int buCol = 0; buCol < (1 << maxCUDepth); buCol++)
+        for (int buCol = 0; buCol < (1 << maxCUDepth); buCol++)
         {
             m_buOffsetY[(buRow << maxCUDepth) + buCol] = getStride() * buRow * (maxCUHeight >> maxCUDepth) + buCol * (maxCUWidth  >> maxCUDepth);
         }
     }
 }
 
-Void TComPicYuv::destroyLuma()
+void TComPicYuv::destroyLuma()
 {
     m_picOrgY = NULL;
 
@@ -195,7 +200,7 @@ Void TComPicYuv::destroyLuma()
     delete[] m_buOffsetY;
 }
 
-Void  TComPicYuv::copyToPic(TComPicYuv* destPicYuv)
+void  TComPicYuv::copyToPic(TComPicYuv* destPicYuv)
 {
     assert(m_picWidth  == destPicYuv->getWidth());
     assert(m_picHeight == destPicYuv->getHeight());
@@ -205,7 +210,7 @@ Void  TComPicYuv::copyToPic(TComPicYuv* destPicYuv)
     ::memcpy(destPicYuv->getBufV(), m_picBufV, sizeof(Pel) * ((m_picWidth >> 1) + (m_chromaMarginX << 1)) * ((m_picHeight >> 1) + (m_chromaMarginY << 1)));
 }
 
-Void  TComPicYuv::copyToPicLuma(TComPicYuv* destPicYuv)
+void  TComPicYuv::copyToPicLuma(TComPicYuv* destPicYuv)
 {
     assert(m_picWidth  == destPicYuv->getWidth());
     assert(m_picHeight == destPicYuv->getHeight());
@@ -213,7 +218,7 @@ Void  TComPicYuv::copyToPicLuma(TComPicYuv* destPicYuv)
     ::memcpy(destPicYuv->getBufY(), m_picBufY, sizeof(Pel) * (m_picWidth + (m_lumaMarginX << 1)) * (m_picHeight + (m_lumaMarginY << 1)));
 }
 
-Void  TComPicYuv::copyToPicCb(TComPicYuv* destPicYuv)
+void  TComPicYuv::copyToPicCb(TComPicYuv* destPicYuv)
 {
     assert(m_picWidth  == destPicYuv->getWidth());
     assert(m_picHeight == destPicYuv->getHeight());
@@ -221,7 +226,7 @@ Void  TComPicYuv::copyToPicCb(TComPicYuv* destPicYuv)
     ::memcpy(destPicYuv->getBufU(), m_picBufU, sizeof(Pel) * ((m_picWidth >> 1) + (m_chromaMarginX << 1)) * ((m_picHeight >> 1) + (m_chromaMarginY << 1)));
 }
 
-Void  TComPicYuv::copyToPicCr(TComPicYuv* destPicYuv)
+void  TComPicYuv::copyToPicCr(TComPicYuv* destPicYuv)
 {
     assert(m_picWidth  == destPicYuv->getWidth());
     assert(m_picHeight == destPicYuv->getHeight());
@@ -229,27 +234,31 @@ Void  TComPicYuv::copyToPicCr(TComPicYuv* destPicYuv)
     ::memcpy(destPicYuv->getBufV(), m_picBufV, sizeof(Pel) * ((m_picWidth >> 1) + (m_chromaMarginX << 1)) * ((m_picHeight >> 1) + (m_chromaMarginY << 1)));
 }
 
-Void TComPicYuv::extendPicBorder(x265::ThreadPool *pool)
+MotionReference* TComPicYuv::generateMotionReference(wpScalingParam *w)
 {
-    if (m_bIsBorderExtended)
-        return;
-
     /* HPEL generation requires luma integer plane to already be extended */
-    xExtendPicCompBorder(getLumaAddr(), getStride(), getWidth(), getHeight(), m_lumaMarginX, m_lumaMarginY);
+    // NOTE: We extend border every CURow, so I remove code here
 
-    xExtendPicCompBorder(getCbAddr(), getCStride(), getWidth() >> 1, getHeight() >> 1, m_chromaMarginX, m_chromaMarginY);
-    xExtendPicCompBorder(getCrAddr(), getCStride(), getWidth() >> 1, getHeight() >> 1, m_chromaMarginX, m_chromaMarginY);
-
-    if (m_refList == NULL)
-        m_refList = new x265::MotionReference(this, pool);
-    m_refList->generateReferencePlanes();
-
-    m_bIsBorderExtended = true;
+    MotionReference *mref;
+    for (mref = m_refList; mref != NULL; mref = mref->m_next)
+    {
+        if (w)
+        {   
+            if (mref->matchesWeight(*w))
+                return mref;
+        }
+        else if (mref->isWeighted == false)
+            return mref;
+    }
+    mref = new MotionReference(this, w);
+    mref->m_next = m_refList;
+    m_refList = mref;
+    return mref;
 }
 
-Void TComPicYuv::xExtendPicCompBorder(Pel* recon, Int stride, Int width, Int height, Int iMarginX, Int iMarginY)
+void TComPicYuv::xExtendPicCompBorder(Pel* recon, int stride, int width, int height, int iMarginX, int iMarginY)
 {
-    Int   x, y;
+    int x, y;
 
     /* TODO: this should become a performance primitive */
     for (y = 0; y < height; y++)
@@ -276,7 +285,7 @@ Void TComPicYuv::xExtendPicCompBorder(Pel* recon, Int stride, Int width, Int hei
     }
 }
 
-Void TComPicYuv::dump(Char* pFileName, Bool bAdd)
+void TComPicYuv::dump(char* pFileName, bool bAdd)
 {
     FILE* pFile;
 
@@ -289,10 +298,10 @@ Void TComPicYuv::dump(Char* pFileName, Bool bAdd)
         pFile = fopen(pFileName, "ab");
     }
 
-    Int shift = X265_DEPTH - 8;
-    Int offset = (shift > 0) ? (1 << (shift - 1)) : 0;
+    int shift = X265_DEPTH - 8;
+    int offset = (shift > 0) ? (1 << (shift - 1)) : 0;
 
-    Int   x, y;
+    int   x, y;
     UChar uc;
 
     Pel* pelY   = getLumaAddr();
@@ -345,7 +354,7 @@ Void TComPicYuv::dump(Char* pFileName, Bool bAdd)
  * Upscale pixels from 8bits to 16 bits when required, but do not modify pixels.
  * This new routine is GPL
  */
-Void TComPicYuv::copyFromPicture(const x265_picture_t& pic)
+void TComPicYuv::copyFromPicture(const x265_picture_t& pic)
 {
     Pel *Y = getLumaAddr();
     Pel *U = getCbAddr();

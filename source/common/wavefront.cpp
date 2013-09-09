@@ -28,72 +28,6 @@
 #include <string.h>
 #include <new>
 
-#if MACOS
-#include <sys/param.h>
-#include <sys/sysctl.h>
-#endif
-
-#ifdef __GNUC__                         /* GCCs builtin atomics */
-
-#include <unistd.h>
-#include <limits.h>
-
-#define CLZ64(id, x)                    id = 63 - (unsigned long)__builtin_clzll(x)
-#define ATOMIC_OR(ptr, mask)            __sync_or_and_fetch(ptr, mask)
-#define ATOMIC_CAS(ptr, oldval, newval) __sync_val_compare_and_swap(ptr, oldval, newval)
-
-#elif defined(_MSC_VER)                 /* Windows atomic intrinsics */
-
-#include <intrin.h>
-
-#if !_WIN64
-inline int _BitScanReverse64(DWORD *id, uint64_t x64) // fake 64bit CLZ
-{
-    uint32_t high32 = (uint32_t)(x64 >> 32);
-    uint32_t low32 = (uint32_t)x64;
-
-    if (high32)
-    {
-        _BitScanReverse(id, high32);
-        *id += 32;
-        return 1;
-    }
-    else if (low32)
-        return _BitScanReverse(id, low32);
-    else
-        return *id = 0;
-}
-#endif // if !_WIN64
-
-#if _WIN32_WINNT <= _WIN32_WINNT_WINXP
-/* Windows XP did not define this intrinsic */
-FORCEINLINE LONGLONG _InterlockedOr64(__inout LONGLONG volatile *Destination,
-                                      __in    LONGLONG           Value)
-{
-    LONGLONG Old;
-
-    do
-    {
-        Old = *Destination;
-    }
-    while (_InterlockedCompareExchange64(Destination, Old | Value, Old) != Old);
-
-    return Old;
-}
-
-#define ATOMIC_OR(ptr, mask)            _InterlockedOr64((volatile LONG64*)ptr, mask)
-#if defined(__MSC_VER) && !defined(__INTEL_COMPILER)
-#pragma intrinsic(_InterlockedCompareExchange64)
-#endif
-#else // if _WIN32_WINNT <= _WIN32_WINNT_WINXP
-#define ATOMIC_OR(ptr, mask)            InterlockedOr64((volatile LONG64*)ptr, mask)
-#endif // if _WIN32_WINNT <= _WIN32_WINNT_WINXP
-
-#define CLZ64(id, x)                    _BitScanReverse64(&id, x)
-#define ATOMIC_CAS(ptr, oldval, newval) (uint64_t)_InterlockedCompareExchange64((volatile LONG64*)ptr, newval, oldval)
-
-#endif // ifdef __GNUC__
-
 namespace x265 {
 // x265 private namespace
 
@@ -107,7 +41,12 @@ bool WaveFront::init(int numRows)
         m_queuedBitmap = new uint64_t[m_numWords];
         if (m_queuedBitmap)
             memset((void*)m_queuedBitmap, 0, sizeof(uint64_t) * m_numWords);
-        return m_queuedBitmap != NULL;
+
+        m_enableBitmap = new uint64_t[m_numWords];
+        if (m_enableBitmap)
+            memset((void*)m_enableBitmap, 0, sizeof(uint64_t) * m_numWords);
+
+        return m_queuedBitmap && m_enableBitmap;
     }
 
     return false;
@@ -120,6 +59,16 @@ WaveFront::~WaveFront()
         delete[] m_queuedBitmap;
         m_queuedBitmap = NULL;
     }
+    if (m_enableBitmap)
+    {
+        delete[] m_enableBitmap;
+        m_enableBitmap = NULL;
+    }
+}
+
+void WaveFront::clearEnabledRowMask()
+{
+    memset((void*)m_enableBitmap, 0, sizeof(uint64_t) * m_numWords);
 }
 
 void WaveFront::enqueueRow(int row)
@@ -130,6 +79,33 @@ void WaveFront::enqueueRow(int row)
     assert(row < m_numRows);
     ATOMIC_OR(&m_queuedBitmap[row >> 6], bit);
     m_pool->pokeIdleThread();
+}
+
+void WaveFront::enableRow(int row)
+{
+    // thread safe
+    uint64_t bit = 1LL << (row & 63);
+
+    assert(row < m_numRows);
+    ATOMIC_OR(&m_enableBitmap[row >> 6], bit);
+}
+
+bool WaveFront::checkHigherPriorityRow(int curRow)
+{
+    int fullwords = curRow >> 6;
+    uint64_t mask = (1LL << (curRow & 63)) - 1;
+
+    // Check full bitmap words before curRow
+    for (int i = 0; i < fullwords; i++)
+    {
+        if (m_queuedBitmap[i])
+            return true;
+    }
+
+    // check the partially masked bitmap word of curRow
+    if (m_queuedBitmap[fullwords] & mask)
+        return true;
+    return false;
 }
 
 bool WaveFront::findJob()
@@ -145,9 +121,15 @@ bool WaveFront::findJob()
             if (oldval == 0) // race condition
                 break;
 
-            CLZ64(id, oldval);
-            uint64_t newval = oldval & ~(1LL << id);
+            CTZ64(id, oldval);
 
+            // NOTE: if the lowest row is unavailable, so we don't check higher row
+            if (!(m_enableBitmap[w] & (1LL << id)))
+            {
+                return false;
+            }
+
+            uint64_t newval = oldval & ~(1LL << id);
             if (ATOMIC_CAS(&m_queuedBitmap[w], oldval, newval) == oldval)
             {
                 // we cleared the bit, process row

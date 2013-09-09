@@ -44,37 +44,40 @@
 //! \ingroup TLibEncoder
 //! \{
 
+namespace x265 {
+// private namespace
+
 class TEncBinCABAC;
 
 class TEncBinIf
 {
 public:
 
-    virtual Void  init(TComBitIf* pcTComBitIf)                  = 0;
-    virtual Void  uninit()                                          = 0;
+    virtual void  init(TComBitIf* bitIf) = 0;
+    virtual void  uninit() = 0;
 
-    virtual Void  start()                                          = 0;
-    virtual Void  finish()                                          = 0;
-    virtual Void  copyState(TEncBinIf* pcTEncBinIf)                  = 0;
-    virtual Void  flush()                                           = 0;
+    virtual void  start() = 0;
+    virtual void  finish() = 0;
+    virtual void  copyState(TEncBinIf* binIf) = 0;
+    virtual void  flush() = 0;
 
-    virtual Void  resetBac()                                          = 0;
-    virtual Void  encodePCMAlignBits()                                          = 0;
-    virtual Void  xWritePCMCode(UInt uiCode, UInt uiLength)              = 0;
+    virtual void  resetBac() = 0;
+    virtual void  encodePCMAlignBits() = 0;
+    virtual void  xWritePCMCode(UInt code, UInt length) = 0;
 
-    virtual Void  resetBits()                                          = 0;
-    virtual UInt  getNumWrittenBits()                                          = 0;
+    virtual void  resetBits() = 0;
+    virtual UInt  getNumWrittenBits() = 0;
 
-    virtual Void  encodeBin(UInt uiBin,  ContextModel& rcCtxModel)  = 0;
-    virtual Void  encodeBinEP(UInt uiBin)  = 0;
-    virtual Void  encodeBinsEP(UInt uiBins, Int numBins)  = 0;
-    virtual Void  encodeBinTrm(UInt uiBin)  = 0;
+    virtual void  encodeBin(UInt bin,  ContextModel& ctx) = 0;
+    virtual void  encodeBinEP(UInt bin) = 0;
+    virtual void  encodeBinsEP(UInt bins, int numBins) = 0;
+    virtual void  encodeBinTrm(UInt bin) = 0;
 
     virtual TEncBinCABAC*   getTEncBinCABAC()  { return 0; }
 
     virtual ~TEncBinIf() {}
 };
-
+}
 //! \}
 
 #endif // ifndef __TENC_BIN_CODER__

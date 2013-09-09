@@ -44,6 +44,9 @@
 //! \ingroup TLibCommon
 //! \{
 
+namespace x265 {
+// private namespace
+
 #define NUM_DOWN_PART 4
 
 enum SAOTypeLen
@@ -65,54 +68,54 @@ enum SAOType
 
 typedef struct _SaoQTPart
 {
-    Int         bestType;
-    Int         length;
-    Int         subTypeIdx;                ///< indicates EO class or BO band position
-    Int         offset[4];
-    Int         startCUX;
-    Int         startCUY;
-    Int         endCUX;
-    Int         endCUY;
+    int         bestType;
+    int         length;
+    int         subTypeIdx;                ///< indicates EO class or BO band position
+    int         offset[4];
+    int         startCUX;
+    int         startCUY;
+    int         endCUX;
+    int         endCUY;
 
-    Int         partIdx;
-    Int         partLevel;
-    Int         partCol;
-    Int         partRow;
+    int         partIdx;
+    int         partLevel;
+    int         partCol;
+    int         partRow;
 
-    Int         downPartsIdx[NUM_DOWN_PART];
-    Int         upPartIdx;
+    int         downPartsIdx[NUM_DOWN_PART];
+    int         upPartIdx;
 
-    Bool        bSplit;
+    bool        bSplit;
 
     //---- encoder only start -----//
-    Bool        bProcessed;
-    Double      minCost;
+    bool        bProcessed;
+    double      minCost;
     Int64       minDist;
-    Int         minRate;
+    int         minRate;
     //---- encoder only end -----//
 } SAOQTPart;
 
 typedef struct _SaoLcuParam
 {
-    Bool       mergeUpFlag;
-    Bool       mergeLeftFlag;
-    Int        typeIdx;
-    Int        subTypeIdx;                ///< indicates EO class or BO band position
-    Int        offset[4];
-    Int        partIdx;
-    Int        partIdxTmp;
-    Int        length;
+    bool       mergeUpFlag;
+    bool       mergeLeftFlag;
+    int        typeIdx;
+    int        subTypeIdx;                ///< indicates EO class or BO band position
+    int        offset[4];
+    int        partIdx;
+    int        partIdxTmp;
+    int        length;
 } SaoLcuParam;
 
 struct SAOParam
 {
-    Bool       bSaoFlag[2];
+    bool       bSaoFlag[2];
     SAOQTPart* saoPart[3];
-    Int        maxSplitLevel;
-    Bool         oneUnitFlag[3];
+    int        maxSplitLevel;
+    bool         oneUnitFlag[3];
     SaoLcuParam* saoLcuParam[3];
-    Int          numCuInHeight;
-    Int          numCuInWidth;
+    int          numCuInHeight;
+    int          numCuInWidth;
     ~SAOParam();
 };
 
@@ -137,22 +140,22 @@ protected:
     TComPic* m_pic;
 
     static const UInt m_maxDepth;
-    static const Int m_numCulPartsLevel[5];
+    static const int m_numCulPartsLevel[5];
     static const UInt m_eoTable[9];
-    static const Int m_numClass[MAX_NUM_SAO_TYPE];
+    static const int m_numClass[MAX_NUM_SAO_TYPE];
 
-    Int *m_offsetBo;
-    Int *m_chromaOffsetBo;
-    Int m_offsetEo[LUMA_GROUP_NUM];
+    int *m_offsetBo;
+    int *m_chromaOffsetBo;
+    int m_offsetEo[LUMA_GROUP_NUM];
 
-    Int  m_picWidth;
-    Int  m_picHeight;
+    int  m_picWidth;
+    int  m_picHeight;
     UInt m_maxSplitLevel;
     UInt m_maxCUWidth;
     UInt m_maxCUHeight;
-    Int  m_numCuInWidth;
-    Int  m_numCuInHeight;
-    Int  m_numTotalParts;
+    int  m_numCuInWidth;
+    int  m_numCuInHeight;
+    int  m_numTotalParts;
 
     UInt m_saoBitIncreaseY;
     UInt m_saoBitIncreaseC; //for chroma
@@ -164,64 +167,60 @@ protected:
     Pel   *m_chromaClipTable;
     Pel   *m_chromaClipTableBase;
     Pel   *m_chromaTableBo;
-    Int   *m_upBuff1;
-    Int   *m_upBuff2;
-    Int   *m_upBufft;
-    Int   *m_swap;
+    int   *m_upBuff1;
+    int   *m_upBuff2;
+    int   *m_upBufft;
     TComPicYuv* m_tmpYuv;  //!< temporary picture buffer pointer when non-across slice/tile boundary SAO is enabled
 
-    Pel* m_tmpU1;
-    Pel* m_tmpU2;
+    Pel* m_tmpU1[3];
+    Pel* m_tmpU2[3];
     Pel* m_tmpL1;
     Pel* m_tmpL2;
-    Int     m_maxNumOffsetsPerPic;
-    Bool    m_saoLcuBoundary;
-    Bool    m_saoLcuBasedOptimization;
-
-    Void xPCMRestoration(TComPic* pic);
-    Void xPCMCURestoration(TComDataCU* cu, UInt absZOrderIdx, UInt depth);
-    Void xPCMSampleRestoration(TComDataCU* cu, UInt absZOrderIdx, UInt depth, TextType ttText);
+    int     m_maxNumOffsetsPerPic;
+    bool    m_saoLcuBoundary;
+    bool    m_saoLcuBasedOptimization;
 
 public:
 
     TComSampleAdaptiveOffset();
     virtual ~TComSampleAdaptiveOffset();
 
-    Void create(UInt sourceWidth, UInt sourceHeight, UInt maxCUWidth, UInt maxCUHeight);
-    Void destroy();
+    void create(UInt sourceWidth, UInt sourceHeight, UInt maxCUWidth, UInt maxCUHeight);
+    void destroy();
 
-    Int  convertLevelRowCol2Idx(Int level, Int row, Int col);
+    int  convertLevelRowCol2Idx(int level, int row, int col) const;
 
-    Void initSAOParam(SAOParam* saoParam, Int partLevel, Int partRow, Int partCol, Int parentPartIdx, Int startCUX, Int endCUX, Int startCUY, Int endCUY, Int yCbCr);
-    Void allocSaoParam(SAOParam* saoParam);
-    Void resetSAOParam(SAOParam* saoParam);
-    static Void freeSaoParam(SAOParam* saoParam);
+    void initSAOParam(SAOParam* saoParam, int partLevel, int partRow, int partCol, int parentPartIdx, int startCUX, int endCUX, int startCUY, int endCUY, int yCbCr) const;
+    void allocSaoParam(SAOParam* saoParam) const;
+    void resetSAOParam(SAOParam* saoParam);
+    static void freeSaoParam(SAOParam* saoParam);
 
-    Void SAOProcess(SAOParam* saoParam);
-    Void processSaoCu(Int addr, Int saoType, Int yCbCr);
-    Pel* getPicYuvAddr(TComPicYuv* picYuv, Int yCbCr, Int addr = 0);
+    void SAOProcess(SAOParam* saoParam);
+    Pel* getPicYuvAddr(TComPicYuv* picYuv, int yCbCr, int addr = 0);
 
-    Void processSaoCuOrg(Int addr, Int partIdx, Int yCbCr); //!< LCU-basd SAO process without slice granularity
-    Void createPicSaoInfo(TComPic* pic);
-    Void destroyPicSaoInfo();
-    Void processSaoBlock(Pel* dec, Pel* rest, Int stride, Int saoType, UInt width, UInt height, Bool* bBorderAvail, Int yCbCr);
+    void processSaoCu(int addr, int partIdx, int yCbCr); //!< LCU-basd SAO process without slice granularity
+    void createPicSaoInfo(TComPic* pic);
+    void destroyPicSaoInfo();
 
-    Void resetLcuPart(SaoLcuParam* saoLcuParam);
-    Void convertQT2SaoUnit(SAOParam* saoParam, UInt partIdx, Int yCbCr);
-    Void convertOnePart2SaoUnit(SAOParam *saoParam, UInt partIdx, Int yCbCr);
-    Void processSaoUnitAll(SaoLcuParam* saoLcuParam, Bool oneUnitFlag, Int yCbCr);
-    Void setSaoLcuBoundary(Bool bVal)  { m_saoLcuBoundary = bVal; }
+    void resetLcuPart(SaoLcuParam* saoLcuParam);
+    void convertQT2SaoUnit(SAOParam* saoParam, UInt partIdx, int yCbCr);
+    void convertOnePart2SaoUnit(SAOParam *saoParam, UInt partIdx, int yCbCr);
+    void processSaoUnitAll(SaoLcuParam* saoLcuParam, bool oneUnitFlag, int yCbCr);
+    void processSaoUnitRow(SaoLcuParam* saoLcuParam, int idxY, int yCbCr);
+    void setSaoLcuBoundary(int bVal)  { m_saoLcuBoundary = bVal != 0; }
 
-    Bool getSaoLcuBoundary()           { return m_saoLcuBoundary; }
+    bool getSaoLcuBoundary()           { return m_saoLcuBoundary; }
 
-    Void setSaoLcuBasedOptimization(Bool bVal)  { m_saoLcuBasedOptimization = bVal; }
+    void setSaoLcuBasedOptimization(int bVal)  { m_saoLcuBasedOptimization = bVal != 0; }
 
-    Bool getSaoLcuBasedOptimization()           { return m_saoLcuBasedOptimization; }
+    bool getSaoLcuBasedOptimization()           { return m_saoLcuBasedOptimization; }
 
-    Void resetSaoUnit(SaoLcuParam* saoUnit);
-    Void copySaoUnit(SaoLcuParam* saoUnitDst, SaoLcuParam* saoUnitSrc);
-    Void PCMLFDisableProcess(TComPic* pic); ///< interface function for ALF process
+    void resetSaoUnit(SaoLcuParam* saoUnit);
+    void copySaoUnit(SaoLcuParam* saoUnitDst, SaoLcuParam* saoUnitSrc);
 };
+void PCMLFDisableProcess(TComPic* pic);
+void xPCMCURestoration(TComDataCU* cu, UInt absZOrderIdx, UInt depth);
+}
 
 //! \}
 #endif // ifndef __TCOMSAMPLEADAPTIVEOFFSET__

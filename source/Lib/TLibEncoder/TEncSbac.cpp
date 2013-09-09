@@ -41,6 +41,8 @@
 #include <map>
 #include <algorithm>
 
+using namespace x265;
+
 //! \ingroup TLibEncoder
 //! \{
 
@@ -93,12 +95,12 @@ TEncSbac::~TEncSbac()
 // Public member functions
 // ====================================================================================================================
 
-Void TEncSbac::resetEntropy()
+void TEncSbac::resetEntropy()
 {
-    Int  iQp              = m_pcSlice->getSliceQp();
+    int  iQp              = m_pcSlice->getSliceQp();
     SliceType eSliceType  = m_pcSlice->getSliceType();
 
-    Int  encCABACTableIdx = m_pcSlice->getPPS()->getEncCABACTableIdx();
+    int  encCABACTableIdx = m_pcSlice->getPPS()->getEncCABACTableIdx();
 
     if (!m_pcSlice->isIntra() && (encCABACTableIdx == B_SLICE || encCABACTableIdx == P_SLICE) && m_pcSlice->getPPS()->getCabacInitPresentFlag())
     {
@@ -143,9 +145,9 @@ Void TEncSbac::resetEntropy()
  * If current slice type is P/B then it determines the distance of initialisation type 1 and 2 from the current CABAC states and
  * stores the index of the closest table.  This index is used for the next P/B slice when cabac_init_present_flag is true.
  */
-Void TEncSbac::determineCabacInitIdx()
+void TEncSbac::determineCabacInitIdx()
 {
-    Int  qp              = m_pcSlice->getSliceQp();
+    int  qp              = m_pcSlice->getSliceQp();
 
     if (!m_pcSlice->isIntra())
     {
@@ -202,7 +204,7 @@ Void TEncSbac::determineCabacInitIdx()
 
 /** The function does the followng: Write out terminate bit. Flush CABAC. Intialize CABAC states. Start CABAC.
  */
-Void TEncSbac::updateContextTables(SliceType eSliceType, Int iQp, Bool bExecuteFinish)
+void TEncSbac::updateContextTables(SliceType eSliceType, int iQp, bool bExecuteFinish)
 {
     m_pcBinIf->encodeBinTrm(1);
     if (bExecuteFinish) m_pcBinIf->finish();
@@ -237,42 +239,42 @@ Void TEncSbac::updateContextTables(SliceType eSliceType, Int iQp, Bool bExecuteF
     m_pcBinIf->start();
 }
 
-Void TEncSbac::codeVPS(TComVPS*)
+void TEncSbac::codeVPS(TComVPS*)
 {
     assert(0);
 }
 
-Void TEncSbac::codeSPS(TComSPS*)
+void TEncSbac::codeSPS(TComSPS*)
 {
     assert(0);
 }
 
-Void TEncSbac::codePPS(TComPPS*)
+void TEncSbac::codePPS(TComPPS*)
 {
     assert(0);
 }
 
-Void TEncSbac::codeSliceHeader(TComSlice*)
+void TEncSbac::codeSliceHeader(TComSlice*)
 {
     assert(0);
 }
 
-Void TEncSbac::codeTilesWPPEntryPoint(TComSlice*)
+void TEncSbac::codeTilesWPPEntryPoint(TComSlice*)
 {
     assert(0);
 }
 
-Void TEncSbac::codeTerminatingBit(UInt uilsLast)
+void TEncSbac::codeTerminatingBit(UInt uilsLast)
 {
     m_pcBinIf->encodeBinTrm(uilsLast);
 }
 
-Void TEncSbac::codeSliceFinish()
+void TEncSbac::codeSliceFinish()
 {
     m_pcBinIf->finish();
 }
 
-Void TEncSbac::xWriteUnarySymbol(UInt uiSymbol, ContextModel* pcSCModel, Int iOffset)
+void TEncSbac::xWriteUnarySymbol(UInt uiSymbol, ContextModel* pcSCModel, int offset)
 {
     m_pcBinIf->encodeBin(uiSymbol ? 1 : 0, pcSCModel[0]);
 
@@ -283,11 +285,11 @@ Void TEncSbac::xWriteUnarySymbol(UInt uiSymbol, ContextModel* pcSCModel, Int iOf
 
     while (uiSymbol--)
     {
-        m_pcBinIf->encodeBin(uiSymbol ? 1 : 0, pcSCModel[iOffset]);
+        m_pcBinIf->encodeBin(uiSymbol ? 1 : 0, pcSCModel[offset]);
     }
 }
 
-Void TEncSbac::xWriteUnaryMaxSymbol(UInt uiSymbol, ContextModel* pcSCModel, Int iOffset, UInt uiMaxSymbol)
+void TEncSbac::xWriteUnaryMaxSymbol(UInt uiSymbol, ContextModel* pcSCModel, int offset, UInt uiMaxSymbol)
 {
     if (uiMaxSymbol == 0)
     {
@@ -301,23 +303,23 @@ Void TEncSbac::xWriteUnaryMaxSymbol(UInt uiSymbol, ContextModel* pcSCModel, Int 
         return;
     }
 
-    Bool bCodeLast = (uiMaxSymbol > uiSymbol);
+    bool bCodeLast = (uiMaxSymbol > uiSymbol);
 
     while (--uiSymbol)
     {
-        m_pcBinIf->encodeBin(1, pcSCModel[iOffset]);
+        m_pcBinIf->encodeBin(1, pcSCModel[offset]);
     }
 
     if (bCodeLast)
     {
-        m_pcBinIf->encodeBin(0, pcSCModel[iOffset]);
+        m_pcBinIf->encodeBin(0, pcSCModel[offset]);
     }
 }
 
-Void TEncSbac::xWriteEpExGolomb(UInt uiSymbol, UInt uiCount)
+void TEncSbac::xWriteEpExGolomb(UInt uiSymbol, UInt uiCount)
 {
     UInt bins = 0;
-    Int numBins = 0;
+    int numBins = 0;
 
     while (uiSymbol >= (UInt)(1 << uiCount))
     {
@@ -340,11 +342,11 @@ Void TEncSbac::xWriteEpExGolomb(UInt uiSymbol, UInt uiCount)
 /** Coding of coeff_abs_level_minus3
  * \param uiSymbol value of coeff_abs_level_minus3
  * \param ruiGoRiceParam reference to Rice parameter
- * \returns Void
+ * \returns void
  */
-Void TEncSbac::xWriteCoefRemainExGolomb(UInt symbol, UInt &rParam)
+void TEncSbac::xWriteCoefRemainExGolomb(UInt symbol, UInt &rParam)
 {
-    Int codeNumber  = (Int)symbol;
+    int codeNumber  = (int)symbol;
     UInt length;
 
     if (codeNumber < (COEF_REMAIN_BIN_REDUCTION << rParam))
@@ -368,24 +370,24 @@ Void TEncSbac::xWriteCoefRemainExGolomb(UInt symbol, UInt &rParam)
 }
 
 // SBAC RD
-Void  TEncSbac::load(TEncSbac* src)
+void  TEncSbac::load(TEncSbac* src)
 {
     this->xCopyFrom(src);
 }
 
-Void  TEncSbac::loadIntraDirModeLuma(TEncSbac* src)
+void  TEncSbac::loadIntraDirModeLuma(TEncSbac* src)
 {
     m_pcBinIf->copyState(src->m_pcBinIf);
 
     this->m_cCUIntraPredSCModel.copyFrom(&src->m_cCUIntraPredSCModel);
 }
 
-Void  TEncSbac::store(TEncSbac* pDest)
+void  TEncSbac::store(TEncSbac* pDest)
 {
     pDest->xCopyFrom(this);
 }
 
-Void TEncSbac::xCopyFrom(TEncSbac* src)
+void TEncSbac::xCopyFrom(TEncSbac* src)
 {
     m_pcBinIf->copyState(src->m_pcBinIf);
 
@@ -395,15 +397,15 @@ Void TEncSbac::xCopyFrom(TEncSbac* src)
     memcpy(m_contextModels, src->m_contextModels, m_numContextModels * sizeof(ContextModel));
 }
 
-Void TEncSbac::codeMVPIdx(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList)
+void TEncSbac::codeMVPIdx(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList)
 {
-    Int iSymbol = cu->getMVPIdx(eRefList, absPartIdx);
-    Int iNum = AMVP_MAX_NUM_CANDS;
+    int iSymbol = cu->getMVPIdx(eRefList, absPartIdx);
+    int iNum = AMVP_MAX_NUM_CANDS;
 
     xWriteUnaryMaxSymbol(iSymbol, m_cMVPIdxSCModel.get(0), 1, iNum - 1);
 }
 
-Void TEncSbac::codePartSize(TComDataCU* cu, UInt absPartIdx, UInt depth)
+void TEncSbac::codePartSize(TComDataCU* cu, UInt absPartIdx, UInt depth)
 {
     PartSize partSize         = cu->getPartitionSize(absPartIdx);
 
@@ -487,17 +489,17 @@ Void TEncSbac::codePartSize(TComDataCU* cu, UInt absPartIdx, UInt depth)
 /** code prediction mode
  * \param cu
  * \param absPartIdx
- * \returns Void
+ * \returns void
  */
-Void TEncSbac::codePredMode(TComDataCU* cu, UInt absPartIdx)
+void TEncSbac::codePredMode(TComDataCU* cu, UInt absPartIdx)
 {
     // get context function is here
-    Int iPredMode = cu->getPredictionMode(absPartIdx);
+    int iPredMode = cu->getPredictionMode(absPartIdx);
 
     m_pcBinIf->encodeBin(iPredMode == MODE_INTER ? 0 : 1, m_cCUPredModeSCModel.get(0, 0, 0));
 }
 
-Void TEncSbac::codeCUTransquantBypassFlag(TComDataCU* cu, UInt absPartIdx)
+void TEncSbac::codeCUTransquantBypassFlag(TComDataCU* cu, UInt absPartIdx)
 {
     UInt uiSymbol = cu->getCUTransquantBypass(absPartIdx);
 
@@ -507,9 +509,9 @@ Void TEncSbac::codeCUTransquantBypassFlag(TComDataCU* cu, UInt absPartIdx)
 /** code skip flag
  * \param cu
  * \param absPartIdx
- * \returns Void
+ * \returns void
  */
-Void TEncSbac::codeSkipFlag(TComDataCU* cu, UInt absPartIdx)
+void TEncSbac::codeSkipFlag(TComDataCU* cu, UInt absPartIdx)
 {
     // get context function is here
     UInt uiSymbol = cu->isSkipped(absPartIdx) ? 1 : 0;
@@ -528,9 +530,9 @@ Void TEncSbac::codeSkipFlag(TComDataCU* cu, UInt absPartIdx)
 /** code merge flag
  * \param cu
  * \param absPartIdx
- * \returns Void
+ * \returns void
  */
-Void TEncSbac::codeMergeFlag(TComDataCU* cu, UInt absPartIdx)
+void TEncSbac::codeMergeFlag(TComDataCU* cu, UInt absPartIdx)
 {
     const UInt uiSymbol = cu->getMergeFlag(absPartIdx) ? 1 : 0;
 
@@ -549,9 +551,9 @@ Void TEncSbac::codeMergeFlag(TComDataCU* cu, UInt absPartIdx)
 /** code merge index
  * \param cu
  * \param absPartIdx
- * \returns Void
+ * \returns void
  */
-Void TEncSbac::codeMergeIndex(TComDataCU* cu, UInt absPartIdx)
+void TEncSbac::codeMergeIndex(TComDataCU* cu, UInt absPartIdx)
 {
     UInt uiUnaryIdx = cu->getMergeIndex(absPartIdx);
     UInt uiNumCand = cu->getSlice()->getMaxNumMergeCand();
@@ -582,7 +584,7 @@ Void TEncSbac::codeMergeIndex(TComDataCU* cu, UInt absPartIdx)
     DTRACE_CABAC_T("\n");
 }
 
-Void TEncSbac::codeSplitFlag(TComDataCU* cu, UInt absPartIdx, UInt depth)
+void TEncSbac::codeSplitFlag(TComDataCU* cu, UInt absPartIdx, UInt depth)
 {
     if (depth == g_maxCUDepth - g_addCUDepth)
         return;
@@ -596,7 +598,7 @@ Void TEncSbac::codeSplitFlag(TComDataCU* cu, UInt absPartIdx, UInt depth)
     DTRACE_CABAC_T("\tSplitFlag\n")
 }
 
-Void TEncSbac::codeTransformSubdivFlag(UInt uiSymbol, UInt uiCtx)
+void TEncSbac::codeTransformSubdivFlag(UInt uiSymbol, UInt uiCtx)
 {
     m_pcBinIf->encodeBin(uiSymbol, m_cCUTransSubdivFlagSCModel.get(0, 0, uiCtx));
     DTRACE_CABAC_VL(g_nSymbolCounter++)
@@ -608,11 +610,11 @@ Void TEncSbac::codeTransformSubdivFlag(UInt uiSymbol, UInt uiCtx)
     DTRACE_CABAC_T("\n")
 }
 
-Void TEncSbac::codeIntraDirLumaAng(TComDataCU* cu, UInt absPartIdx, Bool isMultiple)
+void TEncSbac::codeIntraDirLumaAng(TComDataCU* cu, UInt absPartIdx, bool isMultiple)
 {
     UInt dir[4], j;
-    Int preds[4][3] = { { -1, -1, -1 }, { -1, -1, -1 }, { -1, -1, -1 }, { -1, -1, -1 } };
-    Int predNum[4], predIdx[4] = { -1, -1, -1, -1 };
+    int preds[4][3] = { { -1, -1, -1 }, { -1, -1, -1 }, { -1, -1, -1 }, { -1, -1, -1 } };
+    int predNum[4], predIdx[4] = { -1, -1, -1, -1 };
     PartSize mode = cu->getPartitionSize(absPartIdx);
     UInt partNum = isMultiple ? (mode == SIZE_NxN ? 4 : 1) : 1;
     UInt partOffset = (cu->getPic()->getNumPartInCU() >> (cu->getDepth(absPartIdx) << 1)) >> 2;
@@ -656,7 +658,7 @@ Void TEncSbac::codeIntraDirLumaAng(TComDataCU* cu, UInt absPartIdx, Bool isMulti
             {
                 std::swap(preds[j][1], preds[j][2]);
             }
-            for (Int i = (predNum[j] - 1); i >= 0; i--)
+            for (int i = (predNum[j] - 1); i >= 0; i--)
             {
                 dir[j] = dir[j] > preds[j][i] ? dir[j] - 1 : dir[j];
             }
@@ -666,7 +668,7 @@ Void TEncSbac::codeIntraDirLumaAng(TComDataCU* cu, UInt absPartIdx, Bool isMulti
     }
 }
 
-Void TEncSbac::codeIntraDirChroma(TComDataCU* cu, UInt absPartIdx)
+void TEncSbac::codeIntraDirChroma(TComDataCU* cu, UInt absPartIdx)
 {
     UInt uiIntraDirChroma = cu->getChromaIntraDir(absPartIdx);
 
@@ -679,7 +681,7 @@ Void TEncSbac::codeIntraDirChroma(TComDataCU* cu, UInt absPartIdx)
         UInt uiAllowedChromaDir[NUM_CHROMA_MODE];
         cu->getAllowedChromaDir(absPartIdx, uiAllowedChromaDir);
 
-        for (Int i = 0; i < NUM_CHROMA_MODE - 1; i++)
+        for (int i = 0; i < NUM_CHROMA_MODE - 1; i++)
         {
             if (uiIntraDirChroma == uiAllowedChromaDir[i])
             {
@@ -694,7 +696,7 @@ Void TEncSbac::codeIntraDirChroma(TComDataCU* cu, UInt absPartIdx)
     }
 }
 
-Void TEncSbac::codeInterDir(TComDataCU* cu, UInt absPartIdx)
+void TEncSbac::codeInterDir(TComDataCU* cu, UInt absPartIdx)
 {
     const UInt uiInterDir = cu->getInterDir(absPartIdx) - 1;
     const UInt uiCtx      = cu->getCtxInterDir(absPartIdx);
@@ -710,10 +712,10 @@ Void TEncSbac::codeInterDir(TComDataCU* cu, UInt absPartIdx)
     }
 }
 
-Void TEncSbac::codeRefFrmIdx(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList)
+void TEncSbac::codeRefFrmIdx(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList)
 {
     {
-        Int iRefFrame = cu->getCUMvField(eRefList)->getRefIdx(absPartIdx);
+        int iRefFrame = cu->getCUMvField(eRefList)->getRefIdx(absPartIdx);
         ContextModel *pCtx = m_cCURefPicSCModel.get(0);
         m_pcBinIf->encodeBin((iRefFrame == 0 ? 0 : 1), *pCtx);
 
@@ -742,7 +744,7 @@ Void TEncSbac::codeRefFrmIdx(TComDataCU* cu, UInt absPartIdx, RefPicList eRefLis
     }
 }
 
-Void TEncSbac::codeMvd(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList)
+void TEncSbac::codeMvd(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList)
 {
     if (cu->getSlice()->getMvdL1ZeroFlag() && eRefList == REF_PIC_LIST_1 && cu->getInterDir(absPartIdx) == 3)
     {
@@ -750,15 +752,15 @@ Void TEncSbac::codeMvd(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList)
     }
 
     const TComCUMvField* pcCUMvField = cu->getCUMvField(eRefList);
-    const Int iHor = pcCUMvField->getMvd(absPartIdx).x;
-    const Int iVer = pcCUMvField->getMvd(absPartIdx).y;
+    const int iHor = pcCUMvField->getMvd(absPartIdx).x;
+    const int iVer = pcCUMvField->getMvd(absPartIdx).y;
     ContextModel* pCtx = m_cCUMvdSCModel.get(0);
 
     m_pcBinIf->encodeBin(iHor != 0 ? 1 : 0, *pCtx);
     m_pcBinIf->encodeBin(iVer != 0 ? 1 : 0, *pCtx);
 
-    const Bool bHorAbsGr0 = iHor != 0;
-    const Bool bVerAbsGr0 = iVer != 0;
+    const bool bHorAbsGr0 = iHor != 0;
+    const bool bVerAbsGr0 = iVer != 0;
     const UInt uiHorAbs   = 0 > iHor ? -iHor : iHor;
     const UInt uiVerAbs   = 0 > iVer ? -iVer : iVer;
     pCtx++;
@@ -794,16 +796,16 @@ Void TEncSbac::codeMvd(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList)
     }
 }
 
-Void TEncSbac::codeDeltaQP(TComDataCU* cu, UInt absPartIdx)
+void TEncSbac::codeDeltaQP(TComDataCU* cu, UInt absPartIdx)
 {
-    Int iDQp  = cu->getQP(absPartIdx) - cu->getRefQP(absPartIdx);
+    int iDQp  = cu->getQP(absPartIdx) - cu->getRefQP(absPartIdx);
 
-    Int qpBdOffsetY =  cu->getSlice()->getSPS()->getQpBDOffsetY();
+    int qpBdOffsetY =  cu->getSlice()->getSPS()->getQpBDOffsetY();
 
     iDQp = (iDQp + 78 + qpBdOffsetY + (qpBdOffsetY / 2)) % (52 + qpBdOffsetY) - 26 - (qpBdOffsetY / 2);
 
     UInt uiAbsDQp = (UInt)((iDQp > 0) ? iDQp  : (-iDQp));
-    UInt TUValue = min((Int)uiAbsDQp, CU_DQP_TU_CMAX);
+    UInt TUValue = X265_MIN((int)uiAbsDQp, CU_DQP_TU_CMAX);
     xWriteUnaryMaxSymbol(TUValue, &m_cCUDeltaQpSCModel.get(0, 0, 0), 1, CU_DQP_TU_CMAX);
     if (uiAbsDQp >= CU_DQP_TU_CMAX)
     {
@@ -817,7 +819,7 @@ Void TEncSbac::codeDeltaQP(TComDataCU* cu, UInt absPartIdx)
     }
 }
 
-Void TEncSbac::codeQtCbf(TComDataCU* cu, UInt absPartIdx, TextType ttype, UInt trDepth)
+void TEncSbac::codeQtCbf(TComDataCU* cu, UInt absPartIdx, TextType ttype, UInt trDepth)
 {
     UInt uiCbf = cu->getCbf(absPartIdx, ttype, trDepth);
     UInt uiCtx = cu->getCtxQtCbf(ttype, trDepth);
@@ -865,13 +867,13 @@ void TEncSbac::codeTransformSkipFlags(TComDataCU* cu, UInt absPartIdx, UInt widt
 /** Code I_PCM information.
  * \param cu pointer to CU
  * \param absPartIdx CU index
- * \returns Void
+ * \returns void
  */
-Void TEncSbac::codeIPCMInfo(TComDataCU* cu, UInt absPartIdx)
+void TEncSbac::codeIPCMInfo(TComDataCU* cu, UInt absPartIdx)
 {
     UInt uiIPCM = (cu->getIPCMFlag(absPartIdx) == true) ? 1 : 0;
 
-    Bool writePCMSampleFlag = cu->getIPCMFlag(absPartIdx);
+    bool writePCMSampleFlag = cu->getIPCMFlag(absPartIdx);
 
     m_pcBinIf->encodeBinTrm(uiIPCM);
 
@@ -943,7 +945,7 @@ Void TEncSbac::codeIPCMInfo(TComDataCU* cu, UInt absPartIdx)
     }
 }
 
-Void TEncSbac::codeQtRootCbf(TComDataCU* cu, UInt absPartIdx)
+void TEncSbac::codeQtRootCbf(TComDataCU* cu, UInt absPartIdx)
 {
     UInt uiCbf = cu->getQtRootCbf(absPartIdx);
     UInt uiCtx = 0;
@@ -960,7 +962,7 @@ Void TEncSbac::codeQtRootCbf(TComDataCU* cu, UInt absPartIdx)
     DTRACE_CABAC_T("\n")
 }
 
-Void TEncSbac::codeQtCbfZero(TComDataCU* cu, TextType ttype, UInt trDepth)
+void TEncSbac::codeQtCbfZero(TComDataCU* cu, TextType ttype, UInt trDepth)
 {
     // this function is only used to estimate the bits when cbf is 0
     // and will never be called when writing the bistream. do not need to write log
@@ -970,7 +972,7 @@ Void TEncSbac::codeQtCbfZero(TComDataCU* cu, TextType ttype, UInt trDepth)
     m_pcBinIf->encodeBin(cbf, m_cCUQtCbfSCModel.get(0, ttype ? TEXT_CHROMA : ttype, ctx));
 }
 
-Void TEncSbac::codeQtRootCbfZero(TComDataCU*)
+void TEncSbac::codeQtRootCbfZero(TComDataCU*)
 {
     // this function is only used to estimate the bits when cbf is 0
     // and will never be called when writing the bistream. do not need to write log
@@ -989,12 +991,12 @@ Void TEncSbac::codeQtRootCbfZero(TComDataCU*)
  * \param uiScanIdx scan type (zig-zag, hor, ver)
  * This method encodes the X and Y component within a block of the last significant coefficient.
  */
-Void TEncSbac::codeLastSignificantXY(UInt posx, UInt posy, Int width, Int height, TextType eTType, UInt uiScanIdx)
+void TEncSbac::codeLastSignificantXY(UInt posx, UInt posy, int width, int height, TextType eTType, UInt uiScanIdx)
 {
     // swap
     if (uiScanIdx == SCAN_VER)
     {
-        swap(posx, posy);
+        std::swap(posx, posy);
     }
 
     UInt uiCtxLast;
@@ -1003,7 +1005,7 @@ Void TEncSbac::codeLastSignificantXY(UInt posx, UInt posy, Int width, Int height
     UInt uiGroupIdxX    = g_groupIdx[posx];
     UInt uiGroupIdxY    = g_groupIdx[posy];
 
-    Int blkSizeOffsetX, blkSizeOffsetY, shiftX, shiftY;
+    int blkSizeOffsetX, blkSizeOffsetY, shiftX, shiftY;
     blkSizeOffsetX = eTType ? 0 : (g_convertToBit[width] * 3 + ((g_convertToBit[width] + 1) >> 2));
     blkSizeOffsetY = eTType ? 0 : (g_convertToBit[height] * 3 + ((g_convertToBit[height] + 1) >> 2));
     shiftX = eTType ? g_convertToBit[width] : ((g_convertToBit[width] + 3) >> 2);
@@ -1043,8 +1045,9 @@ Void TEncSbac::codeLastSignificantXY(UInt posx, UInt posy, Int width, Int height
     }
 }
 
-Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UInt width, UInt height, UInt /*depth*/, TextType eTType)
+void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UInt width, UInt height, UInt depth, TextType eTType)
 {
+#if ENC_DEC_TRACE
     DTRACE_CABAC_VL(g_nSymbolCounter++)
     DTRACE_CABAC_T("\tparseCoeffNxN()\teType=")
     DTRACE_CABAC_V(eTType)
@@ -1069,6 +1072,9 @@ Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UIn
     DTRACE_CABAC_T("\tpredmode=")
     DTRACE_CABAC_V(cu->getPredictionMode(absPartIdx))
     DTRACE_CABAC_T("\n")
+#else
+    (void)depth;
+#endif
 
     if (width > m_pcSlice->getSPS()->getMaxTrSize())
     {
@@ -1094,7 +1100,7 @@ Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UIn
     UInt uiScanIdx = cu->getCoefScanIdx(absPartIdx, width, eTType == TEXT_LUMA, cu->isIntra(absPartIdx));
     const UInt *scan = g_sigLastScan[uiScanIdx][uiLog2BlockSize - 1];
 
-    Bool beValid;
+    bool beValid;
     if (cu->getCUTransquantBypass(absPartIdx))
     {
         beValid = false;
@@ -1105,8 +1111,8 @@ Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UIn
     }
 
     // Find position of last coefficient
-    Int scanPosLast = -1;
-    Int posLast;
+    int scanPosLast = -1;
+    int posLast;
 
     const UInt * scanCG;
     {
@@ -1144,28 +1150,28 @@ Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UIn
     while (uiNumSig > 0);
 
     // Code position of last coefficient
-    Int posLastY = posLast >> uiLog2BlockSize;
-    Int posLastX = posLast - (posLastY << uiLog2BlockSize);
+    int posLastY = posLast >> uiLog2BlockSize;
+    int posLastX = posLast - (posLastY << uiLog2BlockSize);
     codeLastSignificantXY(posLastX, posLastY, width, height, eTType, uiScanIdx);
 
     //===== code significance flag =====
     ContextModel * const baseCoeffGroupCtx = m_cCUSigCoeffGroupSCModel.get(0, eTType);
     ContextModel * const baseCtx = (eTType == TEXT_LUMA) ? m_cCUSigSCModel.get(0, 0) : m_cCUSigSCModel.get(0, 0) + NUM_SIG_FLAG_CTX_LUMA;
 
-    const Int  iLastScanSet      = scanPosLast >> LOG2_SCAN_SET_SIZE;
+    const int  iLastScanSet      = scanPosLast >> LOG2_SCAN_SET_SIZE;
     UInt c1 = 1;
     UInt uiGoRiceParam           = 0;
-    Int  iScanPosSig             = scanPosLast;
+    int  iScanPosSig             = scanPosLast;
 
-    for (Int iSubSet = iLastScanSet; iSubSet >= 0; iSubSet--)
+    for (int iSubSet = iLastScanSet; iSubSet >= 0; iSubSet--)
     {
-        Int numNonZero = 0;
-        Int  iSubPos     = iSubSet << LOG2_SCAN_SET_SIZE;
+        int numNonZero = 0;
+        int  iSubPos     = iSubSet << LOG2_SCAN_SET_SIZE;
         uiGoRiceParam    = 0;
-        Int absCoeff[16];
+        int absCoeff[16];
         UInt coeffSigns = 0;
 
-        Int lastNZPosInCG = -1, firstNZPosInCG = SCAN_SET_SIZE;
+        int lastNZPosInCG = -1, firstNZPosInCG = SCAN_SET_SIZE;
 
         if (iScanPosSig == scanPosLast)
         {
@@ -1178,9 +1184,9 @@ Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UIn
         }
 
         // encode significant_coeffgroup_flag
-        Int iCGBlkPos = scanCG[iSubSet];
-        Int iCGPosY   = iCGBlkPos / uiNumBlkSide;
-        Int iCGPosX   = iCGBlkPos - (iCGPosY * uiNumBlkSide);
+        int iCGBlkPos = scanCG[iSubSet];
+        int iCGPosY   = iCGBlkPos / uiNumBlkSide;
+        int iCGPosX   = iCGBlkPos - (iCGPosY * uiNumBlkSide);
         if (iSubSet == iLastScanSet || iSubSet == 0)
         {
             uiSigCoeffGroupFlag[iCGBlkPos] = 1;
@@ -1195,7 +1201,7 @@ Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UIn
         // encode significant_coeff_flag
         if (uiSigCoeffGroupFlag[iCGBlkPos])
         {
-            Int patternSigCtx = TComTrQuant::calcPatternSigCtx(uiSigCoeffGroupFlag, iCGPosX, iCGPosY, width, height);
+            int patternSigCtx = TComTrQuant::calcPatternSigCtx(uiSigCoeffGroupFlag, iCGPosX, iCGPosY, width, height);
             UInt uiBlkPos, posy, posx, uiSig, uiCtxSig;
             for (; iScanPosSig >= iSubPos; iScanPosSig--)
             {
@@ -1228,7 +1234,7 @@ Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UIn
 
         if (numNonZero > 0)
         {
-            Bool signHidden = (lastNZPosInCG - firstNZPosInCG >= SBH_THRESHOLD);
+            bool signHidden = (lastNZPosInCG - firstNZPosInCG >= SBH_THRESHOLD);
             UInt uiCtxSet = (iSubSet > 0 && eTType == TEXT_LUMA) ? 2 : 0;
 
             if (c1 == 0)
@@ -1238,9 +1244,9 @@ Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UIn
             c1 = 1;
             ContextModel *baseCtxMod = (eTType == TEXT_LUMA) ? m_cCUOneSCModel.get(0, 0) + 4 * uiCtxSet : m_cCUOneSCModel.get(0, 0) + NUM_ONE_FLAG_CTX_LUMA + 4 * uiCtxSet;
 
-            Int numC1Flag = min(numNonZero, C1FLAG_NUMBER);
-            Int firstC2FlagIdx = -1;
-            for (Int idx = 0; idx < numC1Flag; idx++)
+            int numC1Flag = X265_MIN(numNonZero, C1FLAG_NUMBER);
+            int firstC2FlagIdx = -1;
+            for (int idx = 0; idx < numC1Flag; idx++)
             {
                 UInt uiSymbol = absCoeff[idx] > 1;
                 m_pcBinIf->encodeBin(uiSymbol, baseCtxMod[c1]);
@@ -1278,10 +1284,10 @@ Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UIn
                 m_pcBinIf->encodeBinsEP(coeffSigns, numNonZero);
             }
 
-            Int iFirstCoeff2 = 1;
+            int iFirstCoeff2 = 1;
             if (c1 == 0 || numNonZero > C1FLAG_NUMBER)
             {
-                for (Int idx = 0; idx < numNonZero; idx++)
+                for (int idx = 0; idx < numNonZero; idx++)
                 {
                     UInt baseLevel  = (idx < C1FLAG_NUMBER) ? (2 + iFirstCoeff2) : 1;
 
@@ -1290,7 +1296,7 @@ Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UIn
                         xWriteCoefRemainExGolomb(absCoeff[idx] - baseLevel, uiGoRiceParam);
                         if (absCoeff[idx] > 3 * (1 << uiGoRiceParam))
                         {
-                            uiGoRiceParam = min<UInt>(uiGoRiceParam + 1, 4);
+                            uiGoRiceParam = std::min<UInt>(uiGoRiceParam + 1, 4);
                         }
                     }
                     if (absCoeff[idx] >= 2)
@@ -1306,20 +1312,20 @@ Void TEncSbac::codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UIn
 /** code SAO offset sign
  * \param code sign value
  */
-Void TEncSbac::codeSAOSign(UInt code)
+void TEncSbac::codeSAOSign(UInt code)
 {
     m_pcBinIf->encodeBinEP(code);
 }
 
-Void TEncSbac::codeSaoMaxUvlc(UInt code, UInt maxSymbol)
+void TEncSbac::codeSaoMaxUvlc(UInt code, UInt maxSymbol)
 {
     if (maxSymbol == 0)
     {
         return;
     }
 
-    Int i;
-    Bool bCodeLast = (maxSymbol > code);
+    int i;
+    bool bCodeLast = (maxSymbol > code);
 
     if (code == 0)
     {
@@ -1344,7 +1350,7 @@ Void TEncSbac::codeSaoMaxUvlc(UInt code, UInt maxSymbol)
  * \param uiLength
  * \param uiCode
  */
-Void TEncSbac::codeSaoUflc(UInt uiLength, UInt uiCode)
+void TEncSbac::codeSaoUflc(UInt uiLength, UInt uiCode)
 {
     m_pcBinIf->encodeBinsEP(uiCode, uiLength);
 }
@@ -1353,7 +1359,7 @@ Void TEncSbac::codeSaoUflc(UInt uiLength, UInt uiCode)
  * \param uiCode
  * \param uiCompIdx
  */
-Void TEncSbac::codeSaoMerge(UInt uiCode)
+void TEncSbac::codeSaoMerge(UInt uiCode)
 {
     if (uiCode == 0)
     {
@@ -1368,7 +1374,7 @@ Void TEncSbac::codeSaoMerge(UInt uiCode)
 /** Code SAO type index
  * \param uiCode
  */
-Void TEncSbac::codeSaoTypeIdx(UInt uiCode)
+void TEncSbac::codeSaoTypeIdx(UInt uiCode)
 {
     if (uiCode == 0)
     {
@@ -1387,7 +1393,7 @@ Void TEncSbac::codeSaoTypeIdx(UInt uiCode)
  *   estimate bit cost for CBP, significant map and significant coefficients
  ****************************************************************************
  */
-Void TEncSbac::estBit(estBitsSbacStruct* pcEstBitsSbac, Int width, Int height, TextType eTType)
+void TEncSbac::estBit(estBitsSbacStruct* pcEstBitsSbac, int width, int height, TextType eTType)
 {
     estCBFBit(pcEstBitsSbac);
 
@@ -1406,7 +1412,7 @@ Void TEncSbac::estBit(estBitsSbacStruct* pcEstBitsSbac, Int width, Int height, T
  *    estimate bit cost for each CBP bit
  ****************************************************************************
  */
-Void TEncSbac::estCBFBit(estBitsSbacStruct* pcEstBitsSbac)
+void TEncSbac::estCBFBit(estBitsSbacStruct* pcEstBitsSbac)
 {
     ContextModel *pCtx = m_cCUQtCbfSCModel.get(0);
 
@@ -1431,11 +1437,11 @@ Void TEncSbac::estCBFBit(estBitsSbacStruct* pcEstBitsSbac)
  *    estimate SAMBAC bit cost for significant coefficient group map
  ****************************************************************************
  */
-Void TEncSbac::estSignificantCoeffGroupMapBit(estBitsSbacStruct* pcEstBitsSbac, TextType eTType)
+void TEncSbac::estSignificantCoeffGroupMapBit(estBitsSbacStruct* pcEstBitsSbac, TextType eTType)
 {
-    Int firstCtx = 0, numCtx = NUM_SIG_CG_FLAG_CTX;
+    int firstCtx = 0, numCtx = NUM_SIG_CG_FLAG_CTX;
 
-    for (Int ctxIdx = firstCtx; ctxIdx < firstCtx + numCtx; ctxIdx++)
+    for (int ctxIdx = firstCtx; ctxIdx < firstCtx + numCtx; ctxIdx++)
     {
         for (UInt uiBin = 0; uiBin < 2; uiBin++)
         {
@@ -1450,11 +1456,11 @@ Void TEncSbac::estSignificantCoeffGroupMapBit(estBitsSbacStruct* pcEstBitsSbac, 
  *    estimate SAMBAC bit cost for significant coefficient map
  ****************************************************************************
  */
-Void TEncSbac::estSignificantMapBit(estBitsSbacStruct* pcEstBitsSbac, Int width, Int height, TextType eTType)
+void TEncSbac::estSignificantMapBit(estBitsSbacStruct* pcEstBitsSbac, int width, int height, TextType eTType)
 {
-    Int firstCtx = 1, numCtx = 8;
+    int firstCtx = 1, numCtx = 8;
 
-    if (max(width, height) >= 16)
+    if (X265_MAX(width, height) >= 16)
     {
         firstCtx = (eTType == TEXT_LUMA) ? 21 : 12;
         numCtx = (eTType == TEXT_LUMA) ? 6 : 3;
@@ -1472,7 +1478,7 @@ Void TEncSbac::estSignificantMapBit(estBitsSbacStruct* pcEstBitsSbac, Int width,
             pcEstBitsSbac->significantBits[0][bin] = m_cCUSigSCModel.get(0, 0, 0).getEntropyBits(bin);
         }
 
-        for (Int ctxIdx = firstCtx; ctxIdx < firstCtx + numCtx; ctxIdx++)
+        for (int ctxIdx = firstCtx; ctxIdx < firstCtx + numCtx; ctxIdx++)
         {
             for (UInt uiBin = 0; uiBin < 2; uiBin++)
             {
@@ -1487,7 +1493,7 @@ Void TEncSbac::estSignificantMapBit(estBitsSbacStruct* pcEstBitsSbac, Int width,
             pcEstBitsSbac->significantBits[0][bin] = m_cCUSigSCModel.get(0, 0, NUM_SIG_FLAG_CTX_LUMA + 0).getEntropyBits(bin);
         }
 
-        for (Int ctxIdx = firstCtx; ctxIdx < firstCtx + numCtx; ctxIdx++)
+        for (int ctxIdx = firstCtx; ctxIdx < firstCtx + numCtx; ctxIdx++)
         {
             for (UInt uiBin = 0; uiBin < 2; uiBin++)
             {
@@ -1495,19 +1501,19 @@ Void TEncSbac::estSignificantMapBit(estBitsSbacStruct* pcEstBitsSbac, Int width,
             }
         }
     }
-    Int iBitsX = 0, iBitsY = 0;
-    Int blkSizeOffsetX, blkSizeOffsetY, shiftX, shiftY;
+    int iBitsX = 0, iBitsY = 0;
+    int blkSizeOffsetX, blkSizeOffsetY, shiftX, shiftY;
 
     blkSizeOffsetX = eTType ? 0 : (g_convertToBit[width] * 3 + ((g_convertToBit[width] + 1) >> 2));
     blkSizeOffsetY = eTType ? 0 : (g_convertToBit[height] * 3 + ((g_convertToBit[height] + 1) >> 2));
     shiftX = eTType ? g_convertToBit[width] : ((g_convertToBit[width] + 3) >> 2);
     shiftY = eTType ? g_convertToBit[height] : ((g_convertToBit[height] + 3) >> 2);
 
-    Int ctx;
+    int ctx;
     ContextModel *pCtxX      = m_cCuCtxLastX.get(0, eTType);
     for (ctx = 0; ctx < g_groupIdx[width - 1]; ctx++)
     {
-        Int ctxOffset = blkSizeOffsetX + (ctx >> shiftX);
+        int ctxOffset = blkSizeOffsetX + (ctx >> shiftX);
         pcEstBitsSbac->lastXBits[ctx] = iBitsX + pCtxX[ctxOffset].getEntropyBits(0);
         iBitsX += pCtxX[ctxOffset].getEntropyBits(1);
     }
@@ -1516,7 +1522,7 @@ Void TEncSbac::estSignificantMapBit(estBitsSbacStruct* pcEstBitsSbac, Int width,
     ContextModel *pCtxY      = m_cCuCtxLastY.get(0, eTType);
     for (ctx = 0; ctx < g_groupIdx[height - 1]; ctx++)
     {
-        Int ctxOffset = blkSizeOffsetY + (ctx >> shiftY);
+        int ctxOffset = blkSizeOffsetY + (ctx >> shiftY);
         pcEstBitsSbac->lastYBits[ctx] = iBitsY + pCtxY[ctxOffset].getEntropyBits(0);
         iBitsY += pCtxY[ctxOffset].getEntropyBits(1);
     }
@@ -1530,20 +1536,20 @@ Void TEncSbac::estSignificantMapBit(estBitsSbacStruct* pcEstBitsSbac, Int width,
  *    estimate bit cost of significant coefficient
  ****************************************************************************
  */
-Void TEncSbac::estSignificantCoefficientsBit(estBitsSbacStruct* pcEstBitsSbac, TextType eTType)
+void TEncSbac::estSignificantCoefficientsBit(estBitsSbacStruct* pcEstBitsSbac, TextType eTType)
 {
     if (eTType == TEXT_LUMA)
     {
         ContextModel *ctxOne = m_cCUOneSCModel.get(0, 0);
         ContextModel *ctxAbs = m_cCUAbsSCModel.get(0, 0);
 
-        for (Int ctxIdx = 0; ctxIdx < NUM_ONE_FLAG_CTX_LUMA; ctxIdx++)
+        for (int ctxIdx = 0; ctxIdx < NUM_ONE_FLAG_CTX_LUMA; ctxIdx++)
         {
             pcEstBitsSbac->greaterOneBits[ctxIdx][0] = ctxOne[ctxIdx].getEntropyBits(0);
             pcEstBitsSbac->greaterOneBits[ctxIdx][1] = ctxOne[ctxIdx].getEntropyBits(1);
         }
 
-        for (Int ctxIdx = 0; ctxIdx < NUM_ABS_FLAG_CTX_LUMA; ctxIdx++)
+        for (int ctxIdx = 0; ctxIdx < NUM_ABS_FLAG_CTX_LUMA; ctxIdx++)
         {
             pcEstBitsSbac->levelAbsBits[ctxIdx][0] = ctxAbs[ctxIdx].getEntropyBits(0);
             pcEstBitsSbac->levelAbsBits[ctxIdx][1] = ctxAbs[ctxIdx].getEntropyBits(1);
@@ -1554,13 +1560,13 @@ Void TEncSbac::estSignificantCoefficientsBit(estBitsSbacStruct* pcEstBitsSbac, T
         ContextModel *ctxOne = m_cCUOneSCModel.get(0, 0) + NUM_ONE_FLAG_CTX_LUMA;
         ContextModel *ctxAbs = m_cCUAbsSCModel.get(0, 0) + NUM_ABS_FLAG_CTX_LUMA;
 
-        for (Int ctxIdx = 0; ctxIdx < NUM_ONE_FLAG_CTX_CHROMA; ctxIdx++)
+        for (int ctxIdx = 0; ctxIdx < NUM_ONE_FLAG_CTX_CHROMA; ctxIdx++)
         {
             pcEstBitsSbac->greaterOneBits[ctxIdx][0] = ctxOne[ctxIdx].getEntropyBits(0);
             pcEstBitsSbac->greaterOneBits[ctxIdx][1] = ctxOne[ctxIdx].getEntropyBits(1);
         }
 
-        for (Int ctxIdx = 0; ctxIdx < NUM_ABS_FLAG_CTX_CHROMA; ctxIdx++)
+        for (int ctxIdx = 0; ctxIdx < NUM_ABS_FLAG_CTX_CHROMA; ctxIdx++)
         {
             pcEstBitsSbac->levelAbsBits[ctxIdx][0] = ctxAbs[ctxIdx].getEntropyBits(0);
             pcEstBitsSbac->levelAbsBits[ctxIdx][1] = ctxAbs[ctxIdx].getEntropyBits(1);
@@ -1573,12 +1579,12 @@ Void TEncSbac::estSignificantCoefficientsBit(estBitsSbacStruct* pcEstBitsSbac, T
  .
  \param src From where to copy context information.
  */
-Void TEncSbac::xCopyContextsFrom(TEncSbac* src)
+void TEncSbac::xCopyContextsFrom(TEncSbac* src)
 {
     memcpy(m_contextModels, src->m_contextModels, m_numContextModels * sizeof(m_contextModels[0]));
 }
 
-Void  TEncSbac::loadContexts(TEncSbac* pScr)
+void  TEncSbac::loadContexts(TEncSbac* pScr)
 {
     this->xCopyContextsFrom(pScr);
 }

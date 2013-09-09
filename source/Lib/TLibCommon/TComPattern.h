@@ -44,6 +44,9 @@
 //! \ingroup TLibCommon
 //! \{
 
+namespace x265 {
+// private namespace
+
 // ====================================================================================================================
 // Class definition
 // ====================================================================================================================
@@ -55,15 +58,15 @@ class TComPatternParam
 {
 private:
 
-    Int  m_offsetLeft;
-    Int  m_offsetAbove;
+    int  m_offsetLeft;
+    int  m_offsetAbove;
     Pel* m_patternOrigin;
 
 public:
 
-    Int m_roiWidth;
-    Int m_roiHeight;
-    Int m_patternStride;
+    int m_roiWidth;
+    int m_roiHeight;
+    int m_patternStride;
 
     /// return starting position of buffer
     Pel* getPatternOrigin()        { return m_patternOrigin; }
@@ -75,12 +78,12 @@ public:
     }
 
     /// set parameters from Pel buffer for accessing neighboring pixels
-    Void setPatternParamPel(Pel* piTexture, Int roiWidth, Int roiHeight, Int stride,
-                            Int offsetLeft, Int offsetAbove);
+    void setPatternParamPel(Pel* piTexture, int roiWidth, int roiHeight, int stride,
+                            int offsetLeft, int offsetAbove);
 
     /// set parameters of one color component from CU data for accessing neighboring pixels
-    Void setPatternParamCU(TComDataCU* cu, UChar comp, UChar roiWidth, UChar roiHeight,
-                           Int offsetLeft, Int offsetAbove, UInt absZOrderIdx);
+    void setPatternParamCU(TComDataCU* cu, UChar comp, UChar roiWidth, UChar roiHeight,
+                           int offsetLeft, int offsetAbove, UInt absZOrderIdx);
 };
 
 /// neighboring pixel access class for all components
@@ -99,16 +102,16 @@ public:
     // ROI & pattern information, (ROI = &pattern[AboveOffset][LeftOffset])
     Pel*  getROIY()                 { return m_patternY.getROIOrigin(); }
 
-    Int   getROIYWidth()            { return m_patternY.m_roiWidth; }
+    int   getROIYWidth()            { return m_patternY.m_roiWidth; }
 
-    Int   getROIYHeight()           { return m_patternY.m_roiHeight; }
+    int   getROIYHeight()           { return m_patternY.m_roiHeight; }
 
-    Int   getPatternLStride()       { return m_patternY.m_patternStride; }
+    int   getPatternLStride()       { return m_patternY.m_patternStride; }
 
     // access functions of ADI buffers
-    Pel*  getAdiOrgBuf(Int cuWidth, Int cuHeight, Pel* adiBuf);
-    Pel*  getAdiCbBuf(Int cuWidth, Int cuHeight, Pel* adiBuf);
-    Pel*  getAdiCrBuf(Int cuWidth, Int cuHeight, Pel* adiBuf);
+    Pel*  getAdiOrgBuf(int cuWidth, int cuHeight, Pel* adiBuf);
+    Pel*  getAdiCbBuf(int cuWidth, int cuHeight, Pel* adiBuf);
+    Pel*  getAdiCrBuf(int cuWidth, int cuHeight, Pel* adiBuf);
 
     Pel*  getPredictorPtr(UInt dirMode, UInt uiWidthBits, Pel* adiBuf);
 
@@ -117,37 +120,37 @@ public:
     // -------------------------------------------------------------------------------------------------------------------
 
     /// set parameters from Pel buffers for accessing neighboring pixels
-    Void initPattern(Pel* y, Pel* cb, Pel* cr, Int roiWidth, Int roiHeight, Int stride,
-                     Int offsetLeft, Int offsetAbove);
+    void initPattern(Pel* y, Pel* cb, Pel* cr, int roiWidth, int roiHeight, int stride,
+                     int offsetLeft, int offsetAbove);
 
-    Void initAdiPattern(TComDataCU* cu, UInt zOrderIdxInPart, UInt partDepth, Pel* adiBuf,
-                        Int strideOrig, Int heightOrig, Pel* refAbove, Pel* refLeft,
+    void initAdiPattern(TComDataCU* cu, UInt zOrderIdxInPart, UInt partDepth, Pel* adiBuf,
+                        int strideOrig, int heightOrig, Pel* refAbove, Pel* refLeft,
                         Pel* refAboveFlt, Pel* refLeftFlt);
 
     /// set parameters from CU data for accessing neighboring pixels
-    Void  initPattern(TComDataCU* cu, UInt partDepth, UInt absPartIdx);
+    void  initPattern(TComDataCU* cu, UInt partDepth, UInt absPartIdx);
 
     /// set luma parameters from CU data for accessing ADI data
-    Void  initAdiPattern(TComDataCU* cu, UInt zOrderIdxInPart, UInt partDepth, Pel* adiBuf,
-                         Int strideOrig, Int heightOrig);
+    void  initAdiPattern(TComDataCU* cu, UInt zOrderIdxInPart, UInt partDepth, Pel* adiBuf,
+                         int strideOrig, int heightOrig);
 
     /// set chroma parameters from CU data for accessing ADI data
-    Void  initAdiPatternChroma(TComDataCU* cu, UInt zOrderIdxInPart, UInt partDepth,
-                               Pel* adiBuf, Int strideOrig, Int heightOrig);
+    void  initAdiPatternChroma(TComDataCU* cu, UInt zOrderIdxInPart, UInt partDepth,
+                               Pel* adiBuf, int strideOrig, int heightOrig);
 
 private:
 
     /// padding of unavailable reference samples for intra prediction
-    Void fillReferenceSamples(Pel* roiOrigin, Pel* adiTemp, Bool* bNeighborFlags, Int numIntraNeighbor, Int unitSize, Int numUnitsInCU, Int totalUnits, UInt cuWidth, UInt cuHeight, UInt width, UInt height, Int picStride);
+    void fillReferenceSamples(Pel* roiOrigin, Pel* adiTemp, bool* bNeighborFlags, int numIntraNeighbor, int unitSize, int numUnitsInCU, int totalUnits, UInt cuWidth, UInt cuHeight, UInt width, UInt height, int picStride);
 
     /// constrained intra prediction
-    Bool  isAboveLeftAvailable(TComDataCU* cu, UInt partIdxLT);
-    Int   isAboveAvailable(TComDataCU* cu, UInt partIdxLT, UInt partIdxRT, Bool* bValidFlags);
-    Int   isLeftAvailable(TComDataCU* cu, UInt partIdxLT, UInt partIdxLB, Bool* bValidFlags);
-    Int   isAboveRightAvailable(TComDataCU* cu, UInt partIdxLT, UInt partIdxRT, Bool* bValidFlags);
-    Int   isBelowLeftAvailable(TComDataCU* cu, UInt partIdxLT, UInt partIdxLB, Bool* bValidFlags);
+    bool  isAboveLeftAvailable(TComDataCU* cu, UInt partIdxLT);
+    int   isAboveAvailable(TComDataCU* cu, UInt partIdxLT, UInt partIdxRT, bool* bValidFlags);
+    int   isLeftAvailable(TComDataCU* cu, UInt partIdxLT, UInt partIdxLB, bool* bValidFlags);
+    int   isAboveRightAvailable(TComDataCU* cu, UInt partIdxLT, UInt partIdxRT, bool* bValidFlags);
+    int   isBelowLeftAvailable(TComDataCU* cu, UInt partIdxLT, UInt partIdxLB, bool* bValidFlags);
 };
-
+}
 //! \}
 
 #endif // __TCOMPATTERN__

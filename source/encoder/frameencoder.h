@@ -2,6 +2,7 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Chung Shin Yee <shinyee@multicorewareinc.com>
+ *          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,127 +27,44 @@
 
 #include "TLibCommon/TComBitCounter.h"
 #include "TLibCommon/TComPic.h"
+#include "TLibCommon/AccessUnit.h"
+
+#include "TLibEncoder/TEncCu.h"
+#include "TLibEncoder/TEncSearch.h"
 #include "TLibEncoder/TEncSbac.h"
 #include "TLibEncoder/TEncBinCoderCABAC.h"
+#include "TLibEncoder/WeightPredAnalysis.h"
+#include "TLibEncoder/TEncSampleAdaptiveOffset.h"
+#include "TLibEncoder/SEIwrite.h"
+#include "TLibEncoder/TEncCavlc.h"
 
 #include "wavefront.h"
-
-class TEncTop;
+#include "framefilter.h"
+#include "cturow.h"
+#include "ratecontrol.h"
 
 namespace x265 {
 // private x265 namespace
 
 class ThreadPool;
-
-class CTURow
-{
-public:
-
-    TEncSbac               m_sbacCoder;
-    TEncSbac               m_rdGoOnSbacCoder;
-    TEncSbac               m_bufferSbacCoder;
-    TEncBinCABAC           m_binCoderCABAC;
-    TEncBinCABACCounter    m_rdGoOnBinCodersCABAC;
-    TComBitCounter         m_bitCounter;
-    TComRdCost             m_rdCost;
-    TEncEntropy            m_entropyCoder;
-    TEncSearch             m_search;
-    TEncCu                 m_cuCoder;
-    TComTrQuant            m_trQuant;
-    TEncSbac            ***m_rdSbacCoders;
-    TEncBinCABACCounter ***m_binCodersCABAC;
-
-    void create(TEncTop* top);
-
-    void destroy();
-
-    void init()
-    {
-        m_active = 0;
-        m_curCol = 0;
-    }
-
-    inline void processCU(TComDataCU *cu, TComSlice *slice, TEncSbac *bufferSBac, bool bSaveCabac);
-
-    /* Threading */
-    Lock                m_lock;
-    volatile bool       m_active;
-    volatile uint32_t   m_curCol;
-};
+class TEncTop;
 
 // Manages the wave-front processing of a single encoding frame
-class FrameEncoder : public WaveFront
+class FrameEncoder : public WaveFront, public Thread
 {
 public:
 
-    FrameEncoder(ThreadPool *);
+    FrameEncoder();
 
     virtual ~FrameEncoder() {}
+
+    void setThreadPool(ThreadPool *p);
 
     void init(TEncTop *top, int numRows);
 
     void destroy();
 
-    void encode(TComPic *pic, TComSlice* slice);
-
     void processRow(int row);
-
-    /* Config broadcast methods */
-    void setAdaptiveSearchRange(int dir, int refIdx, int newSR)
-    {
-        for (int i = 0; i < m_numRows; i++)
-        {
-            m_rows[i].m_search.setAdaptiveSearchRange(dir, refIdx, newSR);
-        }
-    }
-
-    void setQPLambda(Int QP, double lumaLambda, double chromaLambda)
-    {
-        for (int i = 0; i < m_numRows; i++)
-        {
-            m_rows[i].m_search.setQPLambda(QP, lumaLambda, chromaLambda);
-        }
-    }
-
-    void setCbDistortionWeight(double weight)
-    {
-        for (int i = 0; i < m_numRows; i++)
-        {
-            m_rows[i].m_rdCost.setCbDistortionWeight(weight);
-        }
-    }
-
-    void setCrDistortionWeight(double weight)
-    {
-        for (int i = 0; i < m_numRows; i++)
-        {
-            m_rows[i].m_rdCost.setCrDistortionWeight(weight);
-        }
-    }
-
-    void setFlatScalingList()
-    {
-        for (int i = 0; i < m_numRows; i++)
-        {
-            m_rows[i].m_trQuant.setFlatScalingList();
-        }
-    }
-
-    void setUseScalingList(bool flag)
-    {
-        for (int i = 0; i < m_numRows; i++)
-        {
-            m_rows[i].m_trQuant.setUseScalingList(flag);
-        }
-    }
-
-    void setScalingList(TComScalingList *list)
-    {
-        for (int i = 0; i < m_numRows; i++)
-        {
-            this->m_rows[i].m_trQuant.setScalingList(list);
-        }
-    }
 
     TEncEntropy* getEntropyCoder(int row)      { return &this->m_rows[row].m_entropyCoder; }
 
@@ -154,28 +72,12 @@ public:
 
     TEncSbac*    getRDGoOnSbacCoder(int row)   { return &this->m_rows[row].m_rdGoOnSbacCoder; }
 
-    TEncSbac***  getRDSbacCoders(int row)      { return this->m_rows[row].m_rdSbacCoders; }
-
     TEncSbac*    getBufferSBac(int row)        { return &this->m_rows[row].m_bufferSbacCoder; }
 
     TEncCu*      getCuEncoder(int row)         { return &this->m_rows[row].m_cuCoder; }
 
-    TComSlice*   getSlice()                    { return m_slice; }
-
     /* Frame singletons, last the life of the encoder */
-    TEncSbac*               getSingletonSbac() { return &m_sbacCoder; }
-
-    TComLoopFilter*         getLoopFilter()    { return &m_loopFilter; }
-
-    TEncSampleAdaptiveOffset* getSAO()         { return &m_sao; }
-
-    TEncCavlc*              getCavlcCoder()    { return &m_cavlcCoder; }
-
-    TEncBinCABAC*           getBinCABAC()      { return &m_binCoderCABAC; }
-
-    TComBitCounter*         getBitCounter()    { return &m_bitCounter; }
-
-    TEncSlice*              getSliceEncoder()  { return &m_sliceEncoder; }
+    TEncSampleAdaptiveOffset* getSAO()         { return &m_frameFilter.m_sao; }
 
     void resetEntropy(TComSlice *slice)
     {
@@ -186,28 +88,65 @@ public:
         }
     }
 
-    void resetEncoder()
+    int getStreamHeaders(AccessUnit& accessUnitOut);
+
+    void initSlice(TComPic* pic);
+
+    /* analyze / compress frame, can be run in parallel within reference constraints */
+    void compressFrame();
+
+    /* called by compressFrame to perform wave-front compression analysis */
+    void compressCTURows();
+
+    void encodeSlice(TComOutputBitstream* substreams);
+
+    /* blocks until worker thread is done, returns encoded picture and bitstream */
+    TComPic *getEncodedPicture(AccessUnit& accessUnit);
+
+    // worker thread
+    void threadMain()
     {
-        // Initialize global singletons (these should eventually be per-slice)
-        m_sbacCoder.init((TEncBinIf*)&m_binCoderCABAC);
+        do
+        {
+            m_enable.wait();  // TEncTop::encode() triggers this event
+            if (m_threadActive)
+            {
+                compressFrame();
+                m_done.trigger();
+            }
+        }
+        while (m_threadActive);
     }
+
+    Event                    m_enable;
+    Event                    m_done;
+    bool                     m_threadActive;
+
+    SEIWriter                m_seiWriter;
+    TComSPS                  m_sps;
+    TComPPS                  m_pps;
+    RateControlEntry         m_rce;
 
 protected:
 
+    void determineSliceBounds();
+
+    TEncTop*                 m_top;
+    TEncCfg*                 m_cfg;
+
+    WeightPredAnalysis       m_wp;
     TEncSbac                 m_sbacCoder;
     TEncBinCABAC             m_binCoderCABAC;
     TEncCavlc                m_cavlcCoder;
-    TComLoopFilter           m_loopFilter;
-    TEncSampleAdaptiveOffset m_sao;
+    FrameFilter              m_frameFilter;
     TComBitCounter           m_bitCounter;
-    TEncSlice                m_sliceEncoder;
-    TEncCfg*                 m_cfg;
 
-    TComSlice*               m_slice;
+    /* Picture being encoded, and its output NAL list */
     TComPic*                 m_pic;
+    AccessUnit               m_accessUnit;
 
     int                      m_numRows;
-    bool                     m_enableWpp;
+    int                      m_filterRowDelay;
     CTURow*                  m_rows;
     Event                    m_completionEvent;
 };

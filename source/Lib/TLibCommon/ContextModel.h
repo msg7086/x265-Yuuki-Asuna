@@ -43,6 +43,10 @@
 //! \ingroup TLibCommon
 //! \{
 
+namespace x265 {
+// private namespace
+
+
 // ====================================================================================================================
 // Class definition
 // ====================================================================================================================
@@ -52,52 +56,52 @@ class ContextModel
 {
 public:
 
-    ContextModel()                        { m_ucState = 0; m_binsCoded = 0; }
+    ContextModel()   { m_state = 0; m_binsCoded = 0; }
 
-    ~ContextModel()                        {}
+    ~ContextModel()  {}
 
-    UChar getState()                { return m_ucState >> 1;  }                       ///< get current state
+    UChar getState() { return m_state >> 1; } ///< get current state
 
-    UChar getMps()                { return m_ucState  & 1;  }                         ///< get curret MPS
+    UChar getMps()   { return m_state  & 1; } ///< get curret MPS
 
-    Void  setStateAndMps(UChar ucState, UChar ucMPS) { m_ucState = (ucState << 1) + ucMPS; } ///< set state and MPS
+    void  setStateAndMps(UChar ucState, UChar ucMPS) { m_state = (ucState << 1) + ucMPS; } ///< set state and MPS
 
-    Void init(Int qp, Int initValue);   ///< initialize state with initial probability
+    void init(int qp, int initValue);   ///< initialize state with initial probability
 
-    Void updateLPS()
+    void updateLPS()
     {
-        m_ucState = m_aucNextStateLPS[m_ucState];
+        m_state = s_nextStateLPS[m_state];
     }
 
-    Void updateMPS()
+    void updateMPS()
     {
-        m_ucState = m_aucNextStateMPS[m_ucState];
+        m_state = s_nextStateMPS[m_state];
     }
 
-    Int getEntropyBits(Short val) { return m_entropyBits[m_ucState ^ val]; }
+    int getEntropyBits(short val) { return s_entropyBits[m_state ^ val]; }
 
-    Void update(Int binVal)
+    void update(int binVal)
     {
-        m_ucState = m_nextState[m_ucState][binVal];
+        m_state = m_nextState[m_state][binVal];
     }
 
-    static Void buildNextStateTable();
-    static Int getEntropyBitsTrm(Int val) { return m_entropyBits[126 ^ val]; }
+    static void buildNextStateTable();
+    static int getEntropyBitsTrm(int val) { return s_entropyBits[126 ^ val]; }
 
-    Void setBinsCoded(UInt val)   { m_binsCoded = val;  }
+    void setBinsCoded(UInt val)   { m_binsCoded = val;  }
 
     UInt getBinsCoded()           { return m_binsCoded;   }
 
 private:
 
-    UChar         m_ucState;                                                                ///< internal state variable
-    static const  UChar m_aucNextStateMPS[128];
-    static const  UChar m_aucNextStateLPS[128];
-    static const Int m_entropyBits[128];
+    UChar         m_state;  ///< internal state variable
+    static const UChar s_nextStateMPS[128];
+    static const UChar s_nextStateLPS[128];
+    static const int   s_entropyBits[128];
     static UChar  m_nextState[128][2];
     UInt          m_binsCoded;
 };
-
+}
 //! \}
 
 #endif // ifndef __CONTEXT_MODEL__

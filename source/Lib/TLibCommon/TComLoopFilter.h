@@ -44,14 +44,18 @@
 //! \ingroup TLibCommon
 //! \{
 
+namespace x265 {
+// private namespace
+
 #define DEBLOCK_SMALLEST_BLOCK  8
+#define EDGE_VER                0
+#define EDGE_HOR                1
 
 /// parameters for deblocking filter
 typedef struct _LFCUParam
 {
-    Bool bInternalEdge;                   ///< indicates internal edge
-    Bool bLeftEdge;                       ///< indicates left edge
-    Bool bTopEdge;                        ///< indicates top edge
+    bool bLeftEdge;                       ///< indicates left edge
+    bool bTopEdge;                        ///< indicates top edge
 } LFCUParam;
 
 // ====================================================================================================================
@@ -63,50 +67,50 @@ class TComLoopFilter
 {
 private:
 
-    UInt      m_uiNumPartitions;
-    UChar*    m_aapucBS[2];            ///< Bs for [Ver/Hor][Y/U/V][Blk_Idx]
-    Bool*     m_aapbEdgeFilter[2];
-    LFCUParam m_stLFCUParam;                ///< status structure
+    UInt      m_numPartitions;
+    UChar*    m_blockingStrength[2];            ///< Bs for [Ver/Hor][Y/U/V][Blk_Idx]
+    bool*     m_bEdgeFilter[2];
+    LFCUParam m_lfcuParam;                ///< status structure
 
-    Bool      m_bLFCrossTileBoundary;
+    bool      m_bLFCrossTileBoundary;
 
 protected:
 
     /// CU-level deblocking function
-    Void xDeblockCU(TComDataCU* cu, UInt absZOrderIdx, UInt depth, Int Edge);
+    void xDeblockCU(TComDataCU* cu, UInt absZOrderIdx, UInt depth, int Edge);
 
     // set / get functions
-    Void xSetLoopfilterParam(TComDataCU* cu, UInt absZOrderIdx);
+    void xSetLoopfilterParam(TComDataCU* cu, UInt absZOrderIdx);
     // filtering functions
-    Void xSetEdgefilterTU(TComDataCU* cu, UInt absTUPartIdx, UInt absZOrderIdx, UInt depth);
-    Void xSetEdgefilterPU(TComDataCU* cu, UInt absZOrderIdx);
-    Void xGetBoundaryStrengthSingle(TComDataCU* cu, Int dir, UInt partIdx);
-    UInt xCalcBsIdx(TComDataCU* cu, UInt absZOrderIdx, Int dir, Int iEdgeIdx, Int iBaseUnitIdx)
+    void xSetEdgefilterTU(TComDataCU* cu, UInt absTUPartIdx, UInt absZOrderIdx, UInt depth);
+    void xSetEdgefilterPU(TComDataCU* cu, UInt absZOrderIdx);
+    void xGetBoundaryStrengthSingle(TComDataCU* cu, int dir, UInt partIdx);
+    UInt xCalcBsIdx(TComDataCU* cu, UInt absZOrderIdx, int dir, int edgeIdx, int baseUnitIdx)
     {
         TComPic* const pic = cu->getPic();
-        const UInt uiLCUWidthInBaseUnits = pic->getNumPartInWidth();
+        const UInt lcuWidthInBaseUnits = pic->getNumPartInWidth();
 
         if (dir == 0)
         {
-            return g_rasterToZscan[g_zscanToRaster[absZOrderIdx] + iBaseUnitIdx * uiLCUWidthInBaseUnits + iEdgeIdx];
+            return g_rasterToZscan[g_zscanToRaster[absZOrderIdx] + baseUnitIdx * lcuWidthInBaseUnits + edgeIdx];
         }
         else
         {
-            return g_rasterToZscan[g_zscanToRaster[absZOrderIdx] + iEdgeIdx * uiLCUWidthInBaseUnits + iBaseUnitIdx];
+            return g_rasterToZscan[g_zscanToRaster[absZOrderIdx] + edgeIdx * lcuWidthInBaseUnits + baseUnitIdx];
         }
     }
 
-    Void xSetEdgefilterMultiple(TComDataCU* cu, UInt absZOrderIdx, UInt depth, Int dir, Int iEdgeIdx, Bool bValue, UInt uiWidthInBaseUnits = 0, UInt uiHeightInBaseUnits = 0);
+    void xSetEdgefilterMultiple(TComDataCU* cu, UInt absZOrderIdx, UInt depth, int dir, int edgeIdx, bool bValue, UInt widthInBaseUnits = 0, UInt heightInBaseUnits = 0);
 
-    Void xEdgeFilterLuma(TComDataCU* cu, UInt absZOrderIdx, UInt depth, Int dir, Int iEdge);
-    Void xEdgeFilterChroma(TComDataCU* cu, UInt absZOrderIdx, UInt depth, Int dir, Int iEdge);
+    void xEdgeFilterLuma(TComDataCU* cu, UInt absZOrderIdx, UInt depth, int dir, int edge);
+    void xEdgeFilterChroma(TComDataCU* cu, UInt absZOrderIdx, UInt depth, int dir, int edge);
 
-    inline Void xPelFilterLuma(Pel* piSrc, Int iOffset, Int tc, Bool sw, Bool bPartPNoFilter, Bool bPartQNoFilter, Int iThrCut, Bool bFilterSecondP, Bool bFilterSecondQ);
-    inline Void xPelFilterChroma(Pel* piSrc, Int iOffset, Int tc, Bool bPartPNoFilter, Bool bPartQNoFilter);
+    inline void xPelFilterLuma(Pel* src, int offset, int tc, bool sw, bool bPartPNoFilter, bool bPartQNoFilter, int iThrCut, bool bFilterSecondP, bool bFilterSecondQ);
+    inline void xPelFilterChroma(Pel* src, int offset, int tc, bool bPartPNoFilter, bool bPartQNoFilter);
 
-    inline Bool xUseStrongFiltering(Int offset, Int d, Int beta, Int tc, Pel* piSrc);
-    inline Int xCalcDP(Pel* piSrc, Int iOffset);
-    inline Int xCalcDQ(Pel* piSrc, Int iOffset);
+    inline bool xUseStrongFiltering(int offset, int d, int beta, int tc, Pel* src);
+    inline int xCalcDP(Pel* src, int offset);
+    inline int xCalcDQ(Pel* src, int offset);
 
     static const UChar sm_tcTable[54];
     static const UChar sm_betaTable[52];
@@ -116,23 +120,25 @@ public:
     TComLoopFilter();
     virtual ~TComLoopFilter();
 
-    Void  create(UInt uiMaxCUDepth);
-    Void  destroy();
+    void  create(UInt maxCUDepth);
+    void  destroy();
 
     /// set configuration
-    Void setCfg(Bool bLFCrossTileBoundary);
+    void setCfg(bool bLFCrossTileBoundary);
 
     /// picture-level deblocking filter
-    Void loopFilterPic(TComPic* pic);
+    void loopFilterPic(TComPic* pic);
 
-    static Int getBeta(Int qp)
+    void loopFilterCU(TComDataCU* cu, int dir);
+
+    static int getBeta(int qp)
     {
-        Int indexB = Clip3(0, MAX_QP, qp);
+        int indexB = Clip3(0, MAX_QP, qp);
 
         return sm_betaTable[indexB];
     }
 };
-
+}
 //! \}
 
 #endif // ifndef __TCOMLOOPFILTER__

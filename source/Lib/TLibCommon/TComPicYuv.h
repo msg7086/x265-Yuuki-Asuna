@@ -44,6 +44,9 @@
 #include "x265.h"
 #include "reference.h"
 
+namespace x265 {
+// private namespace
+
 class TShortYUV;
 
 //! \ingroup TLibCommon
@@ -72,67 +75,67 @@ private:
 
     // Pre-interpolated reference pictures for each QPEL offset, may be more than
     // one if weighted references are in use
-    x265::MotionReference *m_refList;
+    MotionReference *m_refList;
 
     // ------------------------------------------------------------------------------------------------
     //  Parameter for general YUV buffer usage
     // ------------------------------------------------------------------------------------------------
+    int   m_picWidth;          ///< Width of picture
+    int   m_picHeight;         ///< Height of picture
 
-    Int   m_picWidth;          ///< Width of picture
-    Int   m_picHeight;         ///< Height of picture
+    int   m_cuWidth;           ///< Width of Coding Unit (CU)
+    int   m_cuHeight;          ///< Height of Coding Unit (CU)
+    int*  m_cuOffsetY;
+    int*  m_cuOffsetC;
+    int*  m_buOffsetY;
+    int*  m_buOffsetC;
 
-    Int   m_cuWidth;           ///< Width of Coding Unit (CU)
-    Int   m_cuHeight;          ///< Height of Coding Unit (CU)
-    Int*  m_cuOffsetY;
-    Int*  m_cuOffsetC;
-    Int*  m_buOffsetY;
-    Int*  m_buOffsetC;
-
-    Int   m_lumaMarginX;
-    Int   m_lumaMarginY;
-    Int   m_chromaMarginX;
-    Int   m_chromaMarginY;
-    Int   m_stride;
-    Int   m_strideC;
-
-    Bool  m_bIsBorderExtended;
-
-protected:
-
-    Void xExtendPicCompBorder(Pel* recon, Int stride, Int width, Int height, Int marginX, Int marginY);
+    int   m_lumaMarginX;
+    int   m_lumaMarginY;
+    int   m_chromaMarginX;
+    int   m_chromaMarginY;
+    int   m_stride;
+    int   m_strideC;
 
 public:
+    int   m_numCuInWidth;
+    int   m_numCuInHeight;
 
     TComPicYuv();
     virtual ~TComPicYuv();
 
+    void xExtendPicCompBorder(Pel* recon, int stride, int width, int height, int marginX, int marginY);
     // ------------------------------------------------------------------------------------------------
     //  Memory management
     // ------------------------------------------------------------------------------------------------
 
-    Void  create(Int picWidth, Int picHeight, UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth);
-    Void  destroy();
+    void  create(int picWidth, int picHeight, UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth);
+    void  destroy();
 
-    Void  createLuma(Int picWidth, Int picHeight, UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth);
-    Void  destroyLuma();
+    void  createLuma(int picWidth, int picHeight, UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth);
+    void  destroyLuma();
 
-    Void  clearReferences();
+    void  clearReferences();
 
     // ------------------------------------------------------------------------------------------------
     //  Get information of picture
     // ------------------------------------------------------------------------------------------------
 
-    Int   getWidth()      { return m_picWidth; }
+    int   getWidth()      { return m_picWidth; }
 
-    Int   getHeight()     { return m_picHeight; }
+    int   getHeight()     { return m_picHeight; }
 
-    Int   getStride()     { return m_stride; }
+    int   getStride()     { return m_stride; }
 
-    Int   getCStride()    { return m_strideC; }
+    int   getCStride()    { return m_strideC; }
 
-    Int   getLumaMargin() { return m_lumaMarginX; }
+    int   getLumaMarginX() { return m_lumaMarginX; }
 
-    Int   getChromaMargin() { return m_chromaMarginX; }
+    int   getLumaMarginY() { return m_lumaMarginY; }
+
+    int   getChromaMarginX() { return m_chromaMarginX; }
+
+    int   getChromaMarginY() { return m_chromaMarginY; }
 
     // ------------------------------------------------------------------------------------------------
     //  Access function for picture buffer
@@ -152,53 +155,42 @@ public:
 
     Pel*  getCrAddr()     { return m_picOrgV; }
 
-    /* Actual weight handling TBD: this is just a placeholder.  Always pass 0 */
-    x265::MotionReference *getMotionReference(Int weightIdx) { return &m_refList[weightIdx]; }
-
     //  Access starting position of original picture for specific coding unit (CU) or partition unit (PU)
-    Pel*  getLumaAddr(Int cuAddr) { return m_picOrgY + m_cuOffsetY[cuAddr]; }
+    Pel*  getLumaAddr(int cuAddr) { return m_picOrgY + m_cuOffsetY[cuAddr]; }
 
-    Pel*  getCbAddr(Int cuAddr) { return m_picOrgU + m_cuOffsetC[cuAddr]; }
+    Pel*  getCbAddr(int cuAddr) { return m_picOrgU + m_cuOffsetC[cuAddr]; }
 
-    Pel*  getCrAddr(Int cuAddr) { return m_picOrgV + m_cuOffsetC[cuAddr]; }
+    Pel*  getCrAddr(int cuAddr) { return m_picOrgV + m_cuOffsetC[cuAddr]; }
 
-    Pel*  getLumaAddr(Int cuAddr, Int absZOrderIdx) { return m_picOrgY + m_cuOffsetY[cuAddr] + m_buOffsetY[g_zscanToRaster[absZOrderIdx]]; }
+    Pel*  getLumaAddr(int cuAddr, int absZOrderIdx) { return m_picOrgY + m_cuOffsetY[cuAddr] + m_buOffsetY[g_zscanToRaster[absZOrderIdx]]; }
 
-    Pel*  getCbAddr(Int cuAddr, Int absZOrderIdx) { return m_picOrgU + m_cuOffsetC[cuAddr] + m_buOffsetC[g_zscanToRaster[absZOrderIdx]]; }
+    Pel*  getCbAddr(int cuAddr, int absZOrderIdx) { return m_picOrgU + m_cuOffsetC[cuAddr] + m_buOffsetC[g_zscanToRaster[absZOrderIdx]]; }
 
-    Pel*  getCrAddr(Int cuAddr, Int absZOrderIdx) { return m_picOrgV + m_cuOffsetC[cuAddr] + m_buOffsetC[g_zscanToRaster[absZOrderIdx]]; }
-
-    /* Access functions for m_filteredBlock */
-    Pel* getLumaFilterBlock(int ver, int hor) { return (Pel*)m_refList->m_lumaPlane[hor][ver]; }
-
-    Pel* getLumaFilterBlock(int ver, int hor, Int cuAddr, Int absZOrderIdx) { return (Pel*)m_refList->m_lumaPlane[hor][ver] + m_cuOffsetY[cuAddr] + m_buOffsetY[g_zscanToRaster[absZOrderIdx]]; }
+    Pel*  getCrAddr(int cuAddr, int absZOrderIdx) { return m_picOrgV + m_cuOffsetC[cuAddr] + m_buOffsetC[g_zscanToRaster[absZOrderIdx]]; }
 
     // ------------------------------------------------------------------------------------------------
     //  Miscellaneous
     // ------------------------------------------------------------------------------------------------
 
     //  Copy function to picture
-    Void  copyToPic(TComPicYuv* destYuv);
-    Void  copyToPicLuma(TComPicYuv* destYuv);
-    Void  copyToPicCb(TComPicYuv* destYuv);
-    Void  copyToPicCr(TComPicYuv* destYuv);
-    Void  copyFromPicture(const x265_picture_t&);
+    void  copyToPic(TComPicYuv* destYuv);
+    void  copyToPicLuma(TComPicYuv* destYuv);
+    void  copyToPicCb(TComPicYuv* destYuv);
+    void  copyToPicCr(TComPicYuv* destYuv);
+    void  copyFromPicture(const x265_picture_t&);
 
-    //  Extend function of picture buffer
-    Void  extendPicBorder(x265::ThreadPool *pool);
+    MotionReference* generateMotionReference(wpScalingParam *w);
 
     //  Dump picture
-    Void  dump(Char* pFileName, Bool bAdd = false);
+    void  dump(char* pFileName, bool bAdd = false);
 
-    // Set border extension flag
-    Void  setBorderExtension(Bool b) { m_bIsBorderExtended = b; }
-
-    friend class x265::MotionReference;
+    friend class MotionReference;
 }; // END CLASS DEFINITION TComPicYuv
 
 void calcChecksum(TComPicYuv & pic, UChar digest[3][16]);
 void calcCRC(TComPicYuv & pic, UChar digest[3][16]);
 void calcMD5(TComPicYuv & pic, UChar digest[3][16]);
+}
 //! \}
 
 #endif // __TCOMPICYUV__

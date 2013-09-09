@@ -37,7 +37,7 @@ typedef struct x265_t x265_t;
 // TODO: Existing names used for the different NAL unit types can be altered to better reflect the names in the spec.
 //       However, the names in the spec are not yet stable at this point. Once the names are stable, a cleanup
 //       effort can be done without use of macros to alter the names used to indicate the different NAL unit types.
-enum NalUnitType
+typedef enum
 {
     NAL_UNIT_CODED_SLICE_TRAIL_N = 0, // 0
     NAL_UNIT_CODED_SLICE_TRAIL_R,   // 1
@@ -112,7 +112,8 @@ enum NalUnitType
     NAL_UNIT_UNSPECIFIED_62,
     NAL_UNIT_UNSPECIFIED_63,
     NAL_UNIT_INVALID,
-};
+}
+NalUnitType;
 
 /* The data within the payload is already NAL-encapsulated; the type
  * is merely in the struct for easy access by the calling application.
@@ -125,7 +126,6 @@ typedef struct
     int     i_payload;   /* size in bytes */
     uint8_t *p_payload;
 }
-
 x265_nal_t;
 
 typedef struct x265_picture_t
@@ -133,8 +133,10 @@ typedef struct x265_picture_t
     void *planes[3];
     int   stride[3];
     int   bitDepth;
+    int   poc;
+    int   sliceType;
+    void *userData;
 }
-
 x265_picture_t;
 
 typedef enum
@@ -143,13 +145,13 @@ typedef enum
     X265_HEX_SEARCH,
     X265_UMH_SEARCH,
     X265_STAR_SEARCH,
-    X265_ORIG_SEARCH, // original HM functions (deprecated)
     X265_FULL_SEARCH
 }
-
 X265_ME_METHODS;
 
-static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star", "orig", "full", 0 };
+static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star", "full", 0 };
+
+#define X265_MAX_SUBPEL_LEVEL   7
 
 /* Log level */
 #define X265_LOG_NONE          (-1)
@@ -158,12 +160,36 @@ static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star
 #define X265_LOG_INFO           2
 #define X265_LOG_DEBUG          3
 
+#define X265_B_ADAPT_NONE       0
+#define X265_B_ADAPT_FAST       1
+#define X265_B_ADAPT_TRELLIS    2
+
+#define X265_TYPE_AUTO          0x0000  /* Let x264 choose the right type */
+#define X265_TYPE_IDR           0x0001
+#define X265_TYPE_I             0x0002
+#define X265_TYPE_P             0x0003
+#define X265_TYPE_BREF          0x0004  /* Non-disposable B-frame */
+#define X265_TYPE_B             0x0005
+#define X265_TYPE_KEYFRAME      0x0006  /* IDR or I depending on b_open_gop option */
+#define IS_X265_TYPE_I(x) ((x)==X265_TYPE_I || (x)==X265_TYPE_IDR)
+#define IS_X265_TYPE_B(x) ((x)==X265_TYPE_B || (x)==X265_TYPE_BREF)
+
+/* rate tolerance method */
+typedef enum RcMethod
+{
+    X265_RC_ABR,
+    X265_RC_CQP,
+    X265_RC_CRF
+}
+X265_RC_METHODS;
+
+
 typedef struct x265_param_t
 {
     int       logLevel;
     int       bEnableWavefront;                ///< enable wavefront parallel processing
     int       poolNumThreads;                  ///< number of threads to allocate for thread pool
-    int       gopNumThreads;                   ///< amount of GOP parallelism to use for this encode.  GOP encoders share the thread pool
+    int       frameNumThreads;                 ///< number of concurrently encoded frames
 
     int       internalBitDepth;                ///< bit-depth the codec operates at
 
@@ -179,15 +205,23 @@ typedef struct x265_param_t
     uint32_t  tuQTMaxIntraDepth;               ///< amount the TU is allow to recurse beyond the intra PU depth
 
     // coding structure
-    int       keyframeInterval;                ///< period of I-slice (random access period)
-    int       bframes;                         ///< Max number of consecutive B-frames (for now it only enables B-frame fixed GOP profile)
+    int       decodingRefreshType;             ///< Intra refresh type (0:none, 1:CDR, 2:IDR) default: 1
+    int       keyframeMin;                     ///< Minimum intra period in frames
+    int       keyframeMax;                     ///< Maximum intra period in frames
+    int       bOpenGOP;                        ///< Enable Open GOP referencing
+    int       bframes;                         ///< Max number of consecutive B-frames
+    int       lookaheadDepth;                  ///< Number of frames to use for lookahead, determines encoder latency
+    int       bFrameAdaptive;                  ///< 0 - none, 1 - fast, 2 - full (trellis) adaptive B frame scheduling
+    int       bFrameBias;
+    int       scenecutThreshold;               ///< how aggressively to insert extra I frames 
 
     // Intra coding tools
     int       bEnableConstrainedIntra;         ///< enable constrained intra prediction (ignore inter predicted reference samples)
     int       bEnableStrongIntraSmoothing;     ///< enable strong intra smoothing for 32x32 blocks where the reference samples are flat
 
     // Inter coding tools
-    int       searchMethod;                    ///< ME search method (DIA, HEX, UMH, HM, FULL)
+    int       searchMethod;                    ///< ME search method (DIA, HEX, UMH, STAR, FULL)
+    int       subpelRefine;                    ///< amount of subpel work to perform (0 .. X265_MAX_SUBPEL_LEVEL)
     int       searchRange;                     ///< ME search range
     int       bipredSearchRange;               ///< ME search range for bipred refinement
     uint32_t  maxNumMergeCand;                 ///< Max number of merge candidates
@@ -205,27 +239,51 @@ typedef struct x265_param_t
     int       bEnableTSkipFast;                ///< enable fast intra transform skipping
     int       bEnableRDOQTS;                   ///< enable RD optimized quantization when transform skip is selected
 
+    // loop filter
+    int       bEnableLoopFilter;               ///< enable Loop Filter
+
     // SAO loop filter
-    int       bEnableSAO;                      ///< Enable SAO filter
+    int       bEnableSAO;                      ///< enable SAO filter
     int       saoLcuBoundary;                  ///< SAO parameter estimation using non-deblocked pixels for LCU bottom and right boundary areas
     int       saoLcuBasedOptimization;         ///< SAO LCU-based optimization
 
     // coding quality
-    int       qp;                              ///< QP value of key-picture (integer)
     int       cbQpOffset;                      ///< Chroma Cb QP Offset (0:default)
     int       crQpOffset;                      ///< Chroma Cr QP Offset (0:default)
     int       rdPenalty;                       ///< RD-penalty for 32x32 TU for intra in non-intra slices (0: no RD-penalty, 1: RD-penalty, 2: maximum RD-penalty)
 
     // debugging
-    int       bEnableDecodedPictureHashSEI;    ///< Checksum(3)/CRC(2)/MD5(1)/disable(0) acting on decoded picture hash SEI message
-}
+    int       decodedPictureHashSEI;           ///< Checksum(3)/CRC(2)/MD5(1)/disable(0) acting on decoded picture hash SEI message
 
+    struct 
+    {
+        int       bitrate;
+        double    rateTolerance;
+        double    qCompress;
+        double    ipFactor;
+        double    pbFactor;
+        int       qpStep;
+        int       rateControlMode;             ///<Values corresponding to RcMethod 
+        int       qp;                          ///< Constant QP base value
+        int       rateFactor;                  ///< Constant rate factor (CRF)
+    } rc;
+}
 x265_param_t;
 
-/***
- * Pass cpuid 0 to auto-detect.  If not called, first encoder allocated will
- * auto-detect the CPU and initialize performance primitives, which are process global */
-void x265_setup_primitives(x265_param_t *param, int cpuid);
+#define X265_CPU_LEVEL_AUTO  0
+#define X265_CPU_LEVEL_NONE  1 // C code only, no SIMD
+#define X265_CPU_LEVEL_SSE2  2
+#define X265_CPU_LEVEL_SSE3  3
+#define X265_CPU_LEVEL_SSSE3 4
+#define X265_CPU_LEVEL_SSE41 5
+#define X265_CPU_LEVEL_SSE42 6
+#define X265_CPU_LEVEL_AVX   7
+#define X265_CPU_LEVEL_AVX2  8
+
+/*** 
+ * If not called, first encoder allocated will auto-detect the CPU and
+ * initialize performance primitives, which are process global */
+void x265_setup_primitives(x265_param_t *param, int cpulevel);
 
 /***
  * Initialize an x265_param_t structure to default values
@@ -253,12 +311,19 @@ extern const int x265_max_bit_depth;
  *      create a new encoder handler, all parameters from x265_param_t are copied */
 x265_t *x265_encoder_open(x265_param_t *);
 
+/* x265_encoder_headers:
+ *      return the SPS and PPS that will be used for the whole stream.
+ *      *pi_nal is the number of NAL units outputted in pp_nal.
+ *      returns negative on error.
+ *      the payloads of all output NALs are guaranteed to be sequential in memory. */
+int     x265_encoder_headers(x265_t *, x265_nal_t **pp_nal, int *pi_nal);
+
 /* x265_encoder_encode:
  *      encode one picture.
  *      *pi_nal is the number of NAL units outputted in pp_nal.
  *      returns negative on error, zero if no NAL units returned.
  *      the payloads of all output NALs are guaranteed to be sequential in memory. */
-int     x265_encoder_encode(x265_t *encoder, x265_nal_t **pp_nal, int *pi_nal, x265_picture_t *pic_in, x265_picture_t **pic_out);
+int     x265_encoder_encode(x265_t *encoder, x265_nal_t **pp_nal, int *pi_nal, x265_picture_t *pic_in, x265_picture_t *pic_out);
 
 /* x265_encoder_close:
  *      close an encoder handler.  Optionally return the global PSNR value (6 * psnrY + psnrU + psnrV) / 8 */

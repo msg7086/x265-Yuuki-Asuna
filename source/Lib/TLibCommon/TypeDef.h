@@ -38,21 +38,16 @@
 #ifndef _TYPEDEF__
 #define _TYPEDEF__
 
+namespace x265 {
+// private namespace
+
 // ====================================================================================================================
 // Basic type redefinition
 // ====================================================================================================================
 
-typedef       void                Void;
-typedef       bool                Bool;
-
-typedef       char                Char;
-typedef       unsigned char       UChar;
-typedef       short               Short;
-typedef       unsigned short      UShort;
-typedef       int                 Int;
-typedef       unsigned int        UInt;
-typedef       double              Double;
-typedef       float               Float;
+typedef unsigned char  UChar;
+typedef unsigned short UShort;
+typedef unsigned int   UInt;
 
 // ====================================================================================================================
 // 64-bit integer type
@@ -72,13 +67,13 @@ typedef unsigned long long  UInt64;
 
 #if HIGH_BIT_DEPTH
 typedef UShort Pel;            // 16-bit pixel type
-#define X265_DEPTH g_bitDepth  // runtime configurable bit depth
-extern Int g_bitDepth;
+#define X265_DEPTH x265::g_bitDepth  // runtime configurable bit depth
+extern int g_bitDepth;
 #else
 typedef UChar  Pel;            // 8-bit pixel type
 #define X265_DEPTH 8           // compile time configurable bit depth
 #endif
-typedef Int    TCoeff;         // transform coefficient
+typedef int    TCoeff;         // transform coefficient
 
 // ====================================================================================================================
 // Enumeration
@@ -206,6 +201,7 @@ enum Name
     LEVEL6_1 = 183,
     LEVEL6_2 = 186,
 };
+}
 }
 //! \}
 

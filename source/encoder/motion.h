@@ -37,9 +37,6 @@ class MotionEstimate : public BitCost
 protected:
 
     /* Aligned copy of original pixels, extra room for manual alignment */
-    pixel  fenc_buf[64 * FENC_STRIDE + 32];
-    pixel *fenc;
-
     pixel *fencplane;
     intptr_t fencLumaStride;
 
@@ -52,17 +49,29 @@ protected:
     intptr_t blockOffset;
     int partEnum;
     int searchMethod;
-    int subsample;
+    int subpelRefine;
+
+    /* subpel generation buffers */
+    pixel *subpelbuf;
+    short *immedVal;
+    int blockwidth;
+    int blockheight;
 
     MotionEstimate& operator =(const MotionEstimate&);
 
 public:
 
+    static const int COST_MAX = 1 << 28;
+
+    pixel *fenc;
+
     MotionEstimate();
 
-    ~MotionEstimate() {}
+    virtual ~MotionEstimate();
 
     void setSearchMethod(int i) { searchMethod = i; }
+
+    void setSubpelRefine(int i) { subpelRefine = i; }
 
     /* Methods called at slice setup */
 
@@ -83,20 +92,13 @@ public:
 
     inline int bufSATD(pixel *fref, intptr_t stride) { return satd(fenc, FENC_STRIDE, fref, stride); }
 
-    int motionEstimate(MotionReference *ref,
-                       const MV &       mvmin,
-                       const MV &       mvmax,
-                       const MV &       qmvp,
-                       int              numCandidates,
-                       const MV *       mvc,
-                       int              merange,
-                       MV &             outQMv);
+    int motionEstimate(ReferencePlanes *ref, const MV & mvmin, const MV & mvmax, const MV & qmvp, int numCandidates, const MV * mvc, int merange, MV & outQMv);
+
+    int subpelCompare(ReferencePlanes *ref, const MV & qmv, pixelcmp_t);
 
 protected:
 
-    static const int COST_MAX = 1 << 28;
-
-    inline void StarPatternSearch(MotionReference *ref,
+    inline void StarPatternSearch(ReferencePlanes *ref,
                                   const MV &       mvmin,
                                   const MV &       mvmax,
                                   MV &             bmv,

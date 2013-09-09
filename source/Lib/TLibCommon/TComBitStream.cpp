@@ -42,6 +42,7 @@
 #include <memory.h>
 
 using namespace std;
+using namespace x265;
 
 //! \ingroup TLibCommon
 //! \{
@@ -65,9 +66,9 @@ TComOutputBitstream::~TComOutputBitstream()
 // Public member functions
 // ====================================================================================================================
 
-Char* TComOutputBitstream::getByteStream() const
+char* TComOutputBitstream::getByteStream() const
 {
-    return (Char*)&m_fifo->front();
+    return (char*)&m_fifo->front();
 }
 
 UInt TComOutputBitstream::getByteStreamLength()
@@ -82,7 +83,7 @@ void TComOutputBitstream::clear()
     m_num_held_bits = 0;
 }
 
-Void TComOutputBitstream::write(UInt uiBits, UInt uiNumberOfBits)
+void TComOutputBitstream::write(UInt uiBits, UInt uiNumberOfBits)
 {
     assert(uiNumberOfBits <= 32);
     assert(uiNumberOfBits == 32 || (uiBits & (~0 << uiNumberOfBits)) == 0);
@@ -126,14 +127,14 @@ Void TComOutputBitstream::write(UInt uiBits, UInt uiNumberOfBits)
     m_num_held_bits = next_num_held_bits;
 }
 
-Void TComOutputBitstream::writeAlignOne()
+void TComOutputBitstream::writeAlignOne()
 {
     UInt num_bits = getNumBitsUntilByteAligned();
 
     write((1 << num_bits) - 1, num_bits);
 }
 
-Void TComOutputBitstream::writeAlignZero()
+void TComOutputBitstream::writeAlignZero()
 {
     if (0 == m_num_held_bits)
     {
@@ -149,7 +150,7 @@ Void TComOutputBitstream::writeAlignZero()
  .
  \param  pcSubstream  substream to be added
  */
-Void   TComOutputBitstream::addSubstream(TComOutputBitstream* pcSubstream)
+void   TComOutputBitstream::addSubstream(TComOutputBitstream* pcSubstream)
 {
     UInt uiNumBits = pcSubstream->getNumberOfWrittenBits();
 
@@ -166,13 +167,13 @@ Void   TComOutputBitstream::addSubstream(TComOutputBitstream* pcSubstream)
     }
 }
 
-Void TComOutputBitstream::writeByteAlignment()
+void TComOutputBitstream::writeByteAlignment()
 {
     write(1, 1);
     writeAlignZero();
 }
 
-Int TComOutputBitstream::countStartCodeEmulations()
+int TComOutputBitstream::countStartCodeEmulations()
 {
     UInt cnt = 0;
 

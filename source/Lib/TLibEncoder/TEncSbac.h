@@ -47,6 +47,9 @@
 #include "TEncBinCoderCABAC.h"
 #include "TEncBinCoderCABACCounter.h"
 
+namespace x265 {
+// private namespace
+
 class TEncTop;
 
 //! \ingroup TLibEncoder
@@ -64,61 +67,61 @@ public:
     TEncSbac();
     virtual ~TEncSbac();
 
-    Void  init(TEncBinIf* p)          { m_pcBinIf = p; }
+    void  init(TEncBinIf* p)          { m_pcBinIf = p; }
 
-    Void  uninit()                    { m_pcBinIf = 0; }
+    void  uninit()                    { m_pcBinIf = 0; }
 
     //  Virtual list
-    Void  resetEntropy();
-    Void  determineCabacInitIdx();
-    Void  setBitstream(TComBitIf* p)  { m_pcBitIf = p; m_pcBinIf->init(p); }
+    void  resetEntropy();
+    void  determineCabacInitIdx();
+    void  setBitstream(TComBitIf* p)  { m_pcBitIf = p; m_pcBinIf->init(p); }
 
-    Void  setSlice(TComSlice* p)      { m_pcSlice = p; }
+    void  setSlice(TComSlice* p)      { m_pcSlice = p; }
 
     // SBAC RD
-    Void  resetCoeffCost()            { m_uiCoeffCost = 0;  }
+    void  resetCoeffCost()            { m_uiCoeffCost = 0;  }
 
     UInt  getCoeffCost()              { return m_uiCoeffCost;  }
 
-    Void  load(TEncSbac* pScr);
-    Void  loadIntraDirModeLuma(TEncSbac* pScr);
-    Void  store(TEncSbac* pDest);
-    Void  loadContexts(TEncSbac* pScr);
-    Void  resetBits()                { m_pcBinIf->resetBits(); m_pcBitIf->resetBits(); }
+    void  load(TEncSbac* pScr);
+    void  loadIntraDirModeLuma(TEncSbac* pScr);
+    void  store(TEncSbac* pDest);
+    void  loadContexts(TEncSbac* pScr);
+    void  resetBits()                { m_pcBinIf->resetBits(); m_pcBitIf->resetBits(); }
 
     UInt  getNumberOfWrittenBits()   { return m_pcBinIf->getNumWrittenBits(); }
 
     //--SBAC RD
 
-    Void  codeVPS(TComVPS* pcVPS);
-    Void  codeSPS(TComSPS* pcSPS);
-    Void  codePPS(TComPPS* pcPPS);
-    Void  codeSliceHeader(TComSlice* slice);
-    Void  codeTilesWPPEntryPoint(TComSlice* pSlice);
-    Void  codeTerminatingBit(UInt uilsLast);
-    Void  codeSliceFinish();
-    Void  codeSaoMaxUvlc(UInt code, UInt maxSymbol);
-    Void  codeSaoMerge(UInt uiCode);
-    Void  codeSaoTypeIdx(UInt uiCode);
-    Void  codeSaoUflc(UInt uiLength, UInt  uiCode);
-    Void  codeSAOSign(UInt uiCode);         //<! code SAO offset sign
-    Void  codeScalingList(TComScalingList* /*scalingList*/) { assert(0); }
+    void  codeVPS(TComVPS* pcVPS);
+    void  codeSPS(TComSPS* pcSPS);
+    void  codePPS(TComPPS* pcPPS);
+    void  codeSliceHeader(TComSlice* slice);
+    void  codeTilesWPPEntryPoint(TComSlice* pSlice);
+    void  codeTerminatingBit(UInt uilsLast);
+    void  codeSliceFinish();
+    void  codeSaoMaxUvlc(UInt code, UInt maxSymbol);
+    void  codeSaoMerge(UInt uiCode);
+    void  codeSaoTypeIdx(UInt uiCode);
+    void  codeSaoUflc(UInt uiLength, UInt  uiCode);
+    void  codeSAOSign(UInt uiCode);         //<! code SAO offset sign
+    void  codeScalingList(TComScalingList* /*scalingList*/) { assert(0); }
 
 private:
 
-    Void  xWriteUnarySymbol(UInt uiSymbol, ContextModel* pcSCModel, Int iOffset);
-    Void  xWriteUnaryMaxSymbol(UInt uiSymbol, ContextModel* pcSCModel, Int iOffset, UInt uiMaxSymbol);
-    Void  xWriteEpExGolomb(UInt uiSymbol, UInt uiCount);
-    Void  xWriteCoefRemainExGolomb(UInt symbol, UInt &rParam);
+    void  xWriteUnarySymbol(UInt uiSymbol, ContextModel* pcSCModel, int offset);
+    void  xWriteUnaryMaxSymbol(UInt uiSymbol, ContextModel* pcSCModel, int offset, UInt uiMaxSymbol);
+    void  xWriteEpExGolomb(UInt uiSymbol, UInt uiCount);
+    void  xWriteCoefRemainExGolomb(UInt symbol, UInt &rParam);
 
-    Void  xCopyFrom(TEncSbac* src);
-    Void  xCopyContextsFrom(TEncSbac* src);
+    void  xCopyFrom(TEncSbac* src);
+    void  xCopyContextsFrom(TEncSbac* src);
 
-    Void codeDFFlag(UInt /*uiCode*/, const Char* /*pSymbolName*/)       { printf("Not supported in codeDFFlag()\n"); assert(0); exit(1); }
+    void codeDFFlag(UInt /*uiCode*/, const char* /*pSymbolName*/)       { printf("Not supported in codeDFFlag()\n"); assert(0); exit(1); }
 
-    Void codeDFSvlc(Int /*iCode*/, const Char* /*pSymbolName*/)         { printf("Not supported in codeDFSvlc()\n"); assert(0); exit(1); }
+    void codeDFSvlc(int /*iCode*/, const char* /*pSymbolName*/)         { printf("Not supported in codeDFSvlc()\n"); assert(0); exit(1); }
 
-protected:
+public:
 
     TComBitIf*    m_pcBitIf;
     TComSlice*    m_pcSlice;
@@ -130,46 +133,46 @@ protected:
 
 public:
 
-    Void codeCUTransquantBypassFlag(TComDataCU* cu, UInt absPartIdx);
-    Void codeSkipFlag(TComDataCU* cu, UInt absPartIdx);
-    Void codeMergeFlag(TComDataCU* cu, UInt absPartIdx);
-    Void codeMergeIndex(TComDataCU* cu, UInt absPartIdx);
-    Void codeSplitFlag(TComDataCU* cu, UInt absPartIdx, UInt depth);
-    Void codeMVPIdx(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList);
+    void codeCUTransquantBypassFlag(TComDataCU* cu, UInt absPartIdx);
+    void codeSkipFlag(TComDataCU* cu, UInt absPartIdx);
+    void codeMergeFlag(TComDataCU* cu, UInt absPartIdx);
+    void codeMergeIndex(TComDataCU* cu, UInt absPartIdx);
+    void codeSplitFlag(TComDataCU* cu, UInt absPartIdx, UInt depth);
+    void codeMVPIdx(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList);
 
-    Void codePartSize(TComDataCU* cu, UInt absPartIdx, UInt depth);
-    Void codePredMode(TComDataCU* cu, UInt absPartIdx);
-    Void codeIPCMInfo(TComDataCU* cu, UInt absPartIdx);
-    Void codeTransformSubdivFlag(UInt uiSymbol, UInt uiCtx);
-    Void codeQtCbf(TComDataCU* cu, UInt absPartIdx, TextType ttype, UInt trDepth);
-    Void codeQtRootCbf(TComDataCU* cu, UInt absPartIdx);
-    Void codeQtCbfZero(TComDataCU* cu, TextType ttype, UInt trDepth);
-    Void codeQtRootCbfZero(TComDataCU* cu);
-    Void codeIntraDirLumaAng(TComDataCU* cu, UInt absPartIdx, Bool isMultiple);
+    void codePartSize(TComDataCU* cu, UInt absPartIdx, UInt depth);
+    void codePredMode(TComDataCU* cu, UInt absPartIdx);
+    void codeIPCMInfo(TComDataCU* cu, UInt absPartIdx);
+    void codeTransformSubdivFlag(UInt uiSymbol, UInt uiCtx);
+    void codeQtCbf(TComDataCU* cu, UInt absPartIdx, TextType ttype, UInt trDepth);
+    void codeQtRootCbf(TComDataCU* cu, UInt absPartIdx);
+    void codeQtCbfZero(TComDataCU* cu, TextType ttype, UInt trDepth);
+    void codeQtRootCbfZero(TComDataCU* cu);
+    void codeIntraDirLumaAng(TComDataCU* cu, UInt absPartIdx, bool isMultiple);
 
-    Void codeIntraDirChroma(TComDataCU* cu, UInt absPartIdx);
-    Void codeInterDir(TComDataCU* cu, UInt absPartIdx);
-    Void codeRefFrmIdx(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList);
-    Void codeMvd(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList);
+    void codeIntraDirChroma(TComDataCU* cu, UInt absPartIdx);
+    void codeInterDir(TComDataCU* cu, UInt absPartIdx);
+    void codeRefFrmIdx(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList);
+    void codeMvd(TComDataCU* cu, UInt absPartIdx, RefPicList eRefList);
 
-    Void codeDeltaQP(TComDataCU* cu, UInt absPartIdx);
+    void codeDeltaQP(TComDataCU* cu, UInt absPartIdx);
 
-    Void codeLastSignificantXY(UInt posx, UInt posy, Int width, Int height, TextType eTType, UInt uiScanIdx);
-    Void codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UInt width, UInt height, UInt depth, TextType eTType);
+    void codeLastSignificantXY(UInt posx, UInt posy, int width, int height, TextType eTType, UInt uiScanIdx);
+    void codeCoeffNxN(TComDataCU* cu, TCoeff* pcCoef, UInt absPartIdx, UInt width, UInt height, UInt depth, TextType eTType);
     void codeTransformSkipFlags(TComDataCU* cu, UInt absPartIdx, UInt width, UInt height, TextType eTType);
 
     // -------------------------------------------------------------------------------------------------------------------
     // for RD-optimizatioon
     // -------------------------------------------------------------------------------------------------------------------
 
-    Void estBit(estBitsSbacStruct* pcEstBitsSbac, Int width, Int height, TextType eTType);
-    Void estCBFBit(estBitsSbacStruct* pcEstBitsSbac);
-    Void estSignificantCoeffGroupMapBit(estBitsSbacStruct* pcEstBitsSbac, TextType eTType);
-    Void estSignificantMapBit(estBitsSbacStruct* pcEstBitsSbac, Int width, Int height, TextType eTType);
-    Void estSignificantCoefficientsBit(estBitsSbacStruct* pcEstBitsSbac, TextType eTType);
+    void estBit(estBitsSbacStruct* pcEstBitsSbac, int width, int height, TextType eTType);
+    void estCBFBit(estBitsSbacStruct* pcEstBitsSbac);
+    void estSignificantCoeffGroupMapBit(estBitsSbacStruct* pcEstBitsSbac, TextType eTType);
+    void estSignificantMapBit(estBitsSbacStruct* pcEstBitsSbac, int width, int height, TextType eTType);
+    void estSignificantCoefficientsBit(estBitsSbacStruct* pcEstBitsSbac, TextType eTType);
 
-    Void updateContextTables(SliceType eSliceType, Int iQp, Bool bExecuteFinish = true);
-    Void updateContextTables(SliceType eSliceType, Int iQp) { this->updateContextTables(eSliceType, iQp, true); }
+    void updateContextTables(SliceType eSliceType, int iQp, bool bExecuteFinish = true);
+    void updateContextTables(SliceType eSliceType, int iQp) { this->updateContextTables(eSliceType, iQp, true); }
 
     TEncBinIf* getEncBinIf()  { return m_pcBinIf; }
 
@@ -178,7 +181,7 @@ private:
     UInt                 m_uiLastQp;
 
     ContextModel         m_contextModels[MAX_NUM_CTX_MOD];
-    Int                  m_numContextModels;
+    int                  m_numContextModels;
     ContextModel3DBuffer m_cCUSplitFlagSCModel;
     ContextModel3DBuffer m_cCUSkipFlagSCModel;
     ContextModel3DBuffer m_cCUMergeFlagExtSCModel;
@@ -210,7 +213,7 @@ private:
     ContextModel3DBuffer m_cTransformSkipSCModel;
     ContextModel3DBuffer m_CUTransquantBypassFlagSCModel;
 };
-
+}
 //! \}
 
 #endif // !defined(__TENCSBAC__)

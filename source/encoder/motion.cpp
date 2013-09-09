@@ -25,6 +25,7 @@
 #include "common.h"
 #include "motion.h"
 #include "x265.h"
+#include "TLibCommon/TComRom.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -35,6 +36,30 @@
 #endif
 
 using namespace x265;
+
+namespace {
+
+struct SubpelWorkload
+{
+    int hpel_iters;
+    int hpel_dirs;
+    int qpel_iters;
+    int qpel_dirs;
+    bool hpel_satd;
+};
+
+SubpelWorkload workload[X265_MAX_SUBPEL_LEVEL+1] = {
+    { 1, 4, 0, 4, false }, // 4 SAD HPEL only
+    { 1, 4, 1, 4, false }, // 4 SAD HPEL + 4 SATD QPEL
+    { 1, 4, 1, 4, true },  // 4 SATD HPEL + 4 SATD QPEL
+    { 2, 4, 1, 4, true },  // 2x4 SATD HPEL + 4 SATD QPEL
+    { 2, 4, 2, 4, true },  // 2x4 SATD HPEL + 2x4 SATD QPEL
+    { 1, 8, 1, 8, true },  // 8 SATD HPEL + 8 SATD QPEL (default)
+    { 2, 8, 1, 8, true },  // 2x8 SATD HPEL + 8 SATD QPEL
+    { 2, 8, 2, 8, true },  // 2x8 SATD HPEL + 2x8 SATD QPEL
+};
+
+}
 
 static int size_scale[NUM_PARTITIONS];
 #define SAD_THRESH(v) (bcost < (((v >> 4) * size_scale[partEnum])))
@@ -56,19 +81,28 @@ static void init_scales(void)
 
 MotionEstimate::MotionEstimate()
     : searchMethod(3)
-    , subsample(0)
+    , subpelRefine(5)
 {
     if (size_scale[0] == 0)
         init_scales();
 
-    // fenc must be 32 byte aligned
-    fenc = (pixel*)((char*)fenc_buf + ((32 - (size_t)(&fenc_buf[0])) & 31));
+    fenc = (pixel*)X265_MALLOC(pixel, MAX_CU_SIZE * MAX_CU_SIZE);
+    subpelbuf = (pixel*)X265_MALLOC(pixel, MAX_CU_SIZE * MAX_CU_SIZE);
+    immedVal = (short*)X265_MALLOC(short, MAX_CU_SIZE * (MAX_CU_SIZE + NTAPS_LUMA - 1));
+}
+
+MotionEstimate::~MotionEstimate()
+{
+    if (fenc)
+        X265_FREE(fenc);
+    if (subpelbuf)
+        X265_FREE(subpelbuf);
+    if (immedVal)
+        X265_FREE(immedVal);
 }
 
 void MotionEstimate::setSourcePU(int offset, int width, int height)
 {
-    blockOffset = offset;
-
     /* copy PU block into cache */
     primitives.blockcpy_pp(width, height, fenc, FENC_STRIDE, fencplane + offset, fencLumaStride);
 
@@ -78,6 +112,10 @@ void MotionEstimate::setSourcePU(int offset, int width, int height)
     sa8d = primitives.sa8d_inter[partEnum];
     sad_x3 = primitives.sad_x3[partEnum];
     sad_x4 = primitives.sad_x4[partEnum];
+
+    blockwidth = width;
+    blockheight = height;
+    blockOffset = offset;
 }
 
 /* radius 2 hexagon. repeated entries are to avoid having to compute mod6 every time. */
@@ -137,14 +175,6 @@ static inline int x265_predictor_difference(const MV *mvc, intptr_t numCandidate
         int cost = sad(fenc, FENC_STRIDE, fref + mx + my * stride, stride); \
         cost += mvcost(MV(mx, my) << 2); \
         COPY2_IF_LT(bcost, cost, bmv, MV(mx, my)); \
-    } while (0)
-
-#define COST_QMV(cost, qmv) \
-    do \
-    { \
-        MV fmv = qmv >> 2; \
-        pixel *qfref = ref->m_lumaPlane[qmv.x & 3][qmv.y & 3] + blockOffset; \
-        (cost) = sad(fenc, FENC_STRIDE, qfref + fmv.y * stride + fmv.x, stride); \
     } while (0)
 
 #define COST_MV_X3_DIR(m0x, m0y, m1x, m1y, m2x, m2y, costs) \
@@ -243,7 +273,7 @@ static inline int x265_predictor_difference(const MV *mvc, intptr_t numCandidate
         } \
     }
 
-int MotionEstimate::motionEstimate(MotionReference *ref,
+int MotionEstimate::motionEstimate(ReferencePlanes *ref,
                                    const MV &       mvmin,
                                    const MV &       mvmax,
                                    const MV &       qmvp,
@@ -253,8 +283,8 @@ int MotionEstimate::motionEstimate(MotionReference *ref,
                                    MV &             outQMv)
 {
     ALIGN_VAR_16(int, costs[16]);
-    size_t stride = ref->m_lumaStride;
-    pixel *fref = ref->m_lumaPlane[0][0] + blockOffset;
+    size_t stride = ref->lumaStride;
+    pixel *fref = ref->fpelPlane + blockOffset;
 
     setMVP(qmvp);
 
@@ -270,9 +300,8 @@ int MotionEstimate::motionEstimate(MotionReference *ref,
 
     // measure SAD cost at clipped QPEL MVP
     MV pmv = qmvp.clipped(qmvmin, qmvmax);
-    int bprecost;
     MV bestpre = pmv;
-    COST_QMV(bprecost, pmv); // ignore MVD cost for clipped MVP
+    int bprecost = subpelCompare(ref, pmv, sad);
 
     /* re-measure full pel rounded MVP with SAD as search start point */
     MV bmv = pmv.roundToFPel();
@@ -299,9 +328,7 @@ int MotionEstimate::motionEstimate(MotionReference *ref,
         MV m = mvc[i].clipped(qmvmin, qmvmax);
         if (m.notZero() && m != pmv && m != bestpre) // check already measured
         {
-            int cost;
-            COST_QMV(cost, m);
-            cost += mvcost(m);
+            int cost = subpelCompare(ref, m, sad) + mvcost(m);
             if (cost < bprecost)
             {
                 bprecost = cost;
@@ -707,6 +734,40 @@ me_hex2:
         }
     }
     break;
+    case X265_FULL_SEARCH:
+    {
+        // dead slow exhaustive search, but at least it uses sad_x4()
+        MV tmv;
+        for (tmv.y = mvmin.y; tmv.y <= mvmax.y; tmv.y++)
+        {
+            for (tmv.x = mvmin.x; tmv.x <= mvmax.x; tmv.x++)
+            {
+                if (tmv.x + 3 <= mvmax.x)
+                {
+                    pixel *pix_base = fref + tmv.y * stride + tmv.x;
+                    sad_x4(fenc,
+                           pix_base,
+                           pix_base + 1,
+                           pix_base + 2,
+                           pix_base + 3,
+                           stride, costs);
+                    costs[0] += mvcost(tmv << 2);
+                    COPY2_IF_LT(bcost, costs[0], bmv, tmv);
+                    tmv.x++;
+                    costs[1] += mvcost(tmv << 2);
+                    COPY2_IF_LT(bcost, costs[1], bmv, tmv);
+                    tmv.x++;
+                    costs[2] += mvcost(tmv << 2);
+                    COPY2_IF_LT(bcost, costs[2], bmv, tmv);
+                    tmv.x++;
+                    costs[3] += mvcost(tmv << 2);
+                    COPY2_IF_LT(bcost, costs[3], bmv, tmv);
+                }
+                else
+                    COST_MV(tmv.x, tmv.y);
+            }
+        }
+    }
 
     default:
         assert(0);
@@ -714,43 +775,58 @@ me_hex2:
     }
 
     if (bprecost < bcost)
+    {
         bmv = bestpre;
+        bcost = bprecost;
+    }
     else
         bmv = bmv.toQPel(); // promote search bmv to qpel
 
-    /* HPEL square refinement, dir 0 has no offset - remeasures bmv with SATD */
-    int bdir = 0;
-    bcost = COST_MAX;
-    for (int i = 0; i < 9; i++)
+    SubpelWorkload& wl = workload[this->subpelRefine];
+    pixelcmp_t hpelcomp;
+
+    if (wl.hpel_satd)
     {
-        MV qmv = bmv + square1[i] * 2;
-        MV fmv = qmv >> 2;
-        pixel *qfref = ref->m_lumaPlane[qmv.x & 3][qmv.y & 3] + blockOffset;
-        int cost = satd(fenc, FENC_STRIDE, qfref + fmv.y * stride + fmv.x, stride) + mvcost(qmv);
-        COPY2_IF_LT(bcost, cost, bdir, i);
+        bcost = subpelCompare(ref, bmv, satd) + mvcost(bmv);
+        hpelcomp = satd;
     }
+    else
+        hpelcomp = sad;
 
-    bmv += square1[bdir] * 2;
-
-    /* QPEL square refinement, do not remeasure 0 offset */
-    bdir = 0;
-    for (int i = 1; i < 9; i++)
+    for (int iter = 0; iter < wl.hpel_iters; iter++)
     {
-        MV qmv = bmv + square1[i];
-        MV fmv = qmv >> 2;
-        pixel *qfref = ref->m_lumaPlane[qmv.x & 3][qmv.y & 3] + blockOffset;
-        int cost = satd(fenc, FENC_STRIDE, qfref + fmv.y * stride + fmv.x, stride) + mvcost(qmv);
-        COPY2_IF_LT(bcost, cost, bdir, i);
-    }
+        int bdir = 0, cost;
+        for (int i = 1; i <= wl.hpel_dirs; i++)
+        {
+            MV qmv = bmv + square1[i] * 2;
+            cost = subpelCompare(ref, qmv, hpelcomp) + mvcost(qmv);
+            COPY2_IF_LT(bcost, cost, bdir, i);
+        }
 
-    bmv += square1[bdir];
+        bmv += square1[bdir] * 2;
+    }
+    /* if HPEL search used SAD, remeasure with SATD before QPEL */
+    if (!wl.hpel_satd)
+        bcost = subpelCompare(ref, bmv, satd) + mvcost(bmv);
+
+    for (int iter = 0; iter < wl.qpel_iters; iter++)
+    {
+        int bdir = 0, cost;
+        for (int i = 1; i <= wl.qpel_dirs; i++)
+        {
+            MV qmv = bmv + square1[i];
+            cost = subpelCompare(ref, qmv, satd) + mvcost(qmv);
+            COPY2_IF_LT(bcost, cost, bdir, i);
+        }
+        bmv += square1[bdir];
+    }
 
     x265_emms();
     outQMv = bmv;
     return bcost;
 }
 
-void MotionEstimate::StarPatternSearch(MotionReference *ref,
+void MotionEstimate::StarPatternSearch(ReferencePlanes *ref,
                                        const MV &       mvmin,
                                        const MV &       mvmax,
                                        MV &             bmv,
@@ -761,8 +837,8 @@ void MotionEstimate::StarPatternSearch(MotionReference *ref,
                                        int              merange)
 {
     ALIGN_VAR_16(int, costs[16]);
-    pixel *fref = ref->m_lumaPlane[0][0] + blockOffset;
-    size_t stride = ref->m_lumaStride;
+    pixel *fref = ref->fpelPlane + blockOffset;
+    size_t stride = ref->lumaStride;
 
     MV omv = bmv;
     int saved = bcost;
@@ -776,35 +852,35 @@ void MotionEstimate::StarPatternSearch(MotionReference *ref,
             4 * 5
               7
          */
-        const int16_t iTop    = omv.y - dist;
-        const int16_t iBottom = omv.y + dist;
-        const int16_t iLeft   = omv.x - dist;
-        const int16_t iRight  = omv.x + dist;
+        const int16_t top    = omv.y - dist;
+        const int16_t bottom = omv.y + dist;
+        const int16_t left   = omv.x - dist;
+        const int16_t right  = omv.x + dist;
 
-        if (iTop >= mvmin.y && iLeft >= mvmin.x && iRight <= mvmax.x && iBottom <= mvmax.y)
+        if (top >= mvmin.y && left >= mvmin.x && right <= mvmax.x && bottom <= mvmax.y)
         {
-            COST_MV_PT_DIST_X4(omv.x,  iTop,    2, dist,
-                               iLeft,  omv.y,   4, dist,
-                               iRight, omv.y,   5, dist,
-                               omv.x,  iBottom, 7, dist);
+            COST_MV_PT_DIST_X4(omv.x,  top,    2, dist,
+                               left,  omv.y,   4, dist,
+                               right, omv.y,   5, dist,
+                               omv.x,  bottom, 7, dist);
         }
         else
         {
-            if (iTop >= mvmin.y) // check top
+            if (top >= mvmin.y) // check top
             {
-                COST_MV_PT_DIST(omv.x, iTop, 2, dist);
+                COST_MV_PT_DIST(omv.x, top, 2, dist);
             }
-            if (iLeft >= mvmin.x) // check middle left
+            if (left >= mvmin.x) // check middle left
             {
-                COST_MV_PT_DIST(iLeft, omv.y, 4, dist);
+                COST_MV_PT_DIST(left, omv.y, 4, dist);
             }
-            if (iRight <= mvmax.x) // check middle right
+            if (right <= mvmax.x) // check middle right
             {
-                COST_MV_PT_DIST(iRight, omv.y, 5, dist);
+                COST_MV_PT_DIST(right, omv.y, 5, dist);
             }
-            if (iBottom <= mvmax.y) // check bottom
+            if (bottom <= mvmax.y) // check bottom
             {
-                COST_MV_PT_DIST(omv.x, iBottom, 7, dist);
+                COST_MV_PT_DIST(omv.x, bottom, 7, dist);
             }
         }
         if (bcost < saved)
@@ -824,67 +900,67 @@ void MotionEstimate::StarPatternSearch(MotionReference *ref,
          Points 2, 4, 5, 7 are dist
          Points 1, 3, 6, 8 are dist>>1
          */
-        const int16_t iTop      = omv.y - dist;
-        const int16_t iBottom   = omv.y + dist;
-        const int16_t iLeft     = omv.x - dist;
-        const int16_t iRight    = omv.x + dist;
-        const int16_t iTop_2    = omv.y - (dist >> 1);
-        const int16_t iBottom_2 = omv.y + (dist >> 1);
-        const int16_t iLeft_2   = omv.x - (dist >> 1);
-        const int16_t iRight_2  = omv.x + (dist >> 1);
+        const int16_t top     = omv.y - dist;
+        const int16_t bottom  = omv.y + dist;
+        const int16_t left    = omv.x - dist;
+        const int16_t right   = omv.x + dist;
+        const int16_t top2    = omv.y - (dist >> 1);
+        const int16_t bottom2 = omv.y + (dist >> 1);
+        const int16_t left2   = omv.x - (dist >> 1);
+        const int16_t right2  = omv.x + (dist >> 1);
         saved = bcost;
 
-        if (iTop >= mvmin.y && iLeft >= mvmin.x &&
-            iRight <= mvmax.x && iBottom <= mvmax.y) // check border
+        if (top >= mvmin.y && left >= mvmin.x &&
+            right <= mvmax.x && bottom <= mvmax.y) // check border
         {
-            COST_MV_PT_DIST_X4(omv.x,    iTop,      2, dist,
-                               iLeft_2,  iTop_2,    1, dist >> 1,
-                               iRight_2, iTop_2,    3, dist >> 1,
-                               iLeft,    omv.y,     4, dist);
-            COST_MV_PT_DIST_X4(iRight,   omv.y,     5, dist,
-                               iLeft_2,  iBottom_2, 6, dist >> 1,
-                               iRight_2, iBottom_2, 8, dist >> 1,
-                               omv.x,    iBottom,   7, dist);
+            COST_MV_PT_DIST_X4(omv.x,  top,   2, dist,
+                               left2,  top2,  1, dist >> 1,
+                               right2, top2,  3, dist >> 1,
+                               left,   omv.y, 4, dist);
+            COST_MV_PT_DIST_X4(right,  omv.y,   5, dist,
+                               left2,  bottom2, 6, dist >> 1,
+                               right2, bottom2, 8, dist >> 1,
+                               omv.x,  bottom,  7, dist);
         }
         else // check border for each mv
         {
-            if (iTop >= mvmin.y) // check top
+            if (top >= mvmin.y) // check top
             {
-                COST_MV_PT_DIST(omv.x, iTop, 2, dist);
+                COST_MV_PT_DIST(omv.x, top, 2, dist);
             }
-            if (iTop_2 >= mvmin.y) // check half top
+            if (top2 >= mvmin.y) // check half top
             {
-                if (iLeft_2 >= mvmin.x) // check half left
+                if (left2 >= mvmin.x) // check half left
                 {
-                    COST_MV_PT_DIST(iLeft_2, iTop_2, 1, (dist >> 1));
+                    COST_MV_PT_DIST(left2, top2, 1, (dist >> 1));
                 }
-                if (iRight_2 <= mvmax.x) // check half right
+                if (right2 <= mvmax.x) // check half right
                 {
-                    COST_MV_PT_DIST(iRight_2, iTop_2, 3, (dist >> 1));
+                    COST_MV_PT_DIST(right2, top2, 3, (dist >> 1));
                 }
             } // check half top
-            if (iLeft >= mvmin.x) // check left
+            if (left >= mvmin.x) // check left
             {
-                COST_MV_PT_DIST(iLeft, omv.y, 4, dist);
+                COST_MV_PT_DIST(left, omv.y, 4, dist);
             }
-            if (iRight <= mvmax.x) // check right
+            if (right <= mvmax.x) // check right
             {
-                COST_MV_PT_DIST(iRight, omv.y, 5, dist);
+                COST_MV_PT_DIST(right, omv.y, 5, dist);
             }
-            if (iBottom_2 <= mvmax.y) // check half bottom
+            if (bottom2 <= mvmax.y) // check half bottom
             {
-                if (iLeft_2 >= mvmin.x) // check half left
+                if (left2 >= mvmin.x) // check half left
                 {
-                    COST_MV_PT_DIST(iLeft_2, iBottom_2, 6, (dist >> 1));
+                    COST_MV_PT_DIST(left2, bottom2, 6, (dist >> 1));
                 }
-                if (iRight_2 <= mvmax.x) // check half right
+                if (right2 <= mvmax.x) // check half right
                 {
-                    COST_MV_PT_DIST(iRight_2, iBottom_2, 8, (dist >> 1));
+                    COST_MV_PT_DIST(right2, bottom2, 8, (dist >> 1));
                 }
             } // check half bottom
-            if (iBottom <= mvmax.y) // check bottom
+            if (bottom <= mvmax.y) // check bottom
             {
-                COST_MV_PT_DIST(omv.x, iBottom, 7, dist);
+                COST_MV_PT_DIST(omv.x, bottom, 7, dist);
             }
         } // check border for each mv
 
@@ -896,14 +972,14 @@ void MotionEstimate::StarPatternSearch(MotionReference *ref,
 
     for (int16_t dist = 16; dist <= (int16_t)merange; dist <<= 1)
     {
-        const int16_t iTop    = omv.y - dist;
-        const int16_t iBottom = omv.y + dist;
-        const int16_t iLeft   = omv.x - dist;
-        const int16_t iRight  = omv.x + dist;
+        const int16_t top    = omv.y - dist;
+        const int16_t bottom = omv.y + dist;
+        const int16_t left   = omv.x - dist;
+        const int16_t right  = omv.x + dist;
 
         saved = bcost;
-        if (iTop >= mvmin.y && iLeft >= mvmin.x &&
-            iRight <= mvmax.x && iBottom <= mvmax.y) // check border
+        if (top >= mvmin.y && left >= mvmin.x &&
+            right <= mvmax.x && bottom <= mvmax.y) // check border
         {
             /* index
                   0
@@ -917,69 +993,69 @@ void MotionEstimate::StarPatternSearch(MotionReference *ref,
                   0
             */
 
-            COST_MV_PT_DIST_X4(omv.x,  iTop,    0, dist,
-                               iLeft,  omv.y,   0, dist,
-                               iRight, omv.y,   0, dist,
-                               omv.x,  iBottom, 0, dist);
+            COST_MV_PT_DIST_X4(omv.x,  top,    0, dist,
+                               left,   omv.y,  0, dist,
+                               right,  omv.y,  0, dist,
+                               omv.x,  bottom, 0, dist);
 
             for (int16_t index = 1; index < 4; index++)
             {
-                int16_t iPosYT = iTop    + ((dist >> 2) * index);
-                int16_t iPosYB = iBottom - ((dist >> 2) * index);
-                int16_t iPosXL = omv.x - ((dist >> 2) * index);
-                int16_t iPosXR = omv.x + ((dist >> 2) * index);
+                int16_t posYT = top    + ((dist >> 2) * index);
+                int16_t posYB = bottom - ((dist >> 2) * index);
+                int16_t posXL = omv.x  - ((dist >> 2) * index);
+                int16_t posXR = omv.x  + ((dist >> 2) * index);
 
-                COST_MV_PT_DIST_X4(iPosXL, iPosYT, 0, dist,
-                                   iPosXR, iPosYT, 0, dist,
-                                   iPosXL, iPosYB, 0, dist,
-                                   iPosXR, iPosYB, 0, dist);
+                COST_MV_PT_DIST_X4(posXL, posYT, 0, dist,
+                                   posXR, posYT, 0, dist,
+                                   posXL, posYB, 0, dist,
+                                   posXR, posYB, 0, dist);
             }
         }
         else // check border for each mv
         {
-            if (iTop >= mvmin.y) // check top
+            if (top >= mvmin.y) // check top
             {
-                COST_MV_PT_DIST(omv.x, iTop, 0, dist);
+                COST_MV_PT_DIST(omv.x, top, 0, dist);
             }
-            if (iLeft >= mvmin.x) // check left
+            if (left >= mvmin.x) // check left
             {
-                COST_MV_PT_DIST(iLeft, omv.y, 0, dist);
+                COST_MV_PT_DIST(left, omv.y, 0, dist);
             }
-            if (iRight <= mvmax.x) // check right
+            if (right <= mvmax.x) // check right
             {
-                COST_MV_PT_DIST(iRight, omv.y, 0, dist);
+                COST_MV_PT_DIST(right, omv.y, 0, dist);
             }
-            if (iBottom <= mvmax.y) // check bottom
+            if (bottom <= mvmax.y) // check bottom
             {
-                COST_MV_PT_DIST(omv.x, iBottom, 0, dist);
+                COST_MV_PT_DIST(omv.x, bottom, 0, dist);
             }
             for (int16_t index = 1; index < 4; index++)
             {
-                int16_t iPosYT = iTop    + ((dist >> 2) * index);
-                int16_t iPosYB = iBottom - ((dist >> 2) * index);
-                int16_t iPosXL = omv.x - ((dist >> 2) * index);
-                int16_t iPosXR = omv.x + ((dist >> 2) * index);
+                int16_t posYT = top    + ((dist >> 2) * index);
+                int16_t posYB = bottom - ((dist >> 2) * index);
+                int16_t posXL = omv.x - ((dist >> 2) * index);
+                int16_t posXR = omv.x + ((dist >> 2) * index);
 
-                if (iPosYT >= mvmin.y) // check top
+                if (posYT >= mvmin.y) // check top
                 {
-                    if (iPosXL >= mvmin.x) // check left
+                    if (posXL >= mvmin.x) // check left
                     {
-                        COST_MV_PT_DIST(iPosXL, iPosYT, 0, dist);
+                        COST_MV_PT_DIST(posXL, posYT, 0, dist);
                     }
-                    if (iPosXR <= mvmax.x) // check right
+                    if (posXR <= mvmax.x) // check right
                     {
-                        COST_MV_PT_DIST(iPosXR, iPosYT, 0, dist);
+                        COST_MV_PT_DIST(posXR, posYT, 0, dist);
                     }
                 } // check top
-                if (iPosYB <= mvmax.y) // check bottom
+                if (posYB <= mvmax.y) // check bottom
                 {
-                    if (iPosXL >= mvmin.x) // check left
+                    if (posXL >= mvmin.x) // check left
                     {
-                        COST_MV_PT_DIST(iPosXL, iPosYB, 0, dist);
+                        COST_MV_PT_DIST(posXL, posYB, 0, dist);
                     }
-                    if (iPosXR <= mvmax.x) // check right
+                    if (posXR <= mvmax.x) // check right
                     {
-                        COST_MV_PT_DIST(iPosXR, iPosYB, 0, dist);
+                        COST_MV_PT_DIST(posXR, posYB, 0, dist);
                     }
                 } // check bottom
             } // for ...
@@ -990,4 +1066,62 @@ void MotionEstimate::StarPatternSearch(MotionReference *ref,
         else if (++rounds >= earlyExitIters)
             return;
     } // dist > 8
+}
+
+int MotionEstimate::subpelCompare(ReferencePlanes *ref, const MV& qmv, pixelcmp_t cmp)
+{
+    if (ref->isLowres)
+    {
+        if ((qmv.x | qmv.y) & 1)
+        {
+            /* QPel: use H.264's simple QPEL generation from averaged HPEL pixels */
+            int hpelA = (qmv.y & 2) | ((qmv.x & 2) >> 1);
+            pixel *frefA = ref->lowresPlane[hpelA] + blockOffset + (qmv.x >> 2) + (qmv.y >> 2) * ref->lumaStride;
+
+            MV qmvB = qmv + MV((qmv.x & 1) * 2, (qmv.y & 1) * 2);
+            int hpelB = (qmvB.y & 2) | ((qmvB.x & 2) >> 1);
+            pixel *frefB = ref->lowresPlane[hpelB] + blockOffset + (qmvB.x >> 2) + (qmvB.y >> 2) * ref->lumaStride;
+
+            /* TODO: make this into a lowres MC primitive */
+            for (int y = 0; y < blockheight; y++)
+                for (int x = 0; x < blockwidth; x++)
+                    subpelbuf[y * FENC_STRIDE + x] = (frefA[y * ref->lumaStride + x] + frefB[y * ref->lumaStride + x] + 1) >> 1;
+            return cmp(fenc, FENC_STRIDE, subpelbuf, FENC_STRIDE);
+        }
+        else
+        {
+            /* FPEL/HPEL */
+            int hpel = (qmv.y & 2) | ((qmv.x & 2) >> 1);
+            pixel *fref = ref->lowresPlane[hpel] + blockOffset + (qmv.x >> 2) + (qmv.y >> 2) * ref->lumaStride;
+            return cmp(fenc, FENC_STRIDE, fref, ref->lumaStride);
+        }
+    }
+    else
+    {
+        pixel *fref = ref->fpelPlane + blockOffset + (qmv.x >> 2) + (qmv.y >> 2) * ref->lumaStride;
+        int xFrac = qmv.x & 0x3;
+        int yFrac = qmv.y & 0x3;
+
+        if ((yFrac | xFrac) == 0)
+        {
+            return cmp(fenc, FENC_STRIDE, fref, ref->lumaStride);
+        }
+        else if (yFrac == 0)
+        {
+            primitives.ipfilter_pp[FILTER_H_P_P_8](fref, ref->lumaStride, subpelbuf, FENC_STRIDE, blockwidth, blockheight, g_lumaFilter[xFrac]);
+        }
+        else if (xFrac == 0)
+        {
+            primitives.ipfilter_pp[FILTER_V_P_P_8](fref, ref->lumaStride, subpelbuf, FENC_STRIDE, blockwidth, blockheight, g_lumaFilter[yFrac]);
+        }
+        else
+        {
+            int filterSize = NTAPS_LUMA;
+            int halfFilterSize = (filterSize >> 1);
+            primitives.ipfilter_ps[FILTER_H_P_S_8](fref - (halfFilterSize - 1) * ref->lumaStride, ref->lumaStride, immedVal, blockwidth, blockwidth, blockheight + filterSize - 1, g_lumaFilter[xFrac]);
+            primitives.ipfilter_sp[FILTER_V_S_P_8](immedVal + (halfFilterSize - 1) * blockwidth, blockwidth, subpelbuf, FENC_STRIDE, blockwidth, blockheight, g_lumaFilter[yFrac]);
+        }
+
+        return cmp(fenc, FENC_STRIDE, subpelbuf, FENC_STRIDE);
+    }
 }

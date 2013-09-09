@@ -43,6 +43,9 @@
 //! \ingroup TLibEncoder
 //! \{
 
+namespace x265 {
+// private namespace
+
 class TEncBinCABACCounter : public TEncBinCABAC
 {
 public:
@@ -50,17 +53,16 @@ public:
     TEncBinCABACCounter();
     virtual ~TEncBinCABACCounter();
 
-    Void  finish();
+    void  finish();
     UInt  getNumWrittenBits();
 
-    Void  encodeBin(UInt binValue,  ContextModel& rcCtxModel);
-    Void  encodeBinEP(UInt binValue);
-    Void  encodeBinsEP(UInt binValues, Int numBins);
-    Void  encodeBinTrm(UInt binValue);
-
-private:
+    void  encodeBin(UInt binValue,  ContextModel& rcCtxModel);
+    void  encodeBinEP(UInt binValue);
+    void  encodeBinsEP(UInt binValues, int numBins);
+    void  encodeBinTrm(UInt binValue);
 };
 
+}
 //! \}
 
 #endif // ifndef __TENC_BIN_CODER_CABAC_COUNTER__

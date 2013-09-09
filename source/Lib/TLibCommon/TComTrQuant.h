@@ -43,6 +43,9 @@
 #include "TComDataCU.h"
 #include "ContextTables.h"
 
+namespace x265 {
+// private namespace
+
 //! \ingroup TLibCommon
 //! \{
 
@@ -58,15 +61,15 @@
 
 typedef struct
 {
-    Int significantCoeffGroupBits[NUM_SIG_CG_FLAG_CTX][2];
-    Int significantBits[NUM_SIG_FLAG_CTX][2];
-    Int lastXBits[32];
-    Int lastYBits[32];
-    Int greaterOneBits[NUM_ONE_FLAG_CTX][2];
-    Int levelAbsBits[NUM_ABS_FLAG_CTX][2];
+    int significantCoeffGroupBits[NUM_SIG_CG_FLAG_CTX][2];
+    int significantBits[NUM_SIG_FLAG_CTX][2];
+    int lastXBits[32];
+    int lastYBits[32];
+    int greaterOneBits[NUM_ONE_FLAG_CTX][2];
+    int levelAbsBits[NUM_ABS_FLAG_CTX][2];
 
-    Int blockCbpBits[3 * NUM_QT_CBF_CTX][2];
-    Int blockRootCbpBits[4][2];
+    int blockCbpBits[3 * NUM_QT_CBF_CTX][2];
+    int blockRootCbpBits[4][2];
 } estBitsSbacStruct;
 
 // ====================================================================================================================
@@ -79,15 +82,15 @@ public:
 
     QpParam() {}
 
-    Int m_qp;
-    Int m_per;
-    Int m_rem;
+    int m_qp;
+    int m_per;
+    int m_rem;
 
-    Int m_bits;
+    int m_bits;
 
 public:
 
-    Void setQpParam(Int qpScaled)
+    void setQpParam(int qpScaled)
     {
         m_qp   = qpScaled;
         m_per  = qpScaled / 6;
@@ -95,7 +98,7 @@ public:
         m_bits = QP_BITS + m_per;
     }
 
-    Void clear()
+    void clear()
     {
         m_qp   = 0;
         m_per  = 0;
@@ -103,13 +106,13 @@ public:
         m_bits = 0;
     }
 
-    Int per()   const { return m_per; }
+    int per()   const { return m_per; }
 
-    Int rem()   const { return m_rem; }
+    int rem()   const { return m_rem; }
 
-    Int bits()  const { return m_bits; }
+    int bits()  const { return m_bits; }
 
-    Int qp() { return m_qp; }
+    int qp() { return m_qp; }
 };
 
 /// transform and quantization class
@@ -121,51 +124,48 @@ public:
     ~TComTrQuant();
 
     // initialize class
-    Void init(UInt maxTrSize, Bool useRDOQ, Bool useRDOQTS, Bool useTransformSkipFast);
+    void init(UInt maxTrSize, int useRDOQ, int useRDOQTS, int useTransformSkipFast);
 
     // transform & inverse transform functions
-    UInt transformNxN(TComDataCU* cu, Short* residual, UInt stride, TCoeff* coeff, UInt width, UInt height,
-                      TextType ttype, UInt absPartIdx, Bool useTransformSkip = false);
+    UInt transformNxN(TComDataCU* cu, short* residual, UInt stride, TCoeff* coeff, UInt width, UInt height,
+                      TextType ttype, UInt absPartIdx, int* lastPos, bool useTransformSkip = false);
 
-    Void invtransformNxN(Bool transQuantBypass, UInt mode, Short* residual, UInt stride, TCoeff* coeff, UInt width, UInt height, Int scalingListType, Bool useTransformSkip = false);
-
-    Void invRecurTransformNxN(TComDataCU* cu, UInt absPartIdx, TextType ttype, Short* residual, UInt addr, UInt stride,
-                              UInt width, UInt height, UInt maxTrMode, UInt trMode, TCoeff* coeff);
+    void invtransformNxN(bool transQuantBypass, UInt mode, short* residual, UInt stride, TCoeff* coeff, UInt width, UInt height, int scalingListType, bool useTransformSkip = false, int lastPos = MAX_INT);
 
     // Misc functions
-    Void setQPforQuant(Int qpy, TextType ttype, Int qpBdOffset, Int chromaQPOffset);
+    void setQPforQuant(int qpy, TextType ttype, int qpBdOffset, int chromaQPOffset);
 
-    Void setLambda(Double lambdaLuma, Double lambdaChroma) { m_lumaLambda = lambdaLuma; m_chromaLambda = lambdaChroma; }
+    void setLambda(double lambdaLuma, double lambdaChroma) { m_lumaLambda = lambdaLuma; m_chromaLambda = lambdaChroma; }
 
-    Void selectLambda(TextType ttype) { m_lambda = (ttype == TEXT_LUMA) ? m_lumaLambda : m_chromaLambda; }
+    void selectLambda(TextType ttype) { m_lambda = (ttype == TEXT_LUMA) ? m_lumaLambda : m_chromaLambda; }
 
-    Void initScalingList();
-    Void destroyScalingList();
-    Void setErrScaleCoeff(UInt list, UInt size, UInt qp);
-    Double* getErrScaleCoeff(UInt list, UInt size, UInt qp) { return m_errScale[size][list][qp]; }   //!< get Error Scale Coefficent
+    void initScalingList();
+    void destroyScalingList();
+    void setErrScaleCoeff(UInt list, UInt size, UInt qp);
+    double* getErrScaleCoeff(UInt list, UInt size, UInt qp) { return m_errScale[size][list][qp]; }   //!< get Error Scale Coefficent
 
-    Int* getQuantCoeff(UInt list, UInt qp, UInt size) { return m_quantCoef[size][list][qp]; }        //!< get Quant Coefficent
+    int* getQuantCoeff(UInt list, UInt qp, UInt size) { return m_quantCoef[size][list][qp]; }        //!< get Quant Coefficent
 
-    Int* getDequantCoeff(UInt list, UInt qp, UInt size) { return m_dequantCoef[size][list][qp]; }    //!< get DeQuant Coefficent
+    int* getDequantCoeff(UInt list, UInt qp, UInt size) { return m_dequantCoef[size][list][qp]; }    //!< get DeQuant Coefficent
 
-    Void setUseScalingList(Bool bUseScalingList) { m_scalingListEnabledFlag = bUseScalingList; }
+    void setUseScalingList(bool bUseScalingList) { m_scalingListEnabledFlag = bUseScalingList; }
 
-    Bool getUseScalingList() { return m_scalingListEnabledFlag; }
+    bool getUseScalingList() { return m_scalingListEnabledFlag; }
 
-    Void setFlatScalingList();
-    Void xsetFlatScalingList(UInt list, UInt size, UInt qp);
-    Void xSetScalingListEnc(TComScalingList *scalingList, UInt list, UInt size, UInt qp);
-    Void xSetScalingListDec(TComScalingList *scalingList, UInt list, UInt size, UInt qp);
-    Void setScalingList(TComScalingList *scalingList);
-    Void setScalingListDec(TComScalingList *scalingList);
-    Void processScalingListEnc(Int *coeff, Int *quantcoeff, Int quantScales, UInt height, UInt width, UInt ratio, Int sizuNum, UInt dc);
-    Void processScalingListDec(Int *coeff, Int *dequantcoeff, Int invQuantScales, UInt height, UInt width, UInt ratio, Int sizuNum, UInt dc);
+    void setFlatScalingList();
+    void xsetFlatScalingList(UInt list, UInt size, UInt qp);
+    void xSetScalingListEnc(TComScalingList *scalingList, UInt list, UInt size, UInt qp);
+    void xSetScalingListDec(TComScalingList *scalingList, UInt list, UInt size, UInt qp);
+    void setScalingList(TComScalingList *scalingList);
+    void setScalingListDec(TComScalingList *scalingList);
+    void processScalingListEnc(int *coeff, int *quantcoeff, int quantScales, UInt height, UInt width, UInt ratio, int sizuNum, UInt dc);
+    void processScalingListDec(int *coeff, int *dequantcoeff, int invQuantScales, UInt height, UInt width, UInt ratio, int sizuNum, UInt dc);
 
-    static Int  calcPatternSigCtx(const UInt* sigCoeffGroupFlag, UInt posXCG, UInt posYCG, Int width, Int height);
+    static int  calcPatternSigCtx(const UInt* sigCoeffGroupFlag, UInt posXCG, UInt posYCG, int width, int height);
 
-    static Int  getSigCtxInc(Int patternSigCtx, UInt scanIdx, Int posX, Int posY, Int log2BlkSize, TextType ttype);
+    static int  getSigCtxInc(int patternSigCtx, UInt scanIdx, int posX, int posY, int log2BlkSize, TextType ttype);
 
-    static UInt getSigCoeffGroupCtxInc(const UInt* sigCoeffGroupFlag, UInt cGPosX, UInt cGPosY, Int width, Int height);
+    static UInt getSigCoeffGroupCtxInc(const UInt* sigCoeffGroupFlag, UInt cGPosX, UInt cGPosY, int width, int height);
 
     estBitsSbacStruct* m_estBitsSbac;
 
@@ -173,58 +173,58 @@ protected:
 
     QpParam  m_qpParam;
 
-    Double   m_lambda;
-    Double   m_lumaLambda;
-    Double   m_chromaLambda;
+    double   m_lambda;
+    double   m_lumaLambda;
+    double   m_chromaLambda;
 
     UInt     m_maxTrSize;
-    Bool     m_useRDOQ;
-    Bool     m_useRDOQTS;
-    Bool     m_useTransformSkipFast;
-    Bool     m_scalingListEnabledFlag;
+    bool     m_useRDOQ;
+    bool     m_useRDOQTS;
+    bool     m_useTransformSkipFast;
+    bool     m_scalingListEnabledFlag;
 
-    Int*     m_tmpCoeff;
-    Int*     m_quantCoef[SCALING_LIST_SIZE_NUM][SCALING_LIST_NUM][SCALING_LIST_REM_NUM];     ///< array of quantization matrix coefficient 4x4
-    Int*     m_dequantCoef[SCALING_LIST_SIZE_NUM][SCALING_LIST_NUM][SCALING_LIST_REM_NUM];   ///< array of dequantization matrix coefficient 4x4
+    int*     m_tmpCoeff;
+    int*     m_quantCoef[SCALING_LIST_SIZE_NUM][SCALING_LIST_NUM][SCALING_LIST_REM_NUM];     ///< array of quantization matrix coefficient 4x4
+    int*     m_dequantCoef[SCALING_LIST_SIZE_NUM][SCALING_LIST_NUM][SCALING_LIST_REM_NUM];   ///< array of dequantization matrix coefficient 4x4
 
-    Double  *m_errScale[SCALING_LIST_SIZE_NUM][SCALING_LIST_NUM][SCALING_LIST_REM_NUM];
+    double  *m_errScale[SCALING_LIST_SIZE_NUM][SCALING_LIST_NUM][SCALING_LIST_REM_NUM];
 
 private:
 
-    Void xTransformSkip(Short* resiBlock, UInt stride, Int* coeff, Int width, Int height);
+    void xTransformSkip(short* resiBlock, UInt stride, int* coeff, int width, int height);
 
-    Void signBitHidingHDQ(TCoeff* qcoeff, TCoeff* coeff, const UInt* scan, Int* deltaU, Int width, Int height);
+    void signBitHidingHDQ(TCoeff* qcoeff, TCoeff* coeff, const UInt* scan, int* deltaU, int width, int height);
 
-    UInt xQuant(TComDataCU* cu, Int* src, TCoeff* dst, Int width, Int height, TextType ttype, UInt absPartIdx);
+    UInt xQuant(TComDataCU* cu, int* src, TCoeff* dst, int width, int height, TextType ttype, UInt absPartIdx, int *lastPos);
 
     // RDOQ functions
-    UInt xRateDistOptQuant(TComDataCU* cu, Int* srcCoeff, TCoeff* dstCoeff, UInt width, UInt height, TextType ttype, UInt absPartIdx);
+    UInt xRateDistOptQuant(TComDataCU* cu, int* srcCoeff, TCoeff* dstCoeff, UInt width, UInt height, TextType ttype, UInt absPartIdx, int *lastPos);
 
-    inline UInt xGetCodedLevel(Double& codedCost, Double& codedCost0, Double& codedCostSig, Int levelDouble,
+    inline UInt xGetCodedLevel(double& codedCost, double& codedCost0, double& codedCostSig, int levelDouble,
                                  UInt maxAbsLevel, UShort ctxNumSig, UShort ctxNumOne, UShort ctxNumAbs, UShort absGoRice,
-                                 UInt c1Idx, UInt c2Idx, Int qbits, Double scale, Bool bLast) const;
+                                 UInt c1Idx, UInt c2Idx, int qbits, double scale, bool bLast) const;
 
-    inline Double xGetICRateCost(UInt absLevel, UShort ctxNumOne, UShort ctxNumAbs, UShort absGoRice, UInt c1Idx, UInt c2Idx) const;
+    inline double xGetICRateCost(UInt absLevel, UShort ctxNumOne, UShort ctxNumAbs, UShort absGoRice, UInt c1Idx, UInt c2Idx) const;
 
-    inline Int    xGetICRate(UInt absLevel, UShort ctxNumOne, UShort ctxNumAbs, UShort absGoRice, UInt c1Idx, UInt c2Idx) const;
+    inline int    xGetICRate(UInt absLevel, UShort ctxNumOne, UShort ctxNumAbs, UShort absGoRice, UInt c1Idx, UInt c2Idx) const;
 
-    inline Double xGetRateLast(UInt posx, UInt posy) const;
+    inline double xGetRateLast(UInt posx, UInt posy) const;
 
-    inline Double xGetRateSigCoeffGroup(UShort sigCoeffGroup, UShort ctxNumSig) const { return m_lambda * m_estBitsSbac->significantCoeffGroupBits[ctxNumSig][sigCoeffGroup]; }
+    inline double xGetRateSigCoeffGroup(UShort sigCoeffGroup, UShort ctxNumSig) const { return m_lambda * m_estBitsSbac->significantCoeffGroupBits[ctxNumSig][sigCoeffGroup]; }
 
-    inline Double xGetRateSigCoef(UShort sig, UShort ctxNumSig) const { return m_lambda * m_estBitsSbac->significantBits[ctxNumSig][sig]; }
+    inline double xGetRateSigCoef(UShort sig, UShort ctxNumSig) const { return m_lambda * m_estBitsSbac->significantBits[ctxNumSig][sig]; }
 
-    inline Double xGetICost(Double rage) const { return m_lambda * rage; } ///< Get the cost for a specific rate
+    inline double xGetICost(double rage) const { return m_lambda * rage; } ///< Get the cost for a specific rate
 
-    inline Double xGetIEPRate() const          { return 32768; }            ///< Get the cost of an equal probable bit
+    inline double xGetIEPRate() const          { return 32768; }            ///< Get the cost of an equal probable bit
 
-    Void xDeQuant(const TCoeff* src, Int* dst, Int width, Int height, Int scalingListType);
+    void xDeQuant(const TCoeff* src, int* dst, int width, int height, int scalingListType);
 
-    Void xIT(UInt mode, Int* coeff, Short* residual, UInt stride, Int width, Int height);
+    void xIT(UInt mode, int* coeff, short* residual, UInt stride, int width, int height);
 
-    Void xITransformSkip(Int* coeff, Short* residual, UInt stride, Int width, Int height);
+    void xITransformSkip(int* coeff, short* residual, UInt stride, int width, int height);
 };
-
+}
 //! \}
 
 #endif // __TCOMTRQUANT__

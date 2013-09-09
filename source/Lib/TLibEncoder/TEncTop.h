@@ -43,11 +43,17 @@
 // Include files
 #include "TLibCommon/AccessUnit.h"
 #include "TEncCfg.h"
-#include "TEncGOP.h"
-#include "TEncRateCtrl.h"
 #include "TEncAnalyze.h"
 #include "threading.h"
-#include "threadpool.h"
+
+namespace x265 {
+// private namespace
+
+class FrameEncoder;
+class DPB;
+struct Lookahead;
+struct RateControl;
+class ThreadPool;
 
 //! \ingroup TLibEncoder
 //! \{
@@ -61,30 +67,26 @@ class TEncTop : public TEncCfg
 {
 private:
 
-    // picture
-    Int                     m_pocLast;          ///< time index (POC)
-    Int                     m_picsQueued;       ///< number of received pictures
-    Int                     m_picsEncoded;      ///< number of coded pictures
-    Bool                    m_openGOP;
-    uint32_t                m_busyGOPs;
+    int                m_pocLast;          ///< time index (POC)
+    TComList<TComPic*> m_freeList;
 
-    // quality control
-    TComScalingList         m_scalingList;      ///< quantization matrix information
+    ThreadPool*        m_threadPool;
+    Lookahead*         m_lookahead;
+    FrameEncoder*      m_frameEncoder;
+    DPB*               m_dpb;
+    RateControl*       m_rateControl;
 
-    TEncRateCtrl            m_cRateCtrl;        ///< Rate control class
-
-    TEncGOP*                m_GOPEncoders;
-    TEncGOP*                m_curGOPEncoder;
-    x265::ThreadPool*       m_threadPool;
-
-public:
+    /* frame parallelism */
+    int                m_curEncoder;
 
     /* Collect statistics globally */
-    x265::Lock  m_statLock;
-    TEncAnalyze m_gcAnalyzeAll;
-    TEncAnalyze m_gcAnalyzeI;
-    TEncAnalyze m_gcAnalyzeP;
-    TEncAnalyze m_gcAnalyzeB;
+    TEncAnalyze        m_analyzeAll;
+    TEncAnalyze        m_analyzeI;
+    TEncAnalyze        m_analyzeP;
+    TEncAnalyze        m_analyzeB;
+
+    // quality control
+    TComScalingList    m_scalingList;      ///< quantization matrix information
 
 public:
 
@@ -92,31 +94,28 @@ public:
 
     virtual ~TEncTop();
 
-    Void create();
-    Void destroy();
-    Void init();
+    void create();
+    void destroy();
+    void init();
 
-    TComScalingList*        getScalingList()   { return &m_scalingList; }
+    void xInitSPS(TComSPS *sps);
+    void xInitPPS(TComPPS *pps);
 
-    TEncRateCtrl*           getRateCtrl()      { return &m_cRateCtrl; }
+    int encode(bool bEos, const x265_picture_t* pic, x265_picture_t *pic_out, AccessUnit& accessUnit);
 
-    x265::ThreadPool*       getThreadPool()    { return m_threadPool; }
+    int getStreamHeaders(AccessUnit& accessUnit);
 
-    void                    setThreadPool(x265::ThreadPool* p) { m_threadPool = p; }
+    double printSummary();
 
-    Void xInitSPS(TComSPS *pcSPS);
-    Void xInitPPS(TComPPS *pcPPS);
-    Void xInitRPS(TComSPS *pcSPS);
+    TComScalingList* getScalingList() { return &m_scalingList; }
 
-    int encode(Bool bEos, const x265_picture_t* pic, x265_picture_t **pic_out, std::list<AccessUnit>& accessUnitsOut);
-
-    Double printSummary();
+    void setThreadPool(ThreadPool* p) { m_threadPool = p; }
 
 protected:
 
-    int flushGopCoders(x265_picture_t **pic_out, std::list<AccessUnit>& accessUnitsOut);
+    double calculateHashAndPSNR(TComPic* pic, AccessUnit&); // Returns total number of bits for encoded pic
 };
-
+}
 //! \}
 
 #endif // __TENCTOP__

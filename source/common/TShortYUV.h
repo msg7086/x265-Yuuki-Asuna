@@ -28,6 +28,9 @@
 
 #include "TLibCommon/TComRom.h"
 
+namespace x265 {
+// private namespace
+
 class TComYuv;
 
 class TShortYUV
@@ -44,8 +47,8 @@ private:
 
     static int getAddrOffset(unsigned int idx, unsigned int size, unsigned int width)
     {
-        Int blkX = (idx * size) &  (width - 1);
-        Int blkY = (idx * size) & ~(width - 1);
+        int blkX = (idx * size) &  (width - 1);
+        int blkY = (idx * size) & ~(width - 1);
 
         return blkX + blkY * size;
     }
@@ -68,11 +71,11 @@ public:
     void destroy();
     void clear();
 
-    short*    getLumaAddr()  { return m_bufY; }
+    short* getLumaAddr()  { return m_bufY; }
 
-    short*    getCbAddr()    { return m_bufCb; }
+    short* getCbAddr()    { return m_bufCb; }
 
-    short*    getCrAddr()    { return m_bufCr; }
+    short* getCrAddr()    { return m_bufCr; }
 
     //  Access starting position of YUV partition unit buffer
     short* getLumaAddr(unsigned int partUnitIdx) { return m_bufY + getAddrOffset(partUnitIdx, m_width); }
@@ -106,5 +109,6 @@ public:
     void copyPartToPartChroma(TComYuv* dstPicYuv, unsigned int partIdx, unsigned int width, unsigned int height);
     void copyPartToPartChroma(TComYuv* dstPicYuv, unsigned int partIdx, unsigned int width, unsigned int height, unsigned int chromaId);
 };
+}
 
 #endif //end __TSHORTYUV__

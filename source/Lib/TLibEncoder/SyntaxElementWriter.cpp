@@ -38,12 +38,14 @@
 #include "TLibCommon/CommonDef.h"
 #include "SyntaxElementWriter.h"
 
+using namespace x265;
+
 //! \ingroup TLibEncoder
 //! \{
 
 #if ENC_DEC_TRACE
 
-Void  SyntaxElementWriter::xWriteCodeTr(UInt value, UInt  length, const Char *pSymbolName)
+void  SyntaxElementWriter::xWriteCodeTr(UInt value, UInt  length, const char *symbolName)
 {
     xWriteCode(value, length);
     if (g_HLSTraceEnable)
@@ -51,82 +53,80 @@ Void  SyntaxElementWriter::xWriteCodeTr(UInt value, UInt  length, const Char *pS
         fprintf(g_hTrace, "%8lld  ", g_nSymbolCounter++);
         if (length < 10)
         {
-            fprintf(g_hTrace, "%-50s u(%d)  : %d\n", pSymbolName, length, value);
+            fprintf(g_hTrace, "%-50s u(%d)  : %d\n", symbolName, length, value);
         }
         else
         {
-            fprintf(g_hTrace, "%-50s u(%d) : %d\n", pSymbolName, length, value);
+            fprintf(g_hTrace, "%-50s u(%d) : %d\n", symbolName, length, value);
         }
     }
 }
 
-Void  SyntaxElementWriter::xWriteUvlcTr(UInt value, const Char *pSymbolName)
+void  SyntaxElementWriter::xWriteUvlcTr(UInt value, const char *symbolName)
 {
     xWriteUvlc(value);
     if (g_HLSTraceEnable)
     {
         fprintf(g_hTrace, "%8lld  ", g_nSymbolCounter++);
-        fprintf(g_hTrace, "%-50s ue(v) : %d\n", pSymbolName, value);
+        fprintf(g_hTrace, "%-50s ue(v) : %d\n", symbolName, value);
     }
 }
 
-Void  SyntaxElementWriter::xWriteSvlcTr(Int value, const Char *pSymbolName)
+void  SyntaxElementWriter::xWriteSvlcTr(int value, const char *symbolName)
 {
     xWriteSvlc(value);
     if (g_HLSTraceEnable)
     {
         fprintf(g_hTrace, "%8lld  ", g_nSymbolCounter++);
-        fprintf(g_hTrace, "%-50s se(v) : %d\n", pSymbolName, value);
+        fprintf(g_hTrace, "%-50s se(v) : %d\n", symbolName, value);
     }
 }
 
-Void  SyntaxElementWriter::xWriteFlagTr(UInt value, const Char *pSymbolName)
+void  SyntaxElementWriter::xWriteFlagTr(UInt value, const char *symbolName)
 {
     xWriteFlag(value);
     if (g_HLSTraceEnable)
     {
         fprintf(g_hTrace, "%8lld  ", g_nSymbolCounter++);
-        fprintf(g_hTrace, "%-50s u(1)  : %d\n", pSymbolName, value);
+        fprintf(g_hTrace, "%-50s u(1)  : %d\n", symbolName, value);
     }
 }
 
 #endif // if ENC_DEC_TRACE
 
-Void SyntaxElementWriter::xWriteCode(UInt uiCode, UInt uiLength)
+void SyntaxElementWriter::xWriteCode(UInt code, UInt len)
 {
-    assert(uiLength > 0);
-    m_pcBitIf->write(uiCode, uiLength);
+    assert(len > 0);
+    m_bitIf->write(code, len);
 }
 
-Void SyntaxElementWriter::xWriteUvlc(UInt uiCode)
+void SyntaxElementWriter::xWriteUvlc(UInt code)
 {
-    UInt uiLength = 1;
-    UInt uiTemp = ++uiCode;
+    UInt len = 1;
+    UInt temp = ++code;
 
-    assert(uiTemp);
+    assert(temp);
 
-    while (1 != uiTemp)
+    while (1 != temp)
     {
-        uiTemp >>= 1;
-        uiLength += 2;
+        temp >>= 1;
+        len += 2;
     }
 
-    // Take care of cases where uiLength > 32
-    m_pcBitIf->write(0, uiLength >> 1);
-    m_pcBitIf->write(uiCode, (uiLength + 1) >> 1);
+    // Take care of cases where len > 32
+    m_bitIf->write(0, len >> 1);
+    m_bitIf->write(code, (len + 1) >> 1);
 }
 
-Void SyntaxElementWriter::xWriteSvlc(Int iCode)
+void SyntaxElementWriter::xWriteSvlc(int code)
 {
-    UInt uiCode;
-
-    uiCode = xConvertToUInt(iCode);
-    xWriteUvlc(uiCode);
+    UInt ucode = xConvertToUInt(code);
+    xWriteUvlc(ucode);
 }
 
-Void SyntaxElementWriter::xWriteFlag(UInt uiCode)
+void SyntaxElementWriter::xWriteFlag(UInt code)
 {
-    m_pcBitIf->write(uiCode, 1);
+    m_bitIf->write(code, 1);
 }
 
 //! \}

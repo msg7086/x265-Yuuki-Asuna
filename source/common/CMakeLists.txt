@@ -32,9 +32,12 @@ if(MSVC)
     # /wd4800 performance warning: bool coersion
     set_source_files_properties(${LIBCOMMON_SRC} PROPERTIES COMPILE_FLAGS 
         "/wd4244 /wd4512 /wd4127 /wd4389 /wd4018 /wd4800")
+    if ("$ENV{CXX}" STREQUAL "icl")
+        add_definitions(/Qwd2557) # signed/unsigned mismatch
+    endif()
 endif(MSVC)
 
-add_library(common
+add_library(common STATIC ../../COPYING
     ${LIBCOMMON_SRC} ${LIBCOMMON_HDR}
     primitives.cpp primitives.h
     pixel.cpp dct.cpp ipfilter.cpp intrapred.cpp
@@ -45,7 +48,8 @@ add_library(common
     md5.cpp md5.h
     TShortYUV.cpp TShortYUV.h mv.h
     reference.cpp reference.h
-    common.cpp common.h)
+    common.cpp common.h
+    lowres.cpp lowres.h)
     
 if(ENABLE_PRIMITIVES_VEC)
     add_subdirectory(vec)

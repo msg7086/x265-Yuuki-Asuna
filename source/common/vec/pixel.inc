@@ -5,6 +5,8 @@
  *          Mandar Gurav <mandar@multicorewareinc.com>
  *          Mahesh Pittala <mahesh@multicorewareinc.com>
  *          Min Chen <min.chen@multicorewareinc.com>
+ *          Praveen Kumar Tiwari <praveen@multicorewareinc.com>
+ *          Nabajit Deka <nabajit@multicorewareinc.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,12 +32,12 @@
 #include <assert.h>
 
 namespace {
-
 #if HIGH_BIT_DEPTH
 #include "pixel16.inc"
 #else
 #include "pixel8.inc"
 #endif
+#include "sse.inc"
 
 void convert16to32(short *org, int *dst, int num)
 {
@@ -309,10 +311,82 @@ void transpose32(pixel* dst, pixel* src, intptr_t srcstride)
     transpose16_dummy(dst + 16,           32, src + 16 * srcstride,      srcstride);
 }
 
+void blockfil_s_4(short *dst, intptr_t dstride, short val)
+{
+    __m128i T00;
+
+    T00 = _mm_cvtsi32_si128(val);
+    T00 = _mm_shufflelo_epi16(T00, 0);
+
+    _mm_storel_epi64((__m128i*)&dst[0 * dstride], T00);
+    _mm_storel_epi64((__m128i*)&dst[1 * dstride], T00);
+    _mm_storel_epi64((__m128i*)&dst[2 * dstride], T00);
+    _mm_storel_epi64((__m128i*)&dst[3 * dstride], T00);
+}
+
+void blockfil_s_8(short *dst, intptr_t dstride, short val)
+{
+    __m128i T00;
+
+    T00 = _mm_cvtsi32_si128(val);
+    T00 = _mm_shufflelo_epi16(T00, 0);
+    T00 = _mm_shuffle_epi32(T00, 0);
+
+    _mm_storeu_si128((__m128i*)&dst[0 * dstride], T00);
+    _mm_storeu_si128((__m128i*)&dst[1 * dstride], T00);
+    _mm_storeu_si128((__m128i*)&dst[2 * dstride], T00);
+    _mm_storeu_si128((__m128i*)&dst[3 * dstride], T00);
+    _mm_storeu_si128((__m128i*)&dst[4 * dstride], T00);
+    _mm_storeu_si128((__m128i*)&dst[5 * dstride], T00);
+    _mm_storeu_si128((__m128i*)&dst[6 * dstride], T00);
+    _mm_storeu_si128((__m128i*)&dst[7 * dstride], T00);
+}
+
+void blockfil_s_16(short *dst, intptr_t dstride, short val)
+{
+    __m128i T00;
+
+    T00 = _mm_cvtsi32_si128(val);
+    T00 = _mm_shufflelo_epi16(T00, 0);
+    T00 = _mm_shuffle_epi32(T00, 0);
+
+    for (int i = 0; i < 16; i += 4)
+    {
+        _mm_storeu_si128((__m128i*)&dst[(i + 0) * dstride], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 0) * dstride + 8], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 1) * dstride], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 1) * dstride + 8], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 2) * dstride], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 2) * dstride + 8], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 3) * dstride], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 3) * dstride + 8], T00);
+    }
+}
+
+void blockfil_s_32(short *dst, intptr_t dstride, short val)
+{
+    __m128i T00;
+
+    T00 = _mm_cvtsi32_si128(val);
+    T00 = _mm_shufflelo_epi16(T00, 0);
+    T00 = _mm_shuffle_epi32(T00, 0);
+
+    for (int i = 0; i < 32; i += 2)
+    {
+        _mm_storeu_si128((__m128i*)&dst[(i + 0) * dstride], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 0) * dstride +  8], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 0) * dstride + 16], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 0) * dstride + 24], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 1) * dstride], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 1) * dstride +  8], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 1) * dstride + 16], T00);
+        _mm_storeu_si128((__m128i*)&dst[(i + 1) * dstride + 24], T00);
+    }
+}
+
 #endif // !HIGH_BIT_DEPTH
 }  // end anonymous namespace
 
-#include "sse.inc"
 #include "utils.h"
 
 namespace x265 {
@@ -340,11 +414,13 @@ namespace x265 {
 
 void NAME(Setup_Vec_PixelPrimitives)(EncoderPrimitives &p)
 {
+#if INSTRSET >= X265_CPU_LEVEL_SSE41
     SET_FUNC_PRIMITIVE_TABLE(sad, sad_, pixelcmp_t)
     SET_FUNC_PRIMITIVE_TABLE(sad_x3, sad_x3_, pixelcmp_x3_t)
     SET_FUNC_PRIMITIVE_TABLE(sad_x4, sad_x4_, pixelcmp_x4_t)
+#endif
 
-#if !HIGH_BIT_DEPTH && INSTRSET >= 8 // AVX2
+#if !HIGH_BIT_DEPTH && INSTRSET >= X265_CPU_LEVEL_AVX2 && (defined(__GNUC__) || defined(__INTEL_COMPILER))
     SET_FUNC_PRIMITIVE_TABLE_WIDTH(32, sad, sad_avx2_, pixelcmp_t)
     SET_FUNC_PRIMITIVE_TABLE_WIDTH(64, sad, sad_avx2_, pixelcmp_t)
     SET_FUNC_PRIMITIVE_TABLE_WIDTH(32, sad_x3, sad_avx2_x3_, pixelcmp_x3_t)
@@ -367,7 +443,9 @@ void NAME(Setup_Vec_PixelPrimitives)(EncoderPrimitives &p)
     p.satd[PARTITION_4x8] = satd<4, 8>;
     p.satd[PARTITION_16x4] = satd<16, 4>;
 #else
+#if INSTRSET >= X265_CPU_LEVEL_SSE41
     SET_FUNC_PRIMITIVE_TABLE(sse_pp, sse_pp, pixelcmp_t)
+#endif
     SET_FUNC_PRIMITIVE_TABLE(sse_sp, sse_sp, pixelcmp_sp_t)
     SET_FUNC_PRIMITIVE_TABLE(sse_ss, sse_ss, pixelcmp_ss_t)
 
@@ -392,7 +470,14 @@ void NAME(Setup_Vec_PixelPrimitives)(EncoderPrimitives &p)
     p.weightpUni = weightUnidir;
 #endif
 
-#if !HIGH_BIT_DEPTH && (INSTRSET >= 4)
+#if !HIGH_BIT_DEPTH
+    p.blockfil_s[BLOCK_4x4]   = blockfil_s_4;
+    p.blockfil_s[BLOCK_8x8]   = blockfil_s_8;
+    p.blockfil_s[BLOCK_16x16] = blockfil_s_16;
+    p.blockfil_s[BLOCK_32x32] = blockfil_s_32;
+#endif
+
+#if !HIGH_BIT_DEPTH && (INSTRSET >= X265_CPU_LEVEL_SSSE3)
     p.scale1D_128to64 = scale1D_128to64;
     p.scale2D_64to32 = scale2D_64to32;
 #endif

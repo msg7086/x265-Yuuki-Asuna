@@ -38,11 +38,13 @@
 #ifndef __TENC_BIN_CODER_CABAC__
 #define __TENC_BIN_CODER_CABAC__
 
-#include "TLibCommon/TComCABACTables.h"
 #include "TEncBinCoder.h"
 
 //! \ingroup TLibEncoder
 //! \{
+
+namespace x265 {
+// private namespace
 
 class TEncBinCABAC : public TEncBinIf
 {
@@ -51,52 +53,53 @@ public:
     TEncBinCABAC();
     virtual ~TEncBinCABAC();
 
-    Void  init(TComBitIf* pcTComBitIf);
-    Void  uninit();
+    void  init(TComBitIf* pcTComBitIf);
+    void  uninit();
 
-    Void  start();
-    Void  finish();
-    Void  copyState(TEncBinIf* pcTEncBinIf);
-    Void  flush();
+    void  start();
+    void  finish();
+    void  copyState(TEncBinIf* pcTEncBinIf);
+    void  flush();
 
-    Void  resetBac();
-    Void  encodePCMAlignBits();
-    Void  xWritePCMCode(UInt uiCode, UInt uiLength);
+    void  resetBac();
+    void  encodePCMAlignBits();
+    void  xWritePCMCode(UInt uiCode, UInt uiLength);
 
-    Void  resetBits();
+    void  resetBits();
     UInt  getNumWrittenBits();
 
-    Void  encodeBin(UInt binValue,  ContextModel& rcCtxModel);
-    Void  encodeBinEP(UInt binValue);
-    Void  encodeBinsEP(UInt binValues, Int numBins);
-    Void  encodeBinTrm(UInt binValue);
+    void  encodeBin(UInt binValue, ContextModel& rcCtxModel);
+    void  encodeBinEP(UInt binValue);
+    void  encodeBinsEP(UInt binValues, int numBins);
+    void  encodeBinTrm(UInt binValue);
 
-    TEncBinCABAC* getTEncBinCABAC()  { return this; }
+    TEncBinCABAC* getTEncBinCABAC() { return this; }
 
-    Void  setBinsCoded(UInt val)  { m_uiBinsCoded = val;               }
+    void  setBinsCoded(UInt val) { m_uiBinsCoded = val; }
 
-    UInt  getBinsCoded()              { return m_uiBinsCoded;                }
+    UInt  getBinsCoded() { return m_uiBinsCoded; }
 
-    Void  setBinCountingEnableFlag(Bool bFlag)  { m_binCountIncrement = bFlag ? 1 : 0; }
+    void  setBinCountingEnableFlag(bool bFlag) { m_binCountIncrement = bFlag ? 1 : 0; }
 
-    Bool  getBinCountingEnableFlag()              { return m_binCountIncrement != 0;     }
+    bool  getBinCountingEnableFlag() { return m_binCountIncrement != 0; }
 
 protected:
 
-    Void testAndWriteOut();
-    Void writeOut();
+    void testAndWriteOut();
+    void writeOut();
 
+public:
     TComBitIf*          m_pcTComBitIf;
     UInt                m_uiLow;
     UInt                m_uiRange;
     UInt                m_bufferedByte;
-    Int                 m_numBufferedBytes;
-    Int                 m_bitsLeft;
+    int                 m_numBufferedBytes;
+    int                 m_bitsLeft;
     UInt                m_uiBinsCoded;
-    Int                 m_binCountIncrement;
+    int                 m_binCountIncrement;
     UInt64              m_fracBits;
 };
-
+}
 //! \}
 
 #endif // ifndef __TENC_BIN_CODER_CABAC__

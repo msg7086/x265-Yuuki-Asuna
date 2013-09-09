@@ -43,6 +43,9 @@
 #include <stdio.h>
 #include <iostream>
 
+namespace x265 {
+// private namespace
+
 //! \ingroup TLibCommon
 //! \{
 
@@ -60,9 +63,9 @@
 // Initialize / destroy functions
 // ====================================================================================================================
 
-Void initROM();
-Void destroyROM();
-Void initSigLastScan(UInt* buffD, UInt* buffH, UInt* buffV, Int width, Int height);
+void initROM();
+void destroyROM();
+void initSigLastScan(UInt* buffD, UInt* buffH, UInt* buffV, int width, int height);
 
 // ====================================================================================================================
 // Data structure related table & variable
@@ -72,14 +75,14 @@ Void initSigLastScan(UInt* buffD, UInt* buffH, UInt* buffV, Int width, Int heigh
 extern UInt g_zscanToRaster[MAX_NUM_SPU_W * MAX_NUM_SPU_W];
 extern UInt g_rasterToZscan[MAX_NUM_SPU_W * MAX_NUM_SPU_W];
 
-Void initZscanToRaster(Int maxDepth, Int depth, UInt startVal, UInt*& curIdx);
-Void initRasterToZscan(UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth);
+void initZscanToRaster(int maxDepth, int depth, UInt startVal, UInt*& curIdx);
+void initRasterToZscan(UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth);
 
 // conversion of partition index to picture pel position
 extern UInt g_rasterToPelX[MAX_NUM_SPU_W * MAX_NUM_SPU_W];
 extern UInt g_rasterToPelY[MAX_NUM_SPU_W * MAX_NUM_SPU_W];
 
-Void initRasterToPelXY(UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth);
+void initRasterToPelXY(UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth);
 
 // global variable (LCU width/height, max. CU depth)
 extern UInt g_maxCUWidth;
@@ -100,12 +103,12 @@ extern UInt g_puOffset[8];
 #define SHIFT_INV_1ST          7 // Shift after first inverse transform stage
 #define SHIFT_INV_2ND         12 // Shift after second inverse transform stage
 
-extern Int g_quantScales[6];     // Q(QP%6)
-extern Int g_invQuantScales[6];  // IQ(QP%6)
-extern const Short g_t4[4][4];
-extern const Short g_t8[8][8];
-extern const Short g_t16[16][16];
-extern const Short g_t32[32][32];
+extern int g_quantScales[6];     // Q(QP%6)
+extern int g_invQuantScales[6];  // IQ(QP%6)
+extern const short g_t4[4][4];
+extern const short g_t8[8][8];
+extern const short g_t16[16][16];
+extern const short g_t32[32][32];
 
 // ====================================================================================================================
 // Subpel interpolation defines and constants
@@ -117,8 +120,8 @@ extern const Short g_t32[32][32];
 #define IF_FILTER_PREC    6                            ///< Log2 of sum of filter taps
 #define IF_INTERNAL_OFFS (1 << (IF_INTERNAL_PREC - 1)) ///< Offset used internally
 
-extern const Short g_lumaFilter[4][NTAPS_LUMA];     ///< Luma filter taps
-extern const Short g_chromaFilter[8][NTAPS_CHROMA]; ///< Chroma filter taps
+extern const short g_lumaFilter[4][NTAPS_LUMA];     ///< Luma filter taps
+extern const short g_chromaFilter[8][NTAPS_CHROMA]; ///< Chroma filter taps
 
 // ====================================================================================================================
 // Luma QP to Chroma QP mapping
@@ -151,7 +154,7 @@ extern const UChar g_intraModeNumFast[7];
 // Bit-depth
 // ====================================================================================================================
 
-extern Int g_bitDepth;
+extern int g_bitDepth;
 
 /** clip x, such that 0 <= x <= #g_maxLumaVal */
 template<typename T>
@@ -174,7 +177,7 @@ extern const UChar g_convertTxtTypeToIdx[4];
 // Misc.
 // ====================================================================================================================
 
-extern Char g_convertToBit[MAX_CU_SIZE + 1]; // from width to log2(width)-2
+extern char g_convertToBit[MAX_CU_SIZE + 1]; // from width to log2(width)-2
 
 #ifndef ENC_DEC_TRACE
 # define ENC_DEC_TRACE 0
@@ -182,10 +185,10 @@ extern Char g_convertToBit[MAX_CU_SIZE + 1]; // from width to log2(width)-2
 
 #if ENC_DEC_TRACE
 extern FILE*  g_hTrace;
-extern Bool   g_bJustDoIt;
-extern const Bool g_bEncDecTraceEnable;
-extern const Bool g_bEncDecTraceDisable;
-extern Bool   g_HLSTraceEnable;
+extern bool   g_bJustDoIt;
+extern const bool g_bEncDecTraceEnable;
+extern const bool g_bEncDecTraceDisable;
+extern bool   g_HLSTraceEnable;
 extern UInt64 g_nSymbolCounter;
 
 #define COUNTER_START    1
@@ -226,7 +229,7 @@ enum ScalingListSize
     SCALING_LIST_SIZE_NUM
 };
 
-static const Char MatrixType[4][6][20] =
+static const char MatrixType[4][6][20] =
 {
     {
         "INTRA4X4_LUMA",
@@ -257,7 +260,7 @@ static const Char MatrixType[4][6][20] =
         "INTER32X32_LUMA",
     },
 };
-static const Char MatrixType_DC[4][12][22] =
+static const char MatrixType_DC[4][12][22] =
 {
     {},
     {},
@@ -274,21 +277,27 @@ static const Char MatrixType_DC[4][12][22] =
         "INTER32X32_LUMA_DC",
     },
 };
-extern Int g_quantIntraDefault8x8[64];
-extern Int g_quantIntraDefault16x16[256];
-extern Int g_quantIntraDefault32x32[1024];
-extern Int g_quantInterDefault8x8[64];
-extern Int g_quantInterDefault16x16[256];
-extern Int g_quantInterDefault32x32[1024];
-extern Int g_quantTSDefault4x4[16];
+extern int g_quantIntraDefault8x8[64];
+extern int g_quantIntraDefault16x16[256];
+extern int g_quantIntraDefault32x32[1024];
+extern int g_quantInterDefault8x8[64];
+extern int g_quantInterDefault16x16[256];
+extern int g_quantInterDefault32x32[1024];
+extern int g_quantTSDefault4x4[16];
 extern UInt g_scalingListSize[SCALING_LIST_SIZE_NUM];
 extern UInt g_scalingListSizeX[SCALING_LIST_SIZE_NUM];
 extern UInt g_scalingListNum[SCALING_LIST_SIZE_NUM];
-extern Int  g_eTTable[4];
+extern int  g_eTTable[4];
 //! \}
 
 // Map Luma samples to chroma samples
-extern const Int g_winUnitX[MAX_CHROMA_FORMAT_IDC + 1];
-extern const Int g_winUnitY[MAX_CHROMA_FORMAT_IDC + 1];
+extern const int g_winUnitX[MAX_CHROMA_FORMAT_IDC + 1];
+extern const int g_winUnitY[MAX_CHROMA_FORMAT_IDC + 1];
+extern const double x265_lambda2_tab_I[MAX_QP + 1];
+extern const double x265_lambda2_non_I[MAX_QP + 1];
+// CABAC tables
+extern const UChar g_lpsTable[64][4];
+extern const UChar g_renormTable[32];
+}
 
 #endif  //__TCOMROM__

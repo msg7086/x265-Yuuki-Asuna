@@ -31,8 +31,6 @@
 #include <string.h>
 
 namespace {
-// each of these headers implements a portion of the performance
-// primitives and declares a Setup_Vec_FOOPrimitves() method.
 #if HIGH_BIT_DEPTH
 #include "ipfilter16.inc"
 #else
@@ -43,25 +41,29 @@ namespace {
 namespace x265 {
 void NAME(Setup_Vec_IPFilterPrimitives)(EncoderPrimitives& p)
 {
+#if INSTRSET >= X265_CPU_LEVEL_SSSE3
+    p.ipfilter_ps[FILTER_H_P_S_4] = filterHorizontal_p_s<4>;
+    p.ipfilter_ps[FILTER_H_P_S_8] = filterHorizontal_p_s<8>;
+#endif
+
+#if INSTRSET >= X265_CPU_LEVEL_SSE41
     p.ipfilter_pp[FILTER_H_P_P_4] = filterHorizontal_p_p<4>;
-    p.ipfilter_pp[FILTER_V_P_P_4] = filterVertical_p_p<4>;
-    
     p.ipfilter_pp[FILTER_H_P_P_8] = filterHorizontal_p_p<8>;
+
+    p.ipfilter_pp[FILTER_V_P_P_4] = filterVertical_p_p<4>;
     p.ipfilter_pp[FILTER_V_P_P_8] = filterVertical_p_p<8>;
 
-    p.ipfilter_ps[FILTER_H_P_S_4] = filterHorizontal_p_s<4>;
     p.ipfilter_sp[FILTER_V_S_P_4] = filterVertical_s_p<4>;
-    
-    p.ipfilter_ps[FILTER_H_P_S_8] = filterHorizontal_p_s<8>;
     p.ipfilter_sp[FILTER_V_S_P_8] = filterVertical_s_p<8>;
+#endif
 
     p.ipfilter_p2s = filterConvertPelToShort;
     p.ipfilter_s2p = filterConvertShortToPel;
 
-#if !HIGH_BIT_DEPTH
-    p.filterVmulti = filterVerticalMultiplaneExtend;
-#if INSTRSET > 4 && !(defined(_MSC_VER) && _MSC_VER == 1500 && X86_64)
-    p.filterHmulti = filterHorizontalMultiplaneExtend;
+#if !HIGH_BIT_DEPTH && INSTRSET >= X265_CPU_LEVEL_SSE41
+    p.filterVwghtd = filterVerticalWeighted;
+#if !(defined(_MSC_VER) && _MSC_VER == 1500 && X86_64)
+    p.filterHwghtd = filterHorizontalWeighted;
 #endif
 #endif
 }

@@ -31,22 +31,24 @@
  * THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <vector>
-#include <algorithm>
-#include <ostream>
-
 #include "TLibCommon/NAL.h"
 #include "TLibCommon/TComBitStream.h"
 #include "NALwrite.h"
 
+#include <vector>
+#include <algorithm>
+#include <ostream>
+
 using namespace std;
+
+namespace x265 {
 
 //! \ingroup TLibEncoder
 //! \{
 
-static const Char emulation_prevention_three_byte[] = { 3 };
+static const char emulation_prevention_three_byte[] = { 3 };
 
-Void writeNalUnitHeader(ostream& out, OutputNALUnit& nalu)       // nal_unit_header()
+void writeNalUnitHeader(ostream& out, OutputNALUnit& nalu)       // nal_unit_header()
 {
     TComOutputBitstream bsNALUHeader;
 
@@ -117,7 +119,7 @@ void write(ostream& out, OutputNALUnit& nalu)
         }
     }
 
-    out.write((Char*)&(*rbsp.begin()), rbsp.end() - rbsp.begin());
+    out.write((char*)&(*rbsp.begin()), rbsp.end() - rbsp.begin());
 
     /* 7.4.1.1
      * ... when the last byte of the RBSP data is equal to 0x00 (which can
@@ -149,5 +151,5 @@ void copyNaluData(OutputNALUnit& naluDest, const OutputNALUnit& naluSrc)
     naluDest.m_temporalId  = naluSrc.m_temporalId;
     naluDest.m_Bitstream   = naluSrc.m_Bitstream;
 }
-
+}
 //! \}

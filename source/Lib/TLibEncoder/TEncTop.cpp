@@ -36,12 +36,21 @@
 */
 
 #include "TLibCommon/CommonDef.h"
-#include "TLibCommon/ContextModel.h"
-#include "TEncTop.h"
+#include "TLibCommon/TComPic.h"
 #include "primitives.h"
+#include "common.h"
 
-#include <limits.h>
-#include <math.h> // sqrt
+#include "TEncTop.h"
+#include "NALwrite.h"
+
+#include "slicetype.h"
+#include "frameencoder.h"
+#include "ratecontrol.h"
+#include "dpb.h"
+#include "TLibCommon/TComRom.h"
+#include <math.h> // log10
+
+using namespace x265;
 
 //! \ingroup TLibEncoder
 //! \{
@@ -53,12 +62,12 @@
 TEncTop::TEncTop()
 {
     m_pocLast = -1;
-    m_framesToBeEncoded = INT_MAX;
-    m_picsQueued = 0;
-    m_picsEncoded = 0;
     m_maxRefPicNum = 0;
-    m_busyGOPs = 0;
-    ContextModel::buildNextStateTable();
+    m_curEncoder = 0;
+    m_lookahead = NULL;
+    m_frameEncoder = NULL;
+    m_rateControl = NULL;
+    m_dpb = NULL;
 
 #if ENC_DEC_TRACE
     g_hTrace = fopen("TraceEnc.txt", "wb");
@@ -74,199 +83,556 @@ TEncTop::~TEncTop()
 #endif
 }
 
-Void TEncTop::create()
+void TEncTop::create()
 {
-    if (x265::primitives.sad[0] == NULL)
+    if (!primitives.sad[0])
     {
         printf("Primitives must be initialized before encoder is created\n");
+        // we call exit() here because this should be an impossible condition when
+        // using our public API, and indicates a serious bug.
         exit(1);
     }
 
-    // create processing unit classes
-    m_GOPEncoders = new TEncGOP[m_gopThreads];
-    for (int i = 0; i < m_gopThreads; i++)
+    m_frameEncoder = new FrameEncoder[param.frameNumThreads];
+    if (m_frameEncoder)
     {
-        m_GOPEncoders[i].create();
+        for (int i = 0; i < param.frameNumThreads; i++)
+        {
+            m_frameEncoder[i].setThreadPool(m_threadPool);
+        }
     }
-
-    m_curGOPEncoder = m_GOPEncoders;
-
-    if (m_RCEnableRateControl)
-    {
-        m_cRateCtrl.init(m_framesToBeEncoded, m_RCTargetBitrate, m_frameRate, m_gopSize, m_sourceWidth, m_sourceHeight,
-                         g_maxCUWidth, g_maxCUHeight, m_RCKeepHierarchicalBit, m_RCUseLCUSeparateModel, m_gopList);
-    }
+    m_lookahead = new Lookahead(this);
+    m_dpb = new DPB(this);
+    m_rateControl = new RateControl(&param);
 }
 
-Void TEncTop::destroy()
+void TEncTop::destroy()
 {
-    // destroy processing unit classes
-    if (m_GOPEncoders)
+    if (m_frameEncoder)
     {
-        for (int i = 0; i < m_gopThreads; i++)
+        for (int i = 0; i < param.frameNumThreads; i++)
         {
-            m_GOPEncoders[i].destroy();
+            // Ensure frame encoder is idle before destroying it
+            AccessUnit tmp;
+            m_frameEncoder[i].getEncodedPicture(tmp);
+            m_frameEncoder[i].destroy();
         }
 
-        delete [] m_GOPEncoders;
+        delete [] m_frameEncoder;
     }
-    m_cRateCtrl.destroy();
 
+    while (!m_freeList.empty())
+    {
+        TComPic* pic = m_freeList.popFront();
+        pic->destroy();
+        delete pic;
+    }
+
+    if (m_lookahead)
+    {
+        m_lookahead->destroy();
+        delete m_lookahead;
+    }
+
+    if (m_dpb)
+        delete m_dpb;
+
+    if (m_rateControl)
+        delete m_rateControl;
+
+    // thread pool release should always happen last
     if (m_threadPool)
         m_threadPool->release();
 }
 
-Void TEncTop::init()
+void TEncTop::init()
 {
-    m_openGOP = (m_intraPeriod == (UInt) -1);
-
-    // initialize processing unit classes
-    for (int i = 0; i < m_gopThreads; i++)
+    if (m_frameEncoder)
     {
-        m_GOPEncoders[i].init(this);
+        int numRows = (param.sourceHeight + g_maxCUHeight - 1) / g_maxCUHeight;
+        for (int i = 0; i < param.frameNumThreads; i++)
+        {
+            m_frameEncoder[i].init(this, numRows);
+        }
     }
-
-    m_gcAnalyzeAll.setFrmRate(getFrameRate());
-    m_gcAnalyzeI.setFrmRate(getFrameRate());
-    m_gcAnalyzeP.setFrmRate(getFrameRate());
-    m_gcAnalyzeB.setFrmRate(getFrameRate());
 }
 
-// ====================================================================================================================
-// Public member functions
-// ====================================================================================================================
+int TEncTop::getStreamHeaders(AccessUnit& accessUnit)
+{
+    return m_frameEncoder->getStreamHeaders(accessUnit);
+}
 
 /**
- \param   flush               force encoder to encode a partial GOP
- \param   pic                 input original YUV picture or NULL
- \param   pic_out             pointer to list of reconstructed pictures
- \param   accessUnitsOut      list of output bitstreams
- \retval                      number of returned recon pictures
+ \param   flush               force encoder to encode a frame
+ \param   pic_in              input original YUV picture or NULL
+ \param   pic_out             pointer to reconstructed picture struct
+ \param   accessUnitsOut      output bitstream
+ \retval                      number of encoded pictures
  */
-int TEncTop::encode(Bool flush, const x265_picture_t* pic, x265_picture_t **pic_out, std::list<AccessUnit>& accessUnitsOut)
+int TEncTop::encode(bool flush, const x265_picture_t* pic_in, x265_picture_t *pic_out, AccessUnit& accessUnitOut)
 {
-    Int ret = 0;
-
-    intptr_t cur = m_curGOPEncoder - m_GOPEncoders;
-
-    if (m_busyGOPs & (1 << cur))
+    if (pic_in)
     {
-        /* block for this GOP coder to complete before giving it new pictures */
-        m_busyGOPs ^= (1 << cur);
-        ret = m_curGOPEncoder->getOutputs(pic_out, accessUnitsOut);
-    }
+        TComPic *pic;
+        if (m_freeList.empty())
+        {
+            pic = new TComPic;
+            pic->create(param.sourceWidth, param.sourceHeight, g_maxCUWidth, g_maxCUHeight, g_maxCUDepth,
+                        getConformanceWindow(), getDefaultDisplayWindow(), param.bframes);
+            if (param.bEnableSAO)
+            {
+                // TODO: these should be allocated on demand within the encoder
+                // NOTE: the SAO pointer from m_frameEncoder for read m_maxSplitLevel, etc, we can remove it later
+                pic->getPicSym()->allocSaoParam(m_frameEncoder->getSAO());
+            }
+        }
+        else
+            pic = m_freeList.popBack();
 
-    if (pic)
-    {
-        m_picsQueued++;
-        m_curGOPEncoder->addPicture(++m_pocLast, pic);
-    }
+        /* Copy input picture into a TComPic, send to lookahead */
+        pic->getSlice()->setPOC(++m_pocLast);
+        pic->getPicYuvOrg()->copyFromPicture(*pic_in);
+        pic->m_userData = pic_in->userData;
 
-    int batchSize = m_picsEncoded == 0 ? 1 : getGOPSize();
-    if (m_gopThreads > 1)
-    {
-        batchSize = m_intraPeriod;
-        // ugly hack for our B-frame random access mode, the second I frame will be
-        // one mini-gop before the full keyframe interval because of re-ordering
-        if (getGOPSize() == 8 && m_picsEncoded == 0)
-            batchSize = m_intraPeriod - 8 + 1;
+        // TEncTop holds a reference count until collecting stats
+        ATOMIC_INC(&pic->m_countRefEncoders);
+        m_lookahead->addPicture(pic);
     }
 
     if (flush)
-    {
-        if (m_picsQueued < batchSize && getGOPSize() == 8 && m_gopThreads > 1)
-        {
-            // We cannot encode a partial GOP because the first frame in the series
-            // will not be an I frame, and the references are all in the previous
-            // GOP coder.  We _could_ work around this by copying references to the
-            // last GOP coder, or copying these last frames to the previous GOP coder
-            // but both of those would unnecessarily complicate this code for what is
-            // a temporary problem.
-            fprintf(stderr, "x265 [info]: unable to flush incomplete GOP in this configuration, stream is truncated\n");
-            if (ret)
-                return ret;
-            return flushGopCoders(pic_out, accessUnitsOut);
-        }
+        m_lookahead->flush();
 
-        if (m_picsQueued)
+    FrameEncoder *curEncoder = &m_frameEncoder[m_curEncoder];
+    m_curEncoder = (m_curEncoder + 1) % param.frameNumThreads;
+    int ret = 0;
+
+    // getEncodedPicture() should block until the FrameEncoder has completed
+    // encoding the frame.  This is how back-pressure through the API is
+    // accomplished when the encoder is full.
+    TComPic *out = curEncoder->getEncodedPicture(accessUnitOut);
+
+    if (!out && flush)
+    {
+        // if the current encoder did not return an output picture and we are
+        // flushing, check all the other encoders in logical order until
+        // we find an output picture or have cycled around.  We cannot return
+        // 0 until the entire stream is flushed
+        // (can only be an issue when --frames < --frame-threads)
+        int flushed = m_curEncoder;
+        do
         {
-            // TEncGOP needs to not try to reference frames above this POC value
-            m_framesToBeEncoded = m_picsEncoded + m_picsQueued;
+            curEncoder = &m_frameEncoder[m_curEncoder];
+            m_curEncoder = (m_curEncoder + 1) % param.frameNumThreads;
+            out = curEncoder->getEncodedPicture(accessUnitOut);
         }
-        else if (ret)
-            return ret;
-        else
-            return flushGopCoders(pic_out, accessUnitsOut);
+        while (!out && flushed != m_curEncoder);
     }
-    else if (m_picsQueued < batchSize)
-        // Wait until we have a full batch of pictures
-        return ret;
-
-    m_curGOPEncoder->processKeyframeInterval(m_pocLast, m_picsQueued);
-    m_picsEncoded += m_picsQueued;
-    m_picsQueued = 0;
-    m_busyGOPs |= (1 << cur);
-
-    // cycle to the next GOP encoder
-    if (!m_openGOP && m_gopThreads > 1)
+    if (out)
     {
-        cur = (cur == m_gopThreads - 1) ? 0 : cur + 1;
-        m_curGOPEncoder = &m_GOPEncoders[cur];
+        if (pic_out)
+        {
+            TComPicYuv *recpic = out->getPicYuvRec();
+            pic_out->poc = out->getSlice()->getPOC();
+            pic_out->bitDepth = sizeof(Pel) * 8;
+            pic_out->userData = out->m_userData;
+            switch (out->getSlice()->getSliceType())
+            {
+            case I_SLICE:
+                pic_out->sliceType = X265_TYPE_I;
+                break;
+            case P_SLICE:
+                pic_out->sliceType = X265_TYPE_P;
+                break;
+            case B_SLICE:
+                pic_out->sliceType = X265_TYPE_B;
+                break;
+            }
+            pic_out->planes[0] = recpic->getLumaAddr();
+            pic_out->stride[0] = recpic->getStride();
+            pic_out->planes[1] = recpic->getCbAddr();
+            pic_out->stride[1] = recpic->getCStride();
+            pic_out->planes[2] = recpic->getCrAddr();
+            pic_out->stride[2] = recpic->getCStride();
+        }
+
+        double bits = calculateHashAndPSNR(out, accessUnitOut);
+        // Allow this frame to be recycled if no frame encoders are using it for reference
+        ATOMIC_DEC(&out->m_countRefEncoders);
+
+        m_rateControl->rateControlEnd(bits, &(curEncoder->m_rce));
+
+        m_dpb->recycleUnreferenced(m_freeList);
+
+        ret = 1;
+    }
+
+    if (!m_lookahead->outputQueue.empty())
+    {
+        // pop a single frame from decided list, then provide to frame encoder
+        // curEncoder is guaranteed to be idle at this point
+        TComPic *fenc = m_lookahead->outputQueue.popFront();
+
+        // Initialize slice for encoding with this FrameEncoder
+        curEncoder->initSlice(fenc);
+
+        // determine references, setup RPS, etc
+        m_dpb->prepareEncode(fenc);
+
+        // set slice QP
+        m_rateControl->rateControlStart(fenc, m_lookahead, &(curEncoder->m_rce));
+
+        // Allow FrameEncoder::compressFrame() to start in a worker thread
+        curEncoder->m_enable.trigger();
     }
 
     return ret;
 }
 
-int TEncTop::flushGopCoders(x265_picture_t **pic_out, std::list<AccessUnit>& accessUnitsOut)
+double TEncTop::printSummary()
 {
-    /* The encoder is being flushed. iterate through GOP coders, starting at the current encoder,
-     * and return their outputs */
-
-    intptr_t cur = m_curGOPEncoder - m_GOPEncoders;
-
-    while (m_busyGOPs)
+    double fps = (double)param.frameRate;
+    if (param.logLevel >= X265_LOG_INFO)
     {
-        if (m_busyGOPs & (1 << cur))
-        {
-            m_busyGOPs ^= (1 << cur);
-            int ret = m_curGOPEncoder->getOutputs(pic_out, accessUnitsOut);
-            cur = (cur == m_gopThreads - 1) ? 0 : cur + 1;
-            m_curGOPEncoder = &m_GOPEncoders[cur];
-            return ret;
-        }
-
-        cur = (cur == m_gopThreads - 1) ? 0 : cur + 1;
-        m_curGOPEncoder = &m_GOPEncoders[cur];
-    }
-
-    return 0;
-}
-
-Double TEncTop::printSummary()
-{
-    if (getLogLevel() >= X265_LOG_INFO)
-    {
-        m_gcAnalyzeI.printOut('i');
-        m_gcAnalyzeP.printOut('p');
-        m_gcAnalyzeB.printOut('b');
-        m_gcAnalyzeAll.printOut('a');
+        m_analyzeI.printOut('i', fps);
+        m_analyzeP.printOut('p', fps);
+        m_analyzeB.printOut('b', fps);
+        m_analyzeAll.printOut('a', fps);
     }
 
 #if _SUMMARY_OUT_
-    m_gcAnalyzeAll.printSummaryOut();
+    m_analyzeAll.printSummaryOut(fps);
 #endif
 #if _SUMMARY_PIC_
-    m_gcAnalyzeI.printSummary('I');
-    m_gcAnalyzeP.printSummary('P');
-    m_gcAnalyzeB.printSummary('B');
+    m_analyzeI.printSummary('I', fps);
+    m_analyzeP.printSummary('P', fps);
+    m_analyzeB.printSummary('B', fps);
 #endif
 
-    return (m_gcAnalyzeAll.getPsnrY() * 6 + m_gcAnalyzeAll.getPsnrU() + m_gcAnalyzeAll.getPsnrV()) / (8 * m_gcAnalyzeAll.getNumPic());
+    return (m_analyzeAll.getPsnrY() * 6 + m_analyzeAll.getPsnrU() + m_analyzeAll.getPsnrV()) / (8 * m_analyzeAll.getNumPic());
 }
 
-Void TEncTop::xInitSPS(TComSPS *pcSPS)
+#define VERBOSE_RATE 0
+#if VERBOSE_RATE
+static const char* nalUnitTypeToString(NalUnitType type)
 {
-    ProfileTierLevel& profileTierLevel = *pcSPS->getPTL()->getGeneralPTL();
+    switch (type)
+    {
+    case NAL_UNIT_CODED_SLICE_TRAIL_R:    return "TRAIL_R";
+    case NAL_UNIT_CODED_SLICE_TRAIL_N:    return "TRAIL_N";
+    case NAL_UNIT_CODED_SLICE_TLA_R:      return "TLA_R";
+    case NAL_UNIT_CODED_SLICE_TSA_N:      return "TSA_N";
+    case NAL_UNIT_CODED_SLICE_STSA_R:     return "STSA_R";
+    case NAL_UNIT_CODED_SLICE_STSA_N:     return "STSA_N";
+    case NAL_UNIT_CODED_SLICE_BLA_W_LP:   return "BLA_W_LP";
+    case NAL_UNIT_CODED_SLICE_BLA_W_RADL: return "BLA_W_RADL";
+    case NAL_UNIT_CODED_SLICE_BLA_N_LP:   return "BLA_N_LP";
+    case NAL_UNIT_CODED_SLICE_IDR_W_RADL: return "IDR_W_RADL";
+    case NAL_UNIT_CODED_SLICE_IDR_N_LP:   return "IDR_N_LP";
+    case NAL_UNIT_CODED_SLICE_CRA:        return "CRA";
+    case NAL_UNIT_CODED_SLICE_RADL_R:     return "RADL_R";
+    case NAL_UNIT_CODED_SLICE_RASL_R:     return "RASL_R";
+    case NAL_UNIT_VPS:                    return "VPS";
+    case NAL_UNIT_SPS:                    return "SPS";
+    case NAL_UNIT_PPS:                    return "PPS";
+    case NAL_UNIT_ACCESS_UNIT_DELIMITER:  return "AUD";
+    case NAL_UNIT_EOS:                    return "EOS";
+    case NAL_UNIT_EOB:                    return "EOB";
+    case NAL_UNIT_FILLER_DATA:            return "FILLER";
+    case NAL_UNIT_PREFIX_SEI:             return "SEI";
+    case NAL_UNIT_SUFFIX_SEI:             return "SEI";
+    default:                              return "UNK";
+    }
+}
+
+#endif // if VERBOSE_RATE
+
+// TODO:
+//   1 - as a performance optimization, if we're not reporting PSNR we do not have to measure PSNR
+//       (we do not yet have a switch to disable PSNR reporting)
+//   2 - it would be better to accumulate SSD of each CTU at the end of processCTU() while it is cache-hot
+//       in fact, we almost certainly are already measuring the CTU distortion and not accumulating it
+static UInt64 computeSSD(Pel *fenc, Pel *rec, int stride, int width, int height)
+{
+    UInt64 ssd = 0;
+
+    if ((width | height) & 3)
+    {
+        /* Slow Path */
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int diff = (int)(fenc[x] - rec[x]);
+                ssd += diff * diff;
+            }
+
+            fenc += stride;
+            rec += stride;
+        }
+
+        return ssd;
+    }
+
+    int y = 0;
+    /* Consume Y in chunks of 64 */
+    for (; y + 64 <= height; y += 64)
+    {
+        int x = 0;
+
+        if (!(stride & 31))
+            for (; x + 64 <= width; x += 64)
+            {
+                ssd += primitives.sse_pp[PARTITION_64x64](fenc + x, stride, rec + x, stride);
+            }
+
+        if (!(stride & 15))
+            for (; x + 16 <= width; x += 16)
+            {
+                ssd += primitives.sse_pp[PARTITION_16x64](fenc + x, stride, rec + x, stride);
+            }
+
+        for (; x + 4 <= width; x += 4)
+        {
+            ssd += primitives.sse_pp[PARTITION_4x64](fenc + x, stride, rec + x, stride);
+        }
+
+        fenc += stride * 64;
+        rec += stride * 64;
+    }
+
+    /* Consume Y in chunks of 16 */
+    for (; y + 16 <= height; y += 16)
+    {
+        int x = 0;
+
+        if (!(stride & 31))
+            for (; x + 64 <= width; x += 64)
+            {
+                ssd += primitives.sse_pp[PARTITION_64x16](fenc + x, stride, rec + x, stride);
+            }
+
+        if (!(stride & 15))
+            for (; x + 16 <= width; x += 16)
+            {
+                ssd += primitives.sse_pp[PARTITION_16x16](fenc + x, stride, rec + x, stride);
+            }
+
+        for (; x + 4 <= width; x += 4)
+        {
+            ssd += primitives.sse_pp[PARTITION_4x16](fenc + x, stride, rec + x, stride);
+        }
+
+        fenc += stride * 16;
+        rec += stride * 16;
+    }
+
+    /* Consume Y in chunks of 4 */
+    for (; y + 4 <= height; y += 4)
+    {
+        int x = 0;
+
+        if (!(stride & 31))
+            for (; x + 64 <= width; x += 64)
+            {
+                ssd += primitives.sse_pp[PARTITION_64x4](fenc + x, stride, rec + x, stride);
+            }
+
+        if (!(stride & 15))
+            for (; x + 16 <= width; x += 16)
+            {
+                ssd += primitives.sse_pp[PARTITION_16x4](fenc + x, stride, rec + x, stride);
+            }
+
+        for (; x + 4 <= width; x += 4)
+        {
+            ssd += primitives.sse_pp[PARTITION_4x4](fenc + x, stride, rec + x, stride);
+        }
+
+        fenc += stride * 4;
+        rec += stride * 4;
+    }
+
+    return ssd;
+}
+
+/**
+ * Produce an ascii(hex) representation of picture digest.
+ *
+ * Returns: a statically allocated null-terminated string.  DO NOT FREE.
+ */
+static const char*digestToString(const unsigned char digest[3][16], int numChar)
+{
+    const char* hex = "0123456789abcdef";
+    static char string[99];
+    int cnt = 0;
+
+    for (int yuvIdx = 0; yuvIdx < 3; yuvIdx++)
+    {
+        for (int i = 0; i < numChar; i++)
+        {
+            string[cnt++] = hex[digest[yuvIdx][i] >> 4];
+            string[cnt++] = hex[digest[yuvIdx][i] & 0xf];
+        }
+
+        string[cnt++] = ',';
+    }
+
+    string[cnt - 1] = '\0';
+    return string;
+}
+
+/* Returns Number of bits in current encoded pic */
+
+double TEncTop::calculateHashAndPSNR(TComPic* pic, AccessUnit& accessUnit)
+{
+    TComPicYuv* recon = pic->getPicYuvRec();
+    TComPicYuv* orig  = pic->getPicYuvOrg();
+
+    //===== calculate PSNR =====
+    int stride = recon->getStride();
+    int width  = recon->getWidth() - getPad(0);
+    int height = recon->getHeight() - getPad(1);
+    int size = width * height;
+
+    UInt64 ssdY = computeSSD(orig->getLumaAddr(), recon->getLumaAddr(), stride, width, height);
+
+    height >>= 1;
+    width  >>= 1;
+    stride = recon->getCStride();
+
+    UInt64 ssdU = computeSSD(orig->getCbAddr(), recon->getCbAddr(), stride, width, height);
+    UInt64 ssdV = computeSSD(orig->getCrAddr(), recon->getCrAddr(), stride, width, height);
+
+    int maxvalY = 255 << (X265_DEPTH - 8);
+    int maxvalC = 255 << (X265_DEPTH - 8);
+    double refValueY = (double)maxvalY * maxvalY * size;
+    double refValueC = (double)maxvalC * maxvalC * size / 4.0;
+    double psnrY = (ssdY ? 10.0 * log10(refValueY / (double)ssdY) : 99.99);
+    double psnrU = (ssdU ? 10.0 * log10(refValueC / (double)ssdU) : 99.99);
+    double psnrV = (ssdV ? 10.0 * log10(refValueC / (double)ssdV) : 99.99);
+
+    const char* digestStr = NULL;
+    if (param.decodedPictureHashSEI)
+    {
+        SEIDecodedPictureHash sei_recon_picture_digest;
+        if (param.decodedPictureHashSEI == 1)
+        {
+            /* calculate MD5sum for entire reconstructed picture */
+            sei_recon_picture_digest.method = SEIDecodedPictureHash::MD5;
+            calcMD5(*recon, sei_recon_picture_digest.digest);
+            digestStr = digestToString(sei_recon_picture_digest.digest, 16);
+        }
+        else if (param.decodedPictureHashSEI == 2)
+        {
+            sei_recon_picture_digest.method = SEIDecodedPictureHash::CRC;
+            calcCRC(*recon, sei_recon_picture_digest.digest);
+            digestStr = digestToString(sei_recon_picture_digest.digest, 2);
+        }
+        else if (param.decodedPictureHashSEI == 3)
+        {
+            sei_recon_picture_digest.method = SEIDecodedPictureHash::CHECKSUM;
+            calcChecksum(*recon, sei_recon_picture_digest.digest);
+            digestStr = digestToString(sei_recon_picture_digest.digest, 4);
+        }
+
+        /* write the SEI messages */
+        OutputNALUnit onalu(NAL_UNIT_SUFFIX_SEI, 0);
+        m_frameEncoder->m_seiWriter.writeSEImessage(onalu.m_Bitstream, sei_recon_picture_digest, pic->getSlice()->getSPS());
+        writeRBSPTrailingBits(onalu.m_Bitstream);
+
+        accessUnit.insert(accessUnit.end(), new NALUnitEBSP(onalu));
+    }
+
+    /* calculate the size of the access unit, excluding:
+     *  - any AnnexB contributions (start_code_prefix, zero_byte, etc.,)
+     *  - SEI NAL units
+     */
+    UInt numRBSPBytes = 0;
+    for (AccessUnit::const_iterator it = accessUnit.begin(); it != accessUnit.end(); it++)
+    {
+        UInt numRBSPBytes_nal = UInt((*it)->m_nalUnitData.str().size());
+#if VERBOSE_RATE
+        printf("*** %6s numBytesInNALunit: %u\n", nalUnitTypeToString((*it)->m_nalUnitType), numRBSPBytes_nal);
+#endif
+        if ((*it)->m_nalUnitType != NAL_UNIT_PREFIX_SEI && (*it)->m_nalUnitType != NAL_UNIT_SUFFIX_SEI)
+        {
+            numRBSPBytes += numRBSPBytes_nal;
+        }
+    }
+
+    UInt bits = numRBSPBytes * 8;
+
+    //===== add PSNR =====
+    m_analyzeAll.addResult(psnrY, psnrU, psnrV, (double)bits);
+    TComSlice*  slice = pic->getSlice();
+    if (slice->isIntra())
+    {
+        m_analyzeI.addResult(psnrY, psnrU, psnrV, (double)bits);
+    }
+    if (slice->isInterP())
+    {
+        m_analyzeP.addResult(psnrY, psnrU, psnrV, (double)bits);
+    }
+    if (slice->isInterB())
+    {
+        m_analyzeB.addResult(psnrY, psnrU, psnrV, (double)bits);
+    }
+
+    if (param.logLevel >= X265_LOG_DEBUG)
+    {
+        char c = (slice->isIntra() ? 'I' : slice->isInterP() ? 'P' : 'B');
+
+        if (!slice->isReferenced())
+            c += 32; // lower case if unreferenced
+
+        fprintf(stderr, "\rPOC %4d ( %c-SLICE, nQP %d QP %d) %10d bits",
+                slice->getPOC(),
+                c,
+                slice->getSliceQpBase(),
+                slice->getSliceQp(),
+                bits);
+
+        fprintf(stderr, " [Y:%6.2lf U:%6.2lf V:%6.2lf]", psnrY, psnrU, psnrV);
+
+        if (!slice->isIntra())
+        {
+            int numLists = slice->isInterP() ? 1 : 2;
+            for (int list = 0; list < numLists; list++)
+            {
+                fprintf(stderr, " [L%d ", list);
+                for (int ref = 0; ref < slice->getNumRefIdx(RefPicList(list)); ref++)
+                {
+                    fprintf(stderr, "%d ", slice->getRefPOC(RefPicList(list), ref) - slice->getLastIDR());
+                }
+
+                fprintf(stderr, "]");
+            }
+        }
+        if (digestStr && param.logLevel >= 4)
+        {
+            if (param.decodedPictureHashSEI == 1)
+            {
+                fprintf(stderr, " [MD5:%s]", digestStr);
+            }
+            else if (param.decodedPictureHashSEI == 2)
+            {
+                fprintf(stderr, " [CRC:%s]", digestStr);
+            }
+            else if (param.decodedPictureHashSEI == 3)
+            {
+                fprintf(stderr, " [Checksum:%s]", digestStr);
+            }
+        }
+        fprintf(stderr, "\n");
+        fflush(stderr);
+    }
+
+    return bits;
+}
+
+void TEncTop::xInitSPS(TComSPS *sps)
+{
+    ProfileTierLevel& profileTierLevel = *sps->getPTL()->getGeneralPTL();
 
     profileTierLevel.setLevelIdc(m_level);
     profileTierLevel.setTierFlag(m_levelTier);
@@ -292,129 +658,130 @@ Void TEncTop::xInitSPS(TComSPS *pcSPS)
     /* XXX: may be a good idea to refactor the above into a function
      * that chooses the actual compatibility based upon options */
 
-    pcSPS->setPicWidthInLumaSamples(m_sourceWidth);
-    pcSPS->setPicHeightInLumaSamples(m_sourceHeight);
-    pcSPS->setConformanceWindow(m_conformanceWindow);
-    pcSPS->setMaxCUWidth(g_maxCUWidth);
-    pcSPS->setMaxCUHeight(g_maxCUHeight);
-    pcSPS->setMaxCUDepth(g_maxCUDepth);
+    sps->setPicWidthInLumaSamples(param.sourceWidth);
+    sps->setPicHeightInLumaSamples(param.sourceHeight);
+    sps->setConformanceWindow(m_conformanceWindow);
+    sps->setMaxCUWidth(g_maxCUWidth);
+    sps->setMaxCUHeight(g_maxCUHeight);
+    sps->setMaxCUDepth(g_maxCUDepth);
 
-    Int minCUSize = pcSPS->getMaxCUWidth() >> (pcSPS->getMaxCUDepth() - g_addCUDepth);
-    Int log2MinCUSize = 0;
+    int minCUSize = sps->getMaxCUWidth() >> (sps->getMaxCUDepth() - g_addCUDepth);
+    int log2MinCUSize = 0;
     while (minCUSize > 1)
     {
         minCUSize >>= 1;
         log2MinCUSize++;
     }
 
-    pcSPS->setLog2MinCodingBlockSize(log2MinCUSize);
-    pcSPS->setLog2DiffMaxMinCodingBlockSize(pcSPS->getMaxCUDepth() - g_addCUDepth);
+    sps->setLog2MinCodingBlockSize(log2MinCUSize);
+    sps->setLog2DiffMaxMinCodingBlockSize(sps->getMaxCUDepth() - g_addCUDepth);
 
-    pcSPS->setPCMLog2MinSize(m_pcmLog2MinSize);
-    pcSPS->setUsePCM(m_usePCM);
-    pcSPS->setPCMLog2MaxSize(m_pcmLog2MaxSize);
+    sps->setPCMLog2MinSize(m_pcmLog2MinSize);
+    sps->setUsePCM(m_usePCM);
+    sps->setPCMLog2MaxSize(m_pcmLog2MaxSize);
 
-    pcSPS->setQuadtreeTULog2MaxSize(m_quadtreeTULog2MaxSize);
-    pcSPS->setQuadtreeTULog2MinSize(m_quadtreeTULog2MinSize);
-    pcSPS->setQuadtreeTUMaxDepthInter(m_quadtreeTUMaxDepthInter);
-    pcSPS->setQuadtreeTUMaxDepthIntra(m_quadtreeTUMaxDepthIntra);
+    sps->setQuadtreeTULog2MaxSize(m_quadtreeTULog2MaxSize);
+    sps->setQuadtreeTULog2MinSize(m_quadtreeTULog2MinSize);
+    sps->setQuadtreeTUMaxDepthInter(param.tuQTMaxInterDepth);
+    sps->setQuadtreeTUMaxDepthIntra(param.tuQTMaxIntraDepth);
 
-    pcSPS->setTMVPFlagsPresent(false);
-    pcSPS->setUseLossless(m_useLossless);
+    sps->setTMVPFlagsPresent(false);
+    sps->setUseLossless(m_useLossless);
 
-    pcSPS->setMaxTrSize(1 << m_quadtreeTULog2MaxSize);
+    sps->setMaxTrSize(1 << m_quadtreeTULog2MaxSize);
 
-    Int i;
+    int i;
 
     for (i = 0; i < g_maxCUDepth - g_addCUDepth; i++)
     {
-        pcSPS->setAMPAcc(i, m_useAMP);
+        sps->setAMPAcc(i, param.bEnableAMP);
     }
 
-    pcSPS->setUseAMP(m_useAMP);
+    sps->setUseAMP(param.bEnableAMP);
 
     for (i = g_maxCUDepth - g_addCUDepth; i < g_maxCUDepth; i++)
     {
-        pcSPS->setAMPAcc(i, 0);
+        sps->setAMPAcc(i, 0);
     }
 
-    pcSPS->setBitDepthY(X265_DEPTH);
-    pcSPS->setBitDepthC(X265_DEPTH);
+    sps->setBitDepthY(X265_DEPTH);
+    sps->setBitDepthC(X265_DEPTH);
 
-    pcSPS->setQpBDOffsetY(6 * (X265_DEPTH - 8));
-    pcSPS->setQpBDOffsetC(6 * (X265_DEPTH - 8));
+    sps->setQpBDOffsetY(6 * (X265_DEPTH - 8));
+    sps->setQpBDOffsetC(6 * (X265_DEPTH - 8));
 
-    pcSPS->setUseSAO(m_bUseSAO);
+    sps->setUseSAO(param.bEnableSAO);
 
-    pcSPS->setMaxTLayers(m_maxTempLayer);
-    pcSPS->setTemporalIdNestingFlag((m_maxTempLayer == 1) ? true : false);
-    for (i = 0; i < pcSPS->getMaxTLayers(); i++)
+    // TODO: hard-code these values in SPS code
+    sps->setMaxTLayers(1);
+    sps->setTemporalIdNestingFlag(true);
+    for (i = 0; i < sps->getMaxTLayers(); i++)
     {
-        pcSPS->setMaxDecPicBuffering(m_maxDecPicBuffering[i], i);
-        pcSPS->setNumReorderPics(m_numReorderPics[i], i);
+        sps->setMaxDecPicBuffering(m_maxDecPicBuffering[i], i);
+        sps->setNumReorderPics(m_numReorderPics[i], i);
     }
 
     // TODO: it is recommended for this to match the input bit depth
-    pcSPS->setPCMBitDepthLuma(X265_DEPTH);
-    pcSPS->setPCMBitDepthChroma(X265_DEPTH);
+    sps->setPCMBitDepthLuma(X265_DEPTH);
+    sps->setPCMBitDepthChroma(X265_DEPTH);
 
-    pcSPS->setPCMFilterDisableFlag(m_bPCMFilterDisableFlag);
+    sps->setPCMFilterDisableFlag(m_bPCMFilterDisableFlag);
 
-    pcSPS->setScalingListFlag((m_useScalingListId == 0) ? 0 : 1);
+    sps->setScalingListFlag((m_useScalingListId == 0) ? 0 : 1);
 
-    pcSPS->setUseStrongIntraSmoothing(m_useStrongIntraSmoothing);
+    sps->setUseStrongIntraSmoothing(param.bEnableStrongIntraSmoothing);
 
-    pcSPS->setVuiParametersPresentFlag(getVuiParametersPresentFlag());
-    if (pcSPS->getVuiParametersPresentFlag())
+    sps->setVuiParametersPresentFlag(getVuiParametersPresentFlag());
+    if (sps->getVuiParametersPresentFlag())
     {
-        TComVUI* pcVUI = pcSPS->getVuiParameters();
-        pcVUI->setAspectRatioInfoPresentFlag(getAspectRatioIdc() != -1);
-        pcVUI->setAspectRatioIdc(getAspectRatioIdc());
-        pcVUI->setSarWidth(getSarWidth());
-        pcVUI->setSarHeight(getSarHeight());
-        pcVUI->setOverscanInfoPresentFlag(getOverscanInfoPresentFlag());
-        pcVUI->setOverscanAppropriateFlag(getOverscanAppropriateFlag());
-        pcVUI->setVideoSignalTypePresentFlag(getVideoSignalTypePresentFlag());
-        pcVUI->setVideoFormat(getVideoFormat());
-        pcVUI->setVideoFullRangeFlag(getVideoFullRangeFlag());
-        pcVUI->setColourDescriptionPresentFlag(getColourDescriptionPresentFlag());
-        pcVUI->setColourPrimaries(getColourPrimaries());
-        pcVUI->setTransferCharacteristics(getTransferCharacteristics());
-        pcVUI->setMatrixCoefficients(getMatrixCoefficients());
-        pcVUI->setChromaLocInfoPresentFlag(getChromaLocInfoPresentFlag());
-        pcVUI->setChromaSampleLocTypeTopField(getChromaSampleLocTypeTopField());
-        pcVUI->setChromaSampleLocTypeBottomField(getChromaSampleLocTypeBottomField());
-        pcVUI->setNeutralChromaIndicationFlag(getNeutralChromaIndicationFlag());
-        pcVUI->setDefaultDisplayWindow(getDefaultDisplayWindow());
-        pcVUI->setFrameFieldInfoPresentFlag(getFrameFieldInfoPresentFlag());
-        pcVUI->setFieldSeqFlag(false);
-        pcVUI->setHrdParametersPresentFlag(false);
-        pcVUI->getTimingInfo()->setPocProportionalToTimingFlag(getPocProportionalToTimingFlag());
-        pcVUI->getTimingInfo()->setNumTicksPocDiffOneMinus1(getNumTicksPocDiffOneMinus1());
-        pcVUI->setBitstreamRestrictionFlag(getBitstreamRestrictionFlag());
-        pcVUI->setMotionVectorsOverPicBoundariesFlag(getMotionVectorsOverPicBoundariesFlag());
-        pcVUI->setMinSpatialSegmentationIdc(getMinSpatialSegmentationIdc());
-        pcVUI->setMaxBytesPerPicDenom(getMaxBytesPerPicDenom());
-        pcVUI->setMaxBitsPerMinCuDenom(getMaxBitsPerMinCuDenom());
-        pcVUI->setLog2MaxMvLengthHorizontal(getLog2MaxMvLengthHorizontal());
-        pcVUI->setLog2MaxMvLengthVertical(getLog2MaxMvLengthVertical());
+        TComVUI* vui = sps->getVuiParameters();
+        vui->setAspectRatioInfoPresentFlag(getAspectRatioIdc() != -1);
+        vui->setAspectRatioIdc(getAspectRatioIdc());
+        vui->setSarWidth(getSarWidth());
+        vui->setSarHeight(getSarHeight());
+        vui->setOverscanInfoPresentFlag(getOverscanInfoPresentFlag());
+        vui->setOverscanAppropriateFlag(getOverscanAppropriateFlag());
+        vui->setVideoSignalTypePresentFlag(getVideoSignalTypePresentFlag());
+        vui->setVideoFormat(getVideoFormat());
+        vui->setVideoFullRangeFlag(getVideoFullRangeFlag());
+        vui->setColourDescriptionPresentFlag(getColourDescriptionPresentFlag());
+        vui->setColourPrimaries(getColourPrimaries());
+        vui->setTransferCharacteristics(getTransferCharacteristics());
+        vui->setMatrixCoefficients(getMatrixCoefficients());
+        vui->setChromaLocInfoPresentFlag(getChromaLocInfoPresentFlag());
+        vui->setChromaSampleLocTypeTopField(getChromaSampleLocTypeTopField());
+        vui->setChromaSampleLocTypeBottomField(getChromaSampleLocTypeBottomField());
+        vui->setNeutralChromaIndicationFlag(getNeutralChromaIndicationFlag());
+        vui->setDefaultDisplayWindow(getDefaultDisplayWindow());
+        vui->setFrameFieldInfoPresentFlag(getFrameFieldInfoPresentFlag());
+        vui->setFieldSeqFlag(false);
+        vui->setHrdParametersPresentFlag(false);
+        vui->getTimingInfo()->setPocProportionalToTimingFlag(getPocProportionalToTimingFlag());
+        vui->getTimingInfo()->setNumTicksPocDiffOneMinus1(getNumTicksPocDiffOneMinus1());
+        vui->setBitstreamRestrictionFlag(getBitstreamRestrictionFlag());
+        vui->setMotionVectorsOverPicBoundariesFlag(getMotionVectorsOverPicBoundariesFlag());
+        vui->setMinSpatialSegmentationIdc(getMinSpatialSegmentationIdc());
+        vui->setMaxBytesPerPicDenom(getMaxBytesPerPicDenom());
+        vui->setMaxBitsPerMinCuDenom(getMaxBitsPerMinCuDenom());
+        vui->setLog2MaxMvLengthHorizontal(getLog2MaxMvLengthHorizontal());
+        vui->setLog2MaxMvLengthVertical(getLog2MaxMvLengthVertical());
     }
 
     /* set the VPS profile information */
-    *getVPS()->getPTL() = *pcSPS->getPTL();
+    *getVPS()->getPTL() = *sps->getPTL();
     getVPS()->getTimingInfo()->setTimingInfoPresentFlag(false);
 }
 
-Void TEncTop::xInitPPS(TComPPS *pcPPS)
+void TEncTop::xInitPPS(TComPPS *pps)
 {
-    pcPPS->setConstrainedIntraPred(m_bUseConstrainedIntraPred);
-    Bool bUseDQP = (getMaxCuDQPDepth() > 0) ? true : false;
+    pps->setConstrainedIntraPred(param.bEnableConstrainedIntra);
+    bool bUseDQP = (getMaxCuDQPDepth() > 0) ? true : false;
 
-    Int lowestQP = -(6 * (X265_DEPTH - 8)); //m_cSPS.getQpBDOffsetY();
+    int lowestQP = -(6 * (X265_DEPTH - 8)); //m_cSPS.getQpBDOffsetY();
 
     if (getUseLossless())
     {
-        if ((getMaxCuDQPDepth() == 0) && (getQP() == lowestQP))
+        if ((getMaxCuDQPDepth() == 0) && (param.rc.qp == lowestQP))
         {
             bUseDQP = false;
         }
@@ -426,198 +793,37 @@ Void TEncTop::xInitPPS(TComPPS *pcPPS)
 
     if (bUseDQP)
     {
-        pcPPS->setUseDQP(true);
-        pcPPS->setMaxCuDQPDepth(m_maxCuDQPDepth);
-        pcPPS->setMinCuDQPSize(pcPPS->getSPS()->getMaxCUWidth() >> (pcPPS->getMaxCuDQPDepth()));
+        pps->setUseDQP(true);
+        pps->setMaxCuDQPDepth(m_maxCuDQPDepth);
+        pps->setMinCuDQPSize(pps->getSPS()->getMaxCUWidth() >> (pps->getMaxCuDQPDepth()));
     }
     else
     {
-        pcPPS->setUseDQP(false);
-        pcPPS->setMaxCuDQPDepth(0);
-        pcPPS->setMinCuDQPSize(pcPPS->getSPS()->getMaxCUWidth() >> (pcPPS->getMaxCuDQPDepth()));
+        pps->setUseDQP(false);
+        pps->setMaxCuDQPDepth(0);
+        pps->setMinCuDQPSize(pps->getSPS()->getMaxCUWidth() >> (pps->getMaxCuDQPDepth()));
     }
 
-    if (m_RCEnableRateControl)
-    {
-        pcPPS->setUseDQP(true);
-        pcPPS->setMaxCuDQPDepth(0);
-        pcPPS->setMinCuDQPSize(pcPPS->getSPS()->getMaxCUWidth() >> (pcPPS->getMaxCuDQPDepth()));
-    }
+    pps->setChromaCbQpOffset(param.cbQpOffset);
+    pps->setChromaCrQpOffset(param.crQpOffset);
 
-    pcPPS->setChromaCbQpOffset(m_chromaCbQpOffset);
-    pcPPS->setChromaCrQpOffset(m_chromaCrQpOffset);
+    pps->setEntropyCodingSyncEnabledFlag(param.bEnableWavefront);
+    pps->setUseWP(param.bEnableWeightedPred);
+    pps->setWPBiPred(param.bEnableWeightedBiPred);
+    pps->setOutputFlagPresentFlag(false);
+    pps->setSignHideFlag(param.bEnableSignHiding);
+    pps->setDeblockingFilterControlPresentFlag(!param.bEnableLoopFilter);
+    pps->setDeblockingFilterOverrideEnabledFlag(!m_loopFilterOffsetInPPS);
+    pps->setPicDisableDeblockingFilterFlag(!param.bEnableLoopFilter);
+    pps->setLog2ParallelMergeLevelMinus2(m_log2ParallelMergeLevelMinus2);
+    pps->setCabacInitPresentFlag(CABAC_INIT_PRESENT_FLAG);
 
-    pcPPS->setEntropyCodingSyncEnabledFlag(m_enableWpp);
-    pcPPS->setUseWP(m_useWeightedPred);
-    pcPPS->setWPBiPred(m_useWeightedBiPred);
-    pcPPS->setOutputFlagPresentFlag(false);
-    pcPPS->setSignHideFlag(getSignHideFlag());
-    pcPPS->setDeblockingFilterControlPresentFlag(m_deblockingFilterControlPresent);
-    pcPPS->setLog2ParallelMergeLevelMinus2(m_log2ParallelMergeLevelMinus2);
-    pcPPS->setCabacInitPresentFlag(CABAC_INIT_PRESENT_FLAG);
-    Int histogram[MAX_NUM_REF + 1];
-    for (Int i = 0; i <= MAX_NUM_REF; i++)
-    {
-        histogram[i] = 0;
-    }
+    pps->setNumRefIdxL0DefaultActive(1);
+    pps->setNumRefIdxL1DefaultActive(1);
 
-    for (Int i = 0; i < getGOPSize(); i++)
-    {
-        assert(getGOPEntry(i).m_numRefPicsActive >= 0 && getGOPEntry(i).m_numRefPicsActive <= MAX_NUM_REF);
-        histogram[getGOPEntry(i).m_numRefPicsActive]++;
-    }
-
-    Int maxHist = -1;
-    Int bestPos = 0;
-    for (Int i = 0; i <= MAX_NUM_REF; i++)
-    {
-        if (histogram[i] > maxHist)
-        {
-            maxHist = histogram[i];
-            bestPos = i;
-        }
-    }
-
-    assert(bestPos <= 15);
-    pcPPS->setNumRefIdxL0DefaultActive(bestPos);
-    pcPPS->setNumRefIdxL1DefaultActive(bestPos);
-    pcPPS->setTransquantBypassEnableFlag(getTransquantBypassEnableFlag());
-    pcPPS->setUseTransformSkip(m_useTransformSkip);
-    pcPPS->setLoopFilterAcrossTilesEnabledFlag(m_loopFilterAcrossTilesEnabledFlag);
-}
-
-//Function for initializing m_RPSList, a list of TComReferencePictureSet, based on the GOPEntry objects read from the config file.
-Void TEncTop::xInitRPS(TComSPS *pcSPS)
-{
-    TComReferencePictureSet*      rps;
-
-    pcSPS->createRPSList(getGOPSize() + m_extraRPSs);
-    TComRPSList* rpsList = pcSPS->getRPSList();
-
-    for (Int i = 0; i < getGOPSize() + m_extraRPSs; i++)
-    {
-        GOPEntry ge = getGOPEntry(i);
-        rps = rpsList->getReferencePictureSet(i);
-        rps->setNumberOfPictures(ge.m_numRefPics);
-        rps->setNumRefIdc(ge.m_numRefIdc);
-        Int numNeg = 0;
-        Int numPos = 0;
-        for (Int j = 0; j < ge.m_numRefPics; j++)
-        {
-            rps->setDeltaPOC(j, ge.m_referencePics[j]);
-            rps->setUsed(j, ge.m_usedByCurrPic[j]);
-            if (ge.m_referencePics[j] > 0)
-            {
-                numPos++;
-            }
-            else
-            {
-                numNeg++;
-            }
-        }
-
-        rps->setNumberOfNegativePictures(numNeg);
-        rps->setNumberOfPositivePictures(numPos);
-
-        // handle inter RPS initialization from the config file.
-        rps->setInterRPSPrediction(ge.m_interRPSPrediction > 0); // not very clean, converting anything > 0 to true.
-        rps->setDeltaRIdxMinus1(0);                              // index to the Reference RPS is always the previous one.
-        TComReferencePictureSet* RPSRef = rpsList->getReferencePictureSet(i - 1); // get the reference RPS
-
-        if (ge.m_interRPSPrediction == 2) // Automatic generation of the inter RPS idc based on the RIdx provided.
-        {
-            Int deltaRPS = getGOPEntry(i - 1).m_POC - ge.m_POC; // the ref POC - current POC
-            Int numRefDeltaPOC = RPSRef->getNumberOfPictures();
-
-            rps->setDeltaRPS(deltaRPS);     // set delta RPS
-            rps->setNumRefIdc(numRefDeltaPOC + 1); // set the numRefIdc to the number of pictures in the reference RPS + 1.
-            Int count = 0;
-            for (Int j = 0; j <= numRefDeltaPOC; j++) // cycle through pics in reference RPS.
-            {
-                Int RefDeltaPOC = (j < numRefDeltaPOC) ? RPSRef->getDeltaPOC(j) : 0; // if it is the last decoded picture, set RefDeltaPOC = 0
-                rps->setRefIdc(j, 0);
-                for (Int k = 0; k < rps->getNumberOfPictures(); k++) // cycle through pics in current RPS.
-                {
-                    if (rps->getDeltaPOC(k) == (RefDeltaPOC + deltaRPS)) // if the current RPS has a same picture as the reference RPS.
-                    {
-                        rps->setRefIdc(j, (rps->getUsed(k) ? 1 : 2));
-                        count++;
-                        break;
-                    }
-                }
-            }
-
-            if (count != rps->getNumberOfPictures())
-            {
-                printf("Warning: Unable fully predict all delta POCs using the reference RPS index given in the config file.  Setting Inter RPS to false for this RPS.\n");
-                rps->setInterRPSPrediction(0);
-            }
-        }
-        else if (ge.m_interRPSPrediction == 1) // inter RPS idc based on the RefIdc values provided in config file.
-        {
-            rps->setDeltaRPS(ge.m_deltaRPS);
-            rps->setNumRefIdc(ge.m_numRefIdc);
-            for (Int j = 0; j < ge.m_numRefIdc; j++)
-            {
-                rps->setRefIdc(j, ge.m_refIdc[j]);
-            }
-
-            // the following code overwrite the deltaPOC and Used by current values read from the config file with the ones
-            // computed from the RefIdc.  A warning is printed if they are not identical.
-            numNeg = 0;
-            numPos = 0;
-            TComReferencePictureSet RPSTemp; // temporary variable
-
-            for (Int j = 0; j < ge.m_numRefIdc; j++)
-            {
-                if (ge.m_refIdc[j])
-                {
-                    Int deltaPOC = ge.m_deltaRPS + ((j < RPSRef->getNumberOfPictures()) ? RPSRef->getDeltaPOC(j) : 0);
-                    RPSTemp.setDeltaPOC((numNeg + numPos), deltaPOC);
-                    RPSTemp.setUsed((numNeg + numPos), ge.m_refIdc[j] == 1 ? 1 : 0);
-                    if (deltaPOC < 0)
-                    {
-                        numNeg++;
-                    }
-                    else
-                    {
-                        numPos++;
-                    }
-                }
-            }
-
-            if (numNeg != rps->getNumberOfNegativePictures())
-            {
-                printf("Warning: number of negative pictures in RPS is different between intra and inter RPS specified in the config file.\n");
-                rps->setNumberOfNegativePictures(numNeg);
-                rps->setNumberOfPositivePictures(numNeg + numPos);
-            }
-            if (numPos != rps->getNumberOfPositivePictures())
-            {
-                printf("Warning: number of positive pictures in RPS is different between intra and inter RPS specified in the config file.\n");
-                rps->setNumberOfPositivePictures(numPos);
-                rps->setNumberOfPositivePictures(numNeg + numPos);
-            }
-            RPSTemp.setNumberOfPictures(numNeg + numPos);
-            RPSTemp.setNumberOfNegativePictures(numNeg);
-            RPSTemp.sortDeltaPOC(); // sort the created delta POC before comparing
-            // check if Delta POC and Used are the same
-            // print warning if they are not.
-            for (Int j = 0; j < ge.m_numRefIdc; j++)
-            {
-                if (RPSTemp.getDeltaPOC(j) != rps->getDeltaPOC(j))
-                {
-                    printf("Warning: delta POC is different between intra RPS and inter RPS specified in the config file.\n");
-                    rps->setDeltaPOC(j, RPSTemp.getDeltaPOC(j));
-                }
-                if (RPSTemp.getUsed(j) != rps->getUsed(j))
-                {
-                    printf("Warning: Used by Current in RPS is different between intra and inter RPS specified in the config file.\n");
-                    rps->setUsed(j, RPSTemp.getUsed(j));
-                }
-            }
-        }
-    }
+    pps->setTransquantBypassEnableFlag(getTransquantBypassEnableFlag());
+    pps->setUseTransformSkip(param.bEnableTransformSkip);
+    pps->setLoopFilterAcrossTilesEnabledFlag(m_loopFilterAcrossTilesEnabledFlag);
 }
 
 //! \}

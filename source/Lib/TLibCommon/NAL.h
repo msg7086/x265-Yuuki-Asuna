@@ -34,10 +34,13 @@
 #ifndef _NAL_
 #define _NAL_ 1
 
-#include <vector>
-#include <sstream>
 #include "CommonDef.h"
 #include "x265.h"
+#include <vector>
+#include <sstream>
+
+namespace x265 {
+// private namespace
 
 class TComOutputBitstream;
 
@@ -52,8 +55,8 @@ struct NALUnit
 
     /** construct an NALunit structure with given header values. */
     NALUnit(NalUnitType nalUnitType,
-            Int         temporalId = 0,
-            Int         reservedZero6Bits = 0)
+            int         temporalId = 0,
+            int         reservedZero6Bits = 0)
         : m_nalUnitType(nalUnitType)
         , m_temporalId(temporalId)
         , m_reservedZero6Bits(reservedZero6Bits)
@@ -63,7 +66,7 @@ struct NALUnit
     NALUnit() {}
 
     /** returns true if the NALunit is a slice NALunit */
-    Bool isSlice()
+    bool isSlice()
     {
         return m_nalUnitType == NAL_UNIT_CODED_SLICE_TRAIL_R
                || m_nalUnitType == NAL_UNIT_CODED_SLICE_TRAIL_N
@@ -83,13 +86,13 @@ struct NALUnit
                || m_nalUnitType == NAL_UNIT_CODED_SLICE_RASL_R;
     }
 
-    Bool isSei()
+    bool isSei()
     {
         return m_nalUnitType == NAL_UNIT_PREFIX_SEI
                || m_nalUnitType == NAL_UNIT_SUFFIX_SEI;
     }
 
-    Bool isVcl()
+    bool isVcl()
     {
         return (UInt)m_nalUnitType < 32;
     }
@@ -111,7 +114,7 @@ struct NALUnitEBSP : public NALUnit
      */
     NALUnitEBSP(OutputNALUnit& nalu);
 };
-
+}
 //! \}
 
 #endif // ifndef _NAL_

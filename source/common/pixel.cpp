@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <stdlib.h> // abs()
 
+using namespace x265;
 
 #define SET_FUNC_PRIMITIVE_TABLE_C_SUBSET(WIDTH, FUNC_PREFIX, FUNC_PREFIX_DEF, FUNC_TYPE_CAST, DATA_TYPE1, DATA_TYPE2) \
     p.FUNC_PREFIX[PARTITION_ ## WIDTH ## x4]   = (FUNC_TYPE_CAST)FUNC_PREFIX_DEF<WIDTH, 4,  DATA_TYPE1, DATA_TYPE2>;  \
@@ -416,6 +417,18 @@ void blockcopy_s_c(int bx, int by, short *a, intptr_t stridea, uint8_t *b, intpt
     }
 }
 
+template <int size>
+void blockfil_s_c(short *dst, intptr_t dstride, short val)
+{
+    for (int y = 0; y < size; y++)
+    {
+        for (int x = 0; x < size; x++)
+        {
+            dst[y * dstride + x] = val;
+        }
+    }
+}
+
 void convert16to32(short *src, int *dst, int num)
 {
     for (int i = 0; i < num; i++)
@@ -501,7 +514,7 @@ void transpose(pixel* dst, pixel* src, intptr_t stride)
     }
 }
 
-void weightUnidir(short *src, pixel *dst, int srcStride, int dstStride, int width, int height, int w0, int round, int shift, int offset)
+void weightUnidir(short *src, pixel *dst, intptr_t srcStride, intptr_t dstStride, int width, int height, int w0, int round, int shift, int offset)
 {
     int x, y;
     for (y = height - 1; y >= 0; y--)
@@ -595,6 +608,31 @@ void scale2D_64to32(pixel *dst, pixel *src, intptr_t stride)
 
             dst[y / 2 * 32 + x / 2] = (pixel)((sum + 2) >> 2);
         }
+    }
+}
+
+void frame_init_lowres_core(pixel *src0, pixel *dst0, pixel *dsth, pixel *dstv, pixel *dstc,
+                            intptr_t src_stride, intptr_t dst_stride, int width, int height)
+{
+    for (int y = 0; y < height; y++)
+    {
+        pixel *src1 = src0 + src_stride;
+        pixel *src2 = src1 + src_stride;
+        for (int x = 0; x < width; x++)
+        {
+            // slower than naive bilinear, but matches asm
+#define FILTER(a,b,c,d) ((((a+b+1)>>1)+((c+d+1)>>1)+1)>>1)
+            dst0[x] = FILTER(src0[2*x  ], src1[2*x  ], src0[2*x+1], src1[2*x+1]);
+            dsth[x] = FILTER(src0[2*x+1], src1[2*x+1], src0[2*x+2], src1[2*x+2]);
+            dstv[x] = FILTER(src1[2*x  ], src2[2*x  ], src1[2*x+1], src2[2*x+1]);
+            dstc[x] = FILTER(src1[2*x+1], src2[2*x+1], src1[2*x+2], src2[2*x+2]);
+#undef FILTER
+        }
+        src0 += src_stride*2;
+        dst0 += dst_stride;
+        dsth += dst_stride;
+        dstv += dst_stride;
+        dstc += dst_stride;
     }
 }
 
@@ -697,6 +735,12 @@ void Setup_C_PixelPrimitives(EncoderPrimitives &p)
     p.blockcpy_ps = blockcopy_p_s;
     p.blockcpy_sp = blockcopy_s_p;
     p.blockcpy_sc = blockcopy_s_c;
+
+    p.blockfil_s[BLOCK_4x4]   = blockfil_s_c<4>;
+    p.blockfil_s[BLOCK_8x8]   = blockfil_s_c<8>;
+    p.blockfil_s[BLOCK_16x16] = blockfil_s_c<16>;
+    p.blockfil_s[BLOCK_32x32] = blockfil_s_c<32>;
+    p.blockfil_s[BLOCK_64x64] = blockfil_s_c<64>;
 
     p.cvt16to32     = convert16to32;
     p.cvt16to32_shl = convert16to32_shl;
@@ -806,5 +850,6 @@ void Setup_C_PixelPrimitives(EncoderPrimitives &p)
 
     p.scale1D_128to64 = scale1D_128to64;
     p.scale2D_64to32 = scale2D_64to32;
+    p.frame_init_lowres_core = frame_init_lowres_core;
 }
 }

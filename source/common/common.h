@@ -94,6 +94,7 @@
 #define X265_MAX3(a, b, c) X265_MAX((a), X265_MAX((b), (c)))
 #define X265_MIN4(a, b, c, d) X265_MIN((a), X265_MIN3((b), (c), (d)))
 #define X265_MAX4(a, b, c, d) X265_MAX((a), X265_MAX3((b), (c), (d)))
+#define QP_BD_OFFSET (6*(X265_DEPTH-8))
 
 #define ENABLE_CYCLE_COUNTERS 0
 #if ENABLE_CYCLE_COUNTERS
@@ -111,6 +112,14 @@
 #define EXTERN_CYCLE_COUNTER(SUBSYSTEM_NAME)
 #define REPORT_CYCLE_COUNTER(SUBSYSTEM_NAME)
 #endif // if ENABLE_CYCLE_COUNTERS
+
+#if defined(_MSC_VER)
+#define X265_LOG2F(x) (logf(x)*1.44269504088896405f)
+#define X265_LOG2(x) (log(x)*1.4426950408889640513713538072172)
+#else
+#define X265_LOG2F(x) log2f(x)
+#define X265_LOG2(x)  log2(x)
+#endif
 
 /* defined in common.cpp */
 void x265_log(x265_param_t *param, int level, const char *fmt, ...);

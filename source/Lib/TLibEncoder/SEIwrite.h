@@ -37,6 +37,9 @@
 #include "SyntaxElementWriter.h"
 #include "TLibCommon/SEI.h"
 
+namespace x265 {
+// private namespace
+
 class TComBitIf;
 
 //! \ingroup TLibEncoder
@@ -53,24 +56,19 @@ public:
 
 protected:
 
-    TComSPS *m_pSPS;
-
-    Void xWriteSEIpayloadData(TComBitIf& bs, const SEI& sei, TComSPS *sps);
-    Void xWriteSEIuserDataUnregistered(const SEIuserDataUnregistered &sei);
-    Void xWriteSEIActiveParameterSets(const SEIActiveParameterSets& sei);
-    Void xWriteSEIDecodingUnitInfo(const SEIDecodingUnitInfo& sei, TComSPS *sps);
-    Void xWriteSEIDecodedPictureHash(const SEIDecodedPictureHash& sei);
-    Void xWriteSEIBufferingPeriod(const SEIBufferingPeriod& sei, TComSPS *sps);
-    Void xWriteSEIPictureTiming(const SEIPictureTiming& sei, TComSPS *sps);
-    Void xWriteSEIRecoveryPoint(const SEIRecoveryPoint& sei);
-    Void xWriteSEIDisplayOrientation(const SEIDisplayOrientation &sei);
-    Void xWriteSEITemporalLevel0Index(const SEITemporalLevel0Index &sei);
-    Void xWriteSEIGradualDecodingRefreshInfo(const SEIGradualDecodingRefreshInfo &sei);
-    Void xWriteSEISOPDescription(const SEISOPDescription& sei);
-    Void xWriteSEIScalableNesting(TComBitIf& bs, const SEIScalableNesting& sei, TComSPS *sps);
-    Void xWriteByteAlign();
+    void xWriteSEIpayloadData(const SEI& sei, TComSPS *sps);
+    void xWriteSEIuserDataUnregistered(const SEIuserDataUnregistered &sei);
+    void xWriteSEIActiveParameterSets(const SEIActiveParameterSets& sei);
+    void xWriteSEIDecodingUnitInfo(const SEIDecodingUnitInfo& sei, TComSPS *sps);
+    void xWriteSEIDecodedPictureHash(const SEIDecodedPictureHash& sei);
+    void xWriteSEIBufferingPeriod(const SEIBufferingPeriod& sei, TComSPS *sps);
+    void xWriteSEIPictureTiming(const SEIPictureTiming& sei, TComSPS *sps);
+    void xWriteSEIRecoveryPoint(const SEIRecoveryPoint& sei);
+    void xWriteSEIDisplayOrientation(const SEIDisplayOrientation &sei);
+    void xWriteSEIGradualDecodingRefreshInfo(const SEIGradualDecodingRefreshInfo &sei);
+    void xWriteByteAlign();
 };
-
+}
 //! \}
 
 #endif // ifndef _SEI_WRITE_

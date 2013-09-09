@@ -25,15 +25,29 @@
 
 extern "C" {
 #include "pixel.h"
+
 void x265_intel_cpu_indicator_init( void ) {}
+
+#define LOWRES(cpu)\
+    void x265_frame_init_lowres_core_##cpu( pixel *src0, pixel *dst0, pixel *dsth, pixel *dstv, pixel *dstc,\
+    intptr_t src_stride, intptr_t dst_stride, int width, int height );
+LOWRES(mmx2)
+LOWRES(cache32_mmx2)
+LOWRES(sse2)
+LOWRES(ssse3)
+LOWRES(avx)
+LOWRES(xop)
 }
 
 bool hasXOP(void); // instr_detect.cpp
 
+using namespace x265;
+
 namespace {
+// file private anonymous namespace
 
 /* template for building arbitrary partition sizes from full optimized primitives */
-template<int lx, int ly, int dx, int dy, x265::pixelcmp_t compare>
+template<int lx, int ly, int dx, int dy, pixelcmp_t compare>
 int cmp(pixel * piOrg, intptr_t strideOrg, pixel * piCur, intptr_t strideCur)
 {
     int sum = 0;
@@ -85,9 +99,6 @@ namespace x265 {
     p.sse_##type[PARTITION_##width##x8] = (pixelcmp_t) x265_pixel_ssd_##width##x8_##suffix; \
     p.sse_##type[PARTITION_##width##x4] = (pixelcmp_t) x265_pixel_ssd_##width##x4_##suffix; \
 
-#if _MSC_VER
-#pragma warning(disable: 4100) // unused param, temporary issue until alignment problems are resolved
-#endif
 void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuid)
 {
 #if !HIGH_BIT_DEPTH
@@ -98,6 +109,8 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuid)
         INIT7( sad_x3, _mmx2 );
         INIT7( sad_x4, _mmx2 );
         INIT8( satd, _mmx2 );
+
+        p.frame_init_lowres_core = x265_frame_init_lowres_core_mmx2;
 
         p.sa8d[BLOCK_4x4] = x265_pixel_satd_4x4_mmx2;
 
@@ -169,6 +182,8 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuid)
         INIT2( sad_x3, _sse2 );
         INIT2( sad_x4, _sse2 );
         INIT6( satd, _sse2 );
+
+        p.frame_init_lowres_core = x265_frame_init_lowres_core_sse2;
 
         p.sa8d[BLOCK_8x8]   = x265_pixel_sa8d_8x8_sse2;
         p.sa8d[BLOCK_16x16] = x265_pixel_sa8d_16x16_sse2;
@@ -299,6 +314,7 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuid)
     }
     if (cpuid >= 4)
     {
+        p.frame_init_lowres_core = x265_frame_init_lowres_core_ssse3;
         p.sa8d[BLOCK_8x8]   = x265_pixel_sa8d_8x8_ssse3;
         p.sa8d[BLOCK_16x16] = x265_pixel_sa8d_16x16_ssse3;
         p.sa8d[BLOCK_32x32] = cmp<32, 32, 16, 16, x265_pixel_sa8d_16x16_ssse3>;
@@ -357,6 +373,7 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuid)
     }
     if (cpuid >= 7)
     {
+        p.frame_init_lowres_core = x265_frame_init_lowres_core_avx;
         p.sa8d[BLOCK_8x8]   = x265_pixel_sa8d_8x8_avx;
         p.sa8d[BLOCK_16x16] = x265_pixel_sa8d_16x16_avx;
         p.sa8d[BLOCK_32x32] = cmp<32, 32, 16, 16, x265_pixel_sa8d_16x16_avx>;
@@ -446,6 +463,7 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuid)
     }
     if (cpuid >= 7 && hasXOP())
     {
+        p.frame_init_lowres_core = x265_frame_init_lowres_core_xop;
         p.sa8d[BLOCK_8x8]   = x265_pixel_sa8d_8x8_xop;
         p.sa8d[BLOCK_16x16] = x265_pixel_sa8d_16x16_xop;
         p.sa8d[BLOCK_32x32] = cmp<32, 32, 16, 16, x265_pixel_sa8d_16x16_xop>;
@@ -564,36 +582,39 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuid)
         INIT2_NAME( sse_pp, ssd, _avx2 );
         p.sa8d[BLOCK_8x8]   = x265_pixel_sa8d_8x8_avx2;
     }
-    // SA8D devolves to SATD for blocks not even multiples of 8x8
-    p.sa8d_inter[PARTITION_4x4]   = p.satd[PARTITION_4x4];
-    p.sa8d_inter[PARTITION_4x8]   = p.satd[PARTITION_4x8];
-    p.sa8d_inter[PARTITION_4x12]  = p.satd[PARTITION_4x12];
-    p.sa8d_inter[PARTITION_4x16]  = p.satd[PARTITION_4x16];
-    p.sa8d_inter[PARTITION_4x24]  = p.satd[PARTITION_4x24];
-    p.sa8d_inter[PARTITION_4x32]  = p.satd[PARTITION_4x32];
-    p.sa8d_inter[PARTITION_4x48]  = p.satd[PARTITION_4x48];
-    p.sa8d_inter[PARTITION_4x64]  = p.satd[PARTITION_4x64];
-    p.sa8d_inter[PARTITION_8x4]   = p.satd[PARTITION_8x4];
-    p.sa8d_inter[PARTITION_8x12]  = p.satd[PARTITION_8x12];
-    p.sa8d_inter[PARTITION_12x4]  = p.satd[PARTITION_12x4];
-    p.sa8d_inter[PARTITION_12x8]  = p.satd[PARTITION_12x8];
-    p.sa8d_inter[PARTITION_12x12] = p.satd[PARTITION_12x12];
-    p.sa8d_inter[PARTITION_12x16] = p.satd[PARTITION_12x16];
-    p.sa8d_inter[PARTITION_12x24] = p.satd[PARTITION_12x24];
-    p.sa8d_inter[PARTITION_12x32] = p.satd[PARTITION_12x32];
-    p.sa8d_inter[PARTITION_12x48] = p.satd[PARTITION_12x48];
-    p.sa8d_inter[PARTITION_12x64] = p.satd[PARTITION_12x64];
-    p.sa8d_inter[PARTITION_16x4]  = p.satd[PARTITION_16x4];
-    p.sa8d_inter[PARTITION_16x12] = p.satd[PARTITION_16x12];
-    p.sa8d_inter[PARTITION_24x4]  = p.satd[PARTITION_24x4];
-    p.sa8d_inter[PARTITION_24x12] = p.satd[PARTITION_24x12];
-    p.sa8d_inter[PARTITION_32x4]  = p.satd[PARTITION_32x4];
-    p.sa8d_inter[PARTITION_32x12] = p.satd[PARTITION_32x12];
-    p.sa8d_inter[PARTITION_48x4]  = p.satd[PARTITION_48x4];
-    p.sa8d_inter[PARTITION_48x12] = p.satd[PARTITION_48x12];
-    p.sa8d_inter[PARTITION_64x4]  = p.satd[PARTITION_64x4];
-    p.sa8d_inter[PARTITION_64x12] = p.satd[PARTITION_64x12];
 #endif
+    if (cpuid > 1)
+    {
+        // SA8D devolves to SATD for blocks not even multiples of 8x8
+        p.sa8d_inter[PARTITION_4x4]   = p.satd[PARTITION_4x4];
+        p.sa8d_inter[PARTITION_4x8]   = p.satd[PARTITION_4x8];
+        p.sa8d_inter[PARTITION_4x12]  = p.satd[PARTITION_4x12];
+        p.sa8d_inter[PARTITION_4x16]  = p.satd[PARTITION_4x16];
+        p.sa8d_inter[PARTITION_4x24]  = p.satd[PARTITION_4x24];
+        p.sa8d_inter[PARTITION_4x32]  = p.satd[PARTITION_4x32];
+        p.sa8d_inter[PARTITION_4x48]  = p.satd[PARTITION_4x48];
+        p.sa8d_inter[PARTITION_4x64]  = p.satd[PARTITION_4x64];
+        p.sa8d_inter[PARTITION_8x4]   = p.satd[PARTITION_8x4];
+        p.sa8d_inter[PARTITION_8x12]  = p.satd[PARTITION_8x12];
+        p.sa8d_inter[PARTITION_12x4]  = p.satd[PARTITION_12x4];
+        p.sa8d_inter[PARTITION_12x8]  = p.satd[PARTITION_12x8];
+        p.sa8d_inter[PARTITION_12x12] = p.satd[PARTITION_12x12];
+        p.sa8d_inter[PARTITION_12x16] = p.satd[PARTITION_12x16];
+        p.sa8d_inter[PARTITION_12x24] = p.satd[PARTITION_12x24];
+        p.sa8d_inter[PARTITION_12x32] = p.satd[PARTITION_12x32];
+        p.sa8d_inter[PARTITION_12x48] = p.satd[PARTITION_12x48];
+        p.sa8d_inter[PARTITION_12x64] = p.satd[PARTITION_12x64];
+        p.sa8d_inter[PARTITION_16x4]  = p.satd[PARTITION_16x4];
+        p.sa8d_inter[PARTITION_16x12] = p.satd[PARTITION_16x12];
+        p.sa8d_inter[PARTITION_24x4]  = p.satd[PARTITION_24x4];
+        p.sa8d_inter[PARTITION_24x12] = p.satd[PARTITION_24x12];
+        p.sa8d_inter[PARTITION_32x4]  = p.satd[PARTITION_32x4];
+        p.sa8d_inter[PARTITION_32x12] = p.satd[PARTITION_32x12];
+        p.sa8d_inter[PARTITION_48x4]  = p.satd[PARTITION_48x4];
+        p.sa8d_inter[PARTITION_48x12] = p.satd[PARTITION_48x12];
+        p.sa8d_inter[PARTITION_64x4]  = p.satd[PARTITION_64x4];
+        p.sa8d_inter[PARTITION_64x12] = p.satd[PARTITION_64x12];
+    }
 }
 
 }
