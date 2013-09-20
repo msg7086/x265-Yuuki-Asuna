@@ -45,7 +45,7 @@
 
 using namespace x265;
 
-static inline int16_t x265_median(int16_t a, int16_t b, int16_t c)
+static inline int16_t median(int16_t a, int16_t b, int16_t c)
 {
     int16_t t = (a - b) & ((a - b) >> 31);
 
@@ -56,10 +56,10 @@ static inline int16_t x265_median(int16_t a, int16_t b, int16_t c)
     return b;
 }
 
-static inline void x265_median_mv(MV &dst, MV a, MV b, MV c)
+static inline void median_mv(MV &dst, MV a, MV b, MV c)
 {
-    dst.x = x265_median(a.x, b.x, c.x);
-    dst.y = x265_median(a.y, b.y, c.y);
+    dst.x = median(a.x, b.x, c.x);
+    dst.y = median(a.y, b.y, c.y);
 }
 
 Lookahead::Lookahead(TEncCfg *_cfg)
@@ -121,10 +121,10 @@ void Lookahead::slicetypeDecide()
         // Special case for POC 0, send directly to output queue as I slice
         TComPic *pic = inputQueue.popFront();
         pic->m_lowres.sliceType = X265_TYPE_I;
+        pic->m_lowres.bKeyframe = true;
+        lastKeyframe = 0;
         outputQueue.pushBack(pic);
         numDecided++;
-        lastKeyframe = 0;
-        pic->m_lowres.bKeyframe = true;
         frames[0] = &(pic->m_lowres);
         return;
     }
@@ -182,45 +182,54 @@ void Lookahead::slicetypeDecide()
 
         pic->m_lowres.sliceType = X265_TYPE_I;
         pic->m_lowres.bKeyframe = true;
+        lastKeyframe = pic->m_lowres.frameNum;
         outputQueue.pushBack(pic);
         numDecided++;
     }
     else if (cfg->param.bframes == 0 || inputQueue.size() == 1)
     {
         TComPic *pic = inputQueue.popFront();
-
-        bool forceIntra = (pic->getPOC() % cfg->param.keyframeMax) == 0;
-        pic->m_lowres.sliceType = forceIntra ? X265_TYPE_I : X265_TYPE_P;
-        pic->m_lowres.bKeyframe = forceIntra;
+        if (pic->getPOC() % cfg->param.keyframeMax)
+            pic->m_lowres.sliceType = X265_TYPE_P;
+        else
+        {
+            pic->m_lowres.sliceType = X265_TYPE_I;
+            pic->m_lowres.bKeyframe = true;
+            lastKeyframe = pic->m_lowres.frameNum;
+        }
         outputQueue.pushBack(pic);
         numDecided++;
     }
     else
     {
-        TComPic *picB = inputQueue.popFront();
-        TComPic *picP = inputQueue.popFront();
-
-        bool forceIntra = (picP->getPOC() % cfg->param.keyframeMax) == 0 || (picB->getPOC() % cfg->param.keyframeMax) == 0;
-        if (forceIntra)
+        TComPic *list[X265_BFRAME_MAX+1];
+        int j;
+        for (j = 0; j <= cfg->param.bframes && !inputQueue.empty(); j++)
         {
-            picB->m_lowres.sliceType = (picB->getPOC() % cfg->param.keyframeMax) ? X265_TYPE_P : X265_TYPE_I;
-            picB->m_lowres.bKeyframe = !(picB->getPOC() % cfg->param.keyframeMax);
-            outputQueue.pushBack(picB);
-            numDecided++;
-
-            picP->m_lowres.sliceType = (picP->getPOC() % cfg->param.keyframeMax) ? X265_TYPE_P : X265_TYPE_I;
-            picP->m_lowres.bKeyframe = !(picP->getPOC() % cfg->param.keyframeMax);
-            outputQueue.pushBack(picP);
-            numDecided++;
+            TComPic *pic = inputQueue.popFront();
+            list[j] = pic;
+            if (pic->m_lowres.frameNum >= lastKeyframe + cfg->param.keyframeMax)
+            {
+                pic->m_lowres.sliceType = X265_TYPE_I;
+                pic->m_lowres.bKeyframe = true;
+                lastKeyframe = pic->m_lowres.frameNum;
+                if (j) list[j - 1]->m_lowres.sliceType = X265_TYPE_P;
+                j++;
+                break;
+            }
         }
-        else
-        {
-            picP->m_lowres.sliceType = X265_TYPE_P;
-            outputQueue.pushBack(picP);
-            numDecided++;
 
-            picB->m_lowres.sliceType = X265_TYPE_B;
-            outputQueue.pushBack(picB);
+        TComPic *pic = list[j - 1];
+        if (pic->m_lowres.sliceType == X265_TYPE_AUTO)
+            pic->m_lowres.sliceType = X265_TYPE_P;
+        outputQueue.pushBack(pic);
+        numDecided++;
+        for (int i = 0; i < j - 1; i++)
+        {
+            TComPic *pic = list[i];
+            if (pic->m_lowres.sliceType == X265_TYPE_AUTO)
+                pic->m_lowres.sliceType = X265_TYPE_B;
+            outputQueue.pushBack(pic);
             numDecided++;
         }
     }
@@ -392,7 +401,7 @@ void Lookahead::estimateCUCost(int cux, int cuy, int p0, int p1, int b, bool bDo
                 mvp = mvc[0];
             else
             {
-                x265_median_mv(mvp, mvc[0], mvc[1], mvc[2]);
+                median_mv(mvp, mvc[0], mvc[1], mvc[2]);
             }
 
             *fenc_costs[i] = me.motionEstimate(i ? fref1 : fref0, mvmin, mvmax, mvp, numc, mvc, merange, *fenc_mvs[i]);
