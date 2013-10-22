@@ -62,7 +62,7 @@ void Lowres::create(TComPic *pic, int bframes)
     for (int i = 0; i < bframes + 2; i++)
     {
         for (int j = 0; j < bframes + 2; j++)
-        {   
+        {
             rowSatds[i][j] = (int*)X265_MALLOC(int, cuHeight);
             lowresCosts[i][j] = (uint16_t*)X265_MALLOC(uint16_t, cuCount);
         }
@@ -75,34 +75,32 @@ void Lowres::create(TComPic *pic, int bframes)
         lowresMvCosts[0][i] = (int*)X265_MALLOC(int, cuCount);
         lowresMvCosts[1][i] = (int*)X265_MALLOC(int, cuCount);
     }
-    
 }
 
 void Lowres::destroy(int bframes)
 {
     for (int i = 0; i < 4; i++)
     {
-        if (buffer[i])
-            X265_FREE(buffer[i]);
+        X265_FREE(buffer[i]);
     }
 
-    if (intraCost) X265_FREE(intraCost);
+    X265_FREE(intraCost);
 
     for (int i = 0; i < bframes + 2; i++)
     {
         for (int j = 0; j < bframes + 2; j++)
-        {   
-            if (rowSatds[i][j]) X265_FREE(rowSatds[i][j]);
-            if (lowresCosts[i][j]) X265_FREE(lowresCosts[i][j]);
+        {
+            X265_FREE(rowSatds[i][j]);
+            X265_FREE(lowresCosts[i][j]);
         }
     }
 
     for (int i = 0; i < bframes + 1; i++)
     {
-        if (lowresMvs[0][i]) X265_FREE(lowresMvs[0][i]);
-        if (lowresMvs[1][i]) X265_FREE(lowresMvs[1][i]);
-        if (lowresMvCosts[0][i]) X265_FREE(lowresMvCosts[0][i]);
-        if (lowresMvCosts[1][i]) X265_FREE(lowresMvCosts[1][i]);
+        X265_FREE(lowresMvs[0][i]);
+        X265_FREE(lowresMvs[1][i]);
+        X265_FREE(lowresMvCosts[0][i]);
+        X265_FREE(lowresMvCosts[1][i]);
     }
 }
 
@@ -111,9 +109,11 @@ void Lowres::init(TComPicYuv *orig, int poc, int type, int bframes)
 {
     bScenecut = true;
     bIntraCalculated = false;
+    bLastMiniGopBFrame = false;
     bKeyframe = false; // Not a keyframe unless identified by lookahead
     sliceType = type;
     frameNum = poc;
+    leadingBframes = 0;
     memset(costEst, -1, sizeof(costEst));
     for (int y = 0; y < bframes + 2; y++)
     {
@@ -122,13 +122,17 @@ void Lowres::init(TComPicYuv *orig, int poc, int type, int bframes)
             rowSatds[y][x][0] = -1;
         }
     }
+
     for (int i = 0; i < bframes + 1; i++)
     {
         lowresMvs[0][i][0].x = 0x7FFF;
         lowresMvs[1][i][0].x = 0x7FFF;
     }
-    for(int i = 0; i < X265_BFRAME_MAX + 2; i++)
+
+    for (int i = 0; i < bframes + 2; i++)
+    {
         intraMbs[i] = 0;
+    }
 
     int y, extWidth = (orig->getWidth() + X265_LOWRES_CU_SIZE - 1);
     int srcStride = orig->getStride();
@@ -136,29 +140,29 @@ void Lowres::init(TComPicYuv *orig, int poc, int type, int bframes)
     int srcWidth  = orig->getWidth();
     Pel *src;
     src = orig->getLumaAddr();
-    
-    /* extending right margin*/
-    if( 2 * width > orig->getWidth())
+
+    /* extending right margin */
+    if (2 * width > srcWidth)
     {
         for (y = 0; y < srcHeight; y++)
         {
-            ::memset(src+srcWidth, src[srcWidth-1], sizeof(Pel) * (X265_LOWRES_CU_SIZE - 1));
+            ::memset(src + srcWidth, src[srcWidth - 1], sizeof(Pel) * (X265_LOWRES_CU_SIZE - 1));
             src += srcStride;
         }
     }
 
     /* extending bottom margin */
-    src = orig->getLumaAddr() + (srcHeight - 1 ) * srcStride;
+    src = orig->getLumaAddr() + (srcHeight - 1) * srcStride;
 
     for (y = 1; y <= 2 * lines - srcHeight; y++)
     {
         ::memcpy(src + y * srcStride, src, sizeof(Pel) * (extWidth));
     }
-
+    
     /* downscale and generate 4 HPEL planes for lookahead */
     primitives.frame_init_lowres_core(orig->getLumaAddr(),
-        lowresPlane[0], lowresPlane[1], lowresPlane[2], lowresPlane[3],
-        orig->getStride(), lumaStride, width, lines);
+                                      lowresPlane[0], lowresPlane[1], lowresPlane[2], lowresPlane[3],
+                                      orig->getStride(), lumaStride, width, lines);
 
     /* extend hpel planes for motion search */
     orig->xExtendPicCompBorder(lowresPlane[0], lumaStride, width, lines, orig->getLumaMarginX(), orig->getLumaMarginY());

@@ -32,7 +32,9 @@ class PixelHarness : public TestHarness
 protected:
 
     pixel *pbuf1, *pbuf2, *pbuf3, *pbuf4;
-    
+
+    int *ibuf1;
+
     short *sbuf1, *sbuf2;
 
     bool check_pixelcmp(pixelcmp_t ref, pixelcmp_t opt);
@@ -46,11 +48,14 @@ protected:
     bool check_block_copy_s_c(blockcpy_sc_t ref, blockcpy_sc_t opt);
     bool check_calresidual(calcresidual_t ref, calcresidual_t opt);
     bool check_calcrecon(calcrecon_t ref, calcrecon_t opt);
+    bool check_weightpUni(weightpUniPixel_t ref, weightpUniPixel_t opt);
     bool check_weightpUni(weightpUni_t ref, weightpUni_t opt);
     bool check_pixelsub_sp(pixelsub_sp_t ref, pixelsub_sp_t opt);
     bool check_pixeladd_ss(pixeladd_ss_t ref, pixeladd_ss_t opt);
     bool check_pixeladd_pp(pixeladd_pp_t ref, pixeladd_pp_t opt);
     bool check_downscale_t(downscale_t ref, downscale_t opt);
+    bool check_cvt32to16_shr_t(cvt32to16_shr_t ref, cvt32to16_shr_t opt);
+    bool check_pixelavg_pp(pixelavg_pp_t ref, pixelavg_pp_t opt);
 
 public:
 
@@ -61,8 +66,10 @@ public:
     const char *getName() const { return "pixel"; }
 
     bool testCorrectness(const EncoderPrimitives& ref, const EncoderPrimitives& opt);
+    bool testPartition(int part, const EncoderPrimitives& ref, const EncoderPrimitives& opt);
 
     void measureSpeed(const EncoderPrimitives& ref, const EncoderPrimitives& opt);
+    void measurePartition(int part, const EncoderPrimitives& ref, const EncoderPrimitives& opt);
 };
 
 #endif // ifndef _PIXELHARNESS_H_1

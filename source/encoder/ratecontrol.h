@@ -30,7 +30,7 @@
 namespace x265 {
 struct Lookahead;
 class TComPic;
-
+class TEncCfg;
 struct RateControlEntry
 {
     int pictType;
@@ -44,6 +44,7 @@ struct RateControlEntry
 struct RateControl
 {
     TComSlice *curFrame;        /* all info abt the current frame */
+    TEncCfg *cfg;
     SliceType frameType;        /* Current frame type */
     int ncu;                    /* number of CUs in a frame */
     int framerate;              /* current frame rate TODO: need to initialize in init */
@@ -72,15 +73,14 @@ struct RateControl
     double lmax[3];
     double shortTermCplxSum;
     double shortTermCplxCount;
-    RcMethod rateControlMode;
     int64_t totalBits;   /* totalbits used for already encoded frames */
     double lastRceq;
     int framesDone;   /* framesDone keeps track of # of frames passed through RateCotrol already */
-    RateControl(x265_param_t * param);
+    RateControl(TEncCfg * _cfg);
 
     // to be called for each frame to process RateCOntrol and set QP
     void rateControlStart(TComPic* pic, Lookahead *, RateControlEntry* rce);
-
+    void calcAdaptiveQuantFrame(TComPic *pic);
     int rateControlEnd(int64_t bits, RateControlEntry* rce);
 
 protected:
@@ -88,6 +88,7 @@ protected:
     double getQScale(RateControlEntry *rce, double rateFactor);
     double rateEstimateQscale(RateControlEntry *rce); // main logic for calculating QP based on ABR
     void accumPQpUpdate();
+    double acEnergyCu(TComPic* pic, uint32_t cuAddr);
 };
 }
 

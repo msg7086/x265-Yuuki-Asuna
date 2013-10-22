@@ -101,6 +101,7 @@ inline double xRoundIbdi2(double x)
 {
     return ((x) > 0) ? (int)(((int)(x) + (1 << (X265_DEPTH - 8 - 1))) / (1 << (X265_DEPTH - 8))) : ((int)(((int)(x) - (1 << (X265_DEPTH - 8 - 1))) / (1 << (X265_DEPTH - 8))));
 }
+
 #endif
 
 /** rounding with IBDI
@@ -111,7 +112,7 @@ inline double xRoundIbdi(double x)
 #if HIGH_BIT_DEPTH
     return X265_DEPTH > 8 ? xRoundIbdi2(x) : ((x) >= 0 ? ((int)((x) + 0.5)) : ((int)((x) - 0.5)));
 #else
-    return ((x) >= 0 ? ((int)((x) + 0.5)) : ((int)((x) - 0.5)));
+    return (x) >= 0 ? ((int)((x) + 0.5)) : ((int)((x) - 0.5));
 #endif
 }
 
@@ -497,16 +498,16 @@ void TEncSampleAdaptiveOffset::createEncBuffer()
 
     int maxDepth = 4;
     m_rdSbacCoders = new TEncSbac * *[maxDepth + 1];
-    m_binCoderCABAC = new TEncBinCABACCounter * *[maxDepth + 1];
+    m_binCoderCABAC = new TEncBinCABAC * *[maxDepth + 1];
 
     for (int d = 0; d < maxDepth + 1; d++)
     {
         m_rdSbacCoders[d] = new TEncSbac*[CI_NUM];
-        m_binCoderCABAC[d] = new TEncBinCABACCounter*[CI_NUM];
+        m_binCoderCABAC[d] = new TEncBinCABAC*[CI_NUM];
         for (int ciIdx = 0; ciIdx < CI_NUM; ciIdx++)
         {
             m_rdSbacCoders[d][ciIdx] = new TEncSbac;
-            m_binCoderCABAC[d][ciIdx] = new TEncBinCABACCounter;
+            m_binCoderCABAC[d][ciIdx] = new TEncBinCABAC(true);
             m_rdSbacCoders[d][ciIdx]->init(m_binCoderCABAC[d][ciIdx]);
         }
     }
@@ -1646,7 +1647,6 @@ void TEncSampleAdaptiveOffset::rdoSaoUnitRowInit(SAOParam *saoParam)
 
 void TEncSampleAdaptiveOffset::rdoSaoUnitRowEnd(SAOParam *saoParam, int numlcus)
 {
-
     if (!saoParam->bSaoFlag[0])
     {
         m_depthSaoRate[0][depth] = 1.0;

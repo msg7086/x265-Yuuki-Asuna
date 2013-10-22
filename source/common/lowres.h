@@ -22,7 +22,7 @@
  *****************************************************************************/
 
 #ifndef X265_LOWRES_H
-#define X265_LOWRES_H 
+#define X265_LOWRES_H
 
 #include "TLibCommon/TComPicYuv.h"
 #include "common.h"
@@ -30,28 +30,22 @@
 #include "mv.h"
 
 namespace x265 {
-
 class TComPic;
-
-// Use the same size blocks as x264.  Using larger blocks seems to give artificially
-// high cost estimates (intra and inter both suffer)
-#define X265_LOWRES_CU_SIZE   8
-#define X265_LOWRES_CU_BITS   3
-
-#define X265_BFRAME_MAX      16
 
 struct Lowres : public ReferencePlanes
 {
     /* lowres buffers, sizes and strides */
     pixel *buffer[4];
-    int    width;    // width of lowres frame in pixels
-    int    lines;    // height of lowres frame in pixel lines
+    int    width;     // width of lowres frame in pixels
+    int    lines;     // height of lowres frame in pixel lines
     int    frameNum;  // Presentation frame number
     int    sliceType; // Slice type decided by lookahead
+    int    leadingBframes; // number of leading B frames for P or I
 
     bool   bIntraCalculated;
     bool   bScenecut; // Set to false if the frame cannot possibly be part of a real scenecut.
     bool   bKeyframe;
+    bool   bLastMiniGopBFrame;
 
     /* lookahead output data */
     int       costEst[X265_BFRAME_MAX + 2][X265_BFRAME_MAX + 2];

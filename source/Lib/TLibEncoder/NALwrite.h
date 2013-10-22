@@ -77,13 +77,13 @@ struct OutputNALUnit : public NALUnit
 void write(uint8_t*& out, OutputNALUnit& nalu, UInt& packetSize);
 void writeRBSPTrailingBits(TComOutputBitstream& bs);
 
-inline NALUnitEBSP::NALUnitEBSP(OutputNALUnit& nalu)
-    : NALUnit(nalu)
+void inline NALUnitEBSP::init(OutputNALUnit& nalu)
 {
+    m_nalUnitType = nalu.m_nalUnitType;
+    m_temporalId = nalu.m_temporalId;
+    m_reservedZero6Bits = nalu.m_reservedZero6Bits;
     write(m_nalUnitData, nalu, m_packetSize);
 }
-
-void copyNaluData(OutputNALUnit& naluDest, const OutputNALUnit& naluSrc);
 }
 
 //! \}

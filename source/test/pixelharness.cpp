@@ -29,19 +29,6 @@
 
 using namespace x265;
 
-// Initialize the Func Names for all the Pixel Comp
-static const char *FuncNames[NUM_PARTITIONS] =
-{
-    "  4x4", "  4x8", " 4x12", " 4x16", " 4x24", " 4x32", " 4x48", " 4x64",
-    "  8x4", "  8x8", " 8x12", " 8x16", " 8x24", " 8x32", " 8x48", " 8x64",
-    " 12x4", " 12x8", "12x12", "12x16", "12x24", "12x32", "12x48", "12x64",
-    " 16x4", " 16x8", "16x12", "16x16", "16x24", "16x32", "16x48", "16x64",
-    " 24x4", " 24x8", "24x12", "24x16", "24x24", "24x32", "24x48", "24x64",
-    " 32x4", " 32x8", "32x12", "32x16", "32x24", "32x32", "32x48", "32x64",
-    " 48x4", " 48x8", "48x12", "48x16", "48x24", "48x32", "48x48", "48x64",
-    " 64x4", " 64x8", "64x12", "64x16", "64x24", "64x32", "64x48", "64x64"
-};
-
 #define INCR   32
 #define STRIDE 64
 #define ITERS  100
@@ -58,10 +45,12 @@ PixelHarness::PixelHarness()
     pbuf3 = (pixel*)X265_MALLOC(pixel, bufsize);
     pbuf4 = (pixel*)X265_MALLOC(pixel, bufsize);
 
+    ibuf1 = (int*)X265_MALLOC(int, bufsize);
+
     sbuf1 = (short*)X265_MALLOC(short, bufsize);
     sbuf2 = (short*)X265_MALLOC(short, bufsize);
 
-    if (!pbuf1 || !pbuf2 || !pbuf3 || !pbuf4 || !sbuf1 || !sbuf2)
+    if (!pbuf1 || !pbuf2 || !pbuf3 || !pbuf4 || !sbuf1 || !sbuf2 || !ibuf1)
     {
         fprintf(stderr, "malloc failed, unable to initiate tests!\n");
         exit(1);
@@ -74,8 +63,10 @@ PixelHarness::PixelHarness()
         pbuf3[i] = rand() & PIXEL_MAX;
         pbuf4[i] = rand() & PIXEL_MAX;
 
-        sbuf1[i] = rand() & PIXEL_MAX;
-        sbuf2[i] = rand() & PIXEL_MAX;
+        sbuf1[i] = (rand() & (2 * SHORT_MAX + 1)) - SHORT_MAX - 1; //max(SHORT_MIN, min(rand(), SHORT_MAX));
+        sbuf2[i] = (rand() & (2 * SHORT_MAX + 1)) - SHORT_MAX - 1; //max(SHORT_MIN, min(rand(), SHORT_MAX));
+
+        ibuf1[i] = (rand() & (2 * SHORT_MAX + 1)) - SHORT_MAX - 1;
     }
 }
 
@@ -92,6 +83,7 @@ PixelHarness::~PixelHarness()
 bool PixelHarness::check_pixelcmp(pixelcmp_t ref, pixelcmp_t opt)
 {
     int j = 0;
+
     for (int i = 0; i < ITERS; i++)
     {
         int vres = opt(pbuf1, STRIDE, pbuf2 + j, STRIDE);
@@ -108,6 +100,7 @@ bool PixelHarness::check_pixelcmp(pixelcmp_t ref, pixelcmp_t opt)
 bool PixelHarness::check_pixelcmp_sp(pixelcmp_sp_t ref, pixelcmp_sp_t opt)
 {
     int j = 0;
+
     for (int i = 0; i < ITERS; i++)
     {
         int vres = opt(sbuf1, STRIDE, pbuf2 + j, STRIDE);
@@ -124,6 +117,7 @@ bool PixelHarness::check_pixelcmp_sp(pixelcmp_sp_t ref, pixelcmp_sp_t opt)
 bool PixelHarness::check_pixelcmp_ss(pixelcmp_ss_t ref, pixelcmp_ss_t opt)
 {
     int j = 0;
+
     for (int i = 0; i < ITERS; i++)
     {
         int vres = opt(sbuf1, STRIDE, sbuf2 + j, STRIDE);
@@ -163,8 +157,8 @@ bool PixelHarness::check_pixelcmp_x4(pixelcmp_x4_t ref, pixelcmp_x4_t opt)
     int j = 0;
     for (int i = 0; i < ITERS; i++)
     {
-        opt(pbuf1, pbuf2 + j, pbuf2 + j + 1, pbuf2 + j + 2, pbuf2 + j +3, FENC_STRIDE - 5, &vres[0]);
-        ref(pbuf1, pbuf2 + j, pbuf2 + j + 1, pbuf2 + j + 2, pbuf2 + j +3, FENC_STRIDE - 5, &cres[0]);
+        opt(pbuf1, pbuf2 + j, pbuf2 + j + 1, pbuf2 + j + 2, pbuf2 + j + 3, FENC_STRIDE - 5, &vres[0]);
+        ref(pbuf1, pbuf2 + j, pbuf2 + j + 1, pbuf2 + j + 2, pbuf2 + j + 3, FENC_STRIDE - 5, &cres[0]);
 
         if ((vres[0] != cres[0]) || ((vres[1] != cres[1])) || ((vres[2] != cres[2])) || ((vres[3] != cres[3])))
             return false;
@@ -230,8 +224,8 @@ bool PixelHarness::check_block_copy_s_c(blockcpy_sc_t ref, blockcpy_sc_t opt)
     int j = 0;
     for (int i = 0; i < ITERS; i++)
     {
-        opt(bx, by, opt_dest, 64, (uint8_t*)pbuf2 + j, 128);
-        ref(bx, by, ref_dest, 64, (uint8_t*)pbuf2 + j, 128);
+        opt(bx, by, opt_dest, 64, (uint8_t*)pbuf2 + j, STRIDE);
+        ref(bx, by, ref_dest, 64, (uint8_t*)pbuf2 + j, STRIDE);
 
         if (memcmp(ref_dest, opt_dest, 64 * 64 * sizeof(short)))
             return false;
@@ -343,8 +337,36 @@ bool PixelHarness::check_weightpUni(weightpUni_t ref, weightpUni_t opt)
     int offset = (rand() % 256) - 128;
     for (int i = 0; i < ITERS; i++)
     {
-        opt(sbuf1 + j, opt_dest, 64, 64, width, height, w0, round, shift, offset);
-        ref(sbuf1 + j, ref_dest, 64, 64, width, height, w0, round, shift, offset);
+        opt((int16_t*)sbuf1 + j, opt_dest, 64, 64, width, height, w0, round, shift, offset);
+        ref((int16_t*)sbuf1 + j, ref_dest, 64, 64, width, height, w0, round, shift, offset);
+
+        if (memcmp(ref_dest, opt_dest, 64 * 64 * sizeof(pixel)))
+            return false;
+
+        j += INCR;
+    }
+
+    return true;
+}
+
+bool PixelHarness::check_weightpUni(weightpUniPixel_t ref, weightpUniPixel_t opt)
+{
+    ALIGN_VAR_16(pixel, ref_dest[64 * 64]);
+    ALIGN_VAR_16(pixel, opt_dest[64 * 64]);
+
+    memset(ref_dest, 0, 64 * 64 * sizeof(pixel));
+    memset(opt_dest, 0, 64 * 64 * sizeof(pixel));
+    int j = 0;
+    int width = (2 * rand()) % 64;
+    int height = 8;
+    int w0 = rand() % 256;
+    int shift = rand() % 12;
+    int round = shift ? (1 << (shift - 1)) : 0;
+    int offset = (rand() % 256) - 128;
+    for (int i = 0; i < ITERS; i++)
+    {
+        opt(pbuf1 + j, opt_dest, 64, 64, width, height, w0, round, shift, offset);
+        ref(pbuf1 + j, ref_dest, 64, 64, width, height, w0, round, shift, offset);
 
         if (memcmp(ref_dest, opt_dest, 64 * 64 * sizeof(pixel)))
             return false;
@@ -364,8 +386,8 @@ bool PixelHarness::check_pixelsub_sp(pixelsub_sp_t ref, pixelsub_sp_t opt)
     int j = 0;
     for (int i = 0; i < ITERS; i++)
     {
-        opt(bx, by, opt_dest, 64, pbuf2 + j, pbuf1 + j, 128, 128);
-        ref(bx, by, ref_dest, 64, pbuf2 + j, pbuf1 + j, 128, 128);
+        opt(bx, by, opt_dest, 64, pbuf2 + j, pbuf1 + j, STRIDE, STRIDE);
+        ref(bx, by, ref_dest, 64, pbuf2 + j, pbuf1 + j, STRIDE, STRIDE);
 
         if (memcmp(ref_dest, opt_dest, 64 * 64 * sizeof(short)))
             return false;
@@ -463,80 +485,161 @@ bool PixelHarness::check_downscale_t(downscale_t ref, downscale_t opt)
     return true;
 }
 
+bool PixelHarness::check_cvt32to16_shr_t(cvt32to16_shr_t ref, cvt32to16_shr_t opt)
+{
+    ALIGN_VAR_16(short, ref_dest[64 * 64]);
+    ALIGN_VAR_16(short, opt_dest[64 * 64]);
+
+    int j = 0;
+    for (int i = 0; i < ITERS; i++)
+    {
+        int shift = (rand() % 7 + 1);
+
+        opt(opt_dest, ibuf1 + j, STRIDE, shift, STRIDE);
+        ref(ref_dest, ibuf1 + j, STRIDE, shift, STRIDE);
+
+        if (memcmp(ref_dest, opt_dest, 64 * 64 * sizeof(short)))
+            return false;
+
+        j += INCR;
+    }
+
+    return true;
+}
+
+bool PixelHarness::check_pixelavg_pp(pixelavg_pp_t ref, pixelavg_pp_t opt)
+{
+    ALIGN_VAR_16(pixel, ref_dest[64 * 64]);
+    ALIGN_VAR_16(pixel, opt_dest[64 * 64]);
+
+    int j = 0;
+
+    for (int i = 0; i < ITERS; i++)
+    {
+        opt(opt_dest, STRIDE, pbuf1 + j, STRIDE, pbuf2 + j, STRIDE, 32);
+        ref(ref_dest, STRIDE, pbuf1 + j, STRIDE, pbuf2 + j, STRIDE, 32);
+
+        if (memcmp(ref_dest, opt_dest, 64 * 64 * sizeof(pixel)))
+            return false;
+
+        j += INCR;
+    }
+
+    return true;
+}
+
+bool PixelHarness::testPartition(int part, const EncoderPrimitives& ref, const EncoderPrimitives& opt)
+{
+    if (opt.satd[part])
+    {
+        if (!check_pixelcmp(ref.satd[part], opt.satd[part]))
+        {
+            printf("satd[%s]: failed!\n", lumaPartStr[part]);
+            return false;
+        }
+    }
+
+    if (opt.sa8d_inter[part])
+    {
+        if (!check_pixelcmp(ref.sa8d_inter[part], opt.sa8d_inter[part]))
+        {
+            printf("sa8d_inter[%s]: failed!\n", lumaPartStr[part]);
+            return false;
+        }
+    }
+
+    if (opt.sad[part])
+    {
+        if (!check_pixelcmp(ref.sad[part], opt.sad[part]))
+        {
+            printf("sad[%s]: failed!\n", lumaPartStr[part]);
+            return false;
+        }
+    }
+
+    if (opt.sse_pp[part])
+    {
+        if (!check_pixelcmp(ref.sse_pp[part], opt.sse_pp[part]))
+        {
+            printf("sse_pp[%s]: failed!\n", lumaPartStr[part]);
+            return false;
+        }
+    }
+
+    if (opt.sse_sp[part])
+    {
+        if (!check_pixelcmp_sp(ref.sse_sp[part], opt.sse_sp[part]))
+        {
+            printf("sse_sp[%s]: failed!\n", lumaPartStr[part]);
+            return false;
+        }
+    }
+
+    if (opt.sse_ss[part])
+    {
+        if (!check_pixelcmp_ss(ref.sse_ss[part], opt.sse_ss[part]))
+        {
+            printf("sse_ss[%s]: failed!\n", lumaPartStr[part]);
+            return false;
+        }
+    }
+
+    if (opt.sad_x3[part])
+    {
+        if (!check_pixelcmp_x3(ref.sad_x3[part], opt.sad_x3[part]))
+        {
+            printf("sad_x3[%s]: failed!\n", lumaPartStr[part]);
+            return false;
+        }
+    }
+
+    if (opt.sad_x4[part])
+    {
+        if (!check_pixelcmp_x4(ref.sad_x4[part], opt.sad_x4[part]))
+        {
+            printf("sad_x4[%s]: failed!\n", lumaPartStr[part]);
+            return false;
+        }
+    }
+
+    if (opt.pixelavg_pp[part])
+    {
+        if (!check_pixelavg_pp(ref.pixelavg_pp[part], opt.pixelavg_pp[part]))
+        {
+            printf("pixelavg_pp[%s]: failed!\n", lumaPartStr[part]);
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPrimitives& opt)
 {
-    for (uint16_t curpar = 0; curpar < NUM_PARTITIONS; curpar++)
+    for (int size = 4; size <= 64; size *= 2)
     {
-        if (opt.satd[curpar])
-        {
-            if (!check_pixelcmp(ref.satd[curpar], opt.satd[curpar]))
-            {
-                printf("satd[%s]: failed!\n", FuncNames[curpar]);
-                return false;
-            }
-        }
+        int part = PartitionFromSizes(size, size); // 2Nx2N
+        if (!testPartition(part, ref, opt)) return false;
 
-        if (opt.sa8d_inter[curpar])
+        if (size > 4)
         {
-            if (!check_pixelcmp(ref.sa8d_inter[curpar], opt.sa8d_inter[curpar]))
-            {
-                printf("sa8d_inter[%s]: failed!\n", FuncNames[curpar]);
-                return false;
-            }
+            part = PartitionFromSizes(size, size >> 1); // 2NxN
+            if (!testPartition(part, ref, opt)) return false;
+            part = PartitionFromSizes(size >> 1, size); // Nx2N
+            if (!testPartition(part, ref, opt)) return false;
         }
-
-        if (opt.sad[curpar])
+        if (size > 8)
         {
-            if (!check_pixelcmp(ref.sad[curpar], opt.sad[curpar]))
-            {
-                printf("sad[%s]: failed!\n", FuncNames[curpar]);
-                return false;
-            }
-        }
+            // 4 AMP modes
+            part = PartitionFromSizes(size, size >> 2);
+            if (!testPartition(part, ref, opt)) return false;
+            part = PartitionFromSizes(size, 3 * (size >> 2));
+            if (!testPartition(part, ref, opt)) return false;
 
-        if (opt.sse_pp[curpar])
-        {
-            if (!check_pixelcmp(ref.sse_pp[curpar], opt.sse_pp[curpar]))
-            {
-                printf("sse_pp[%s]: failed!\n", FuncNames[curpar]);
-                return false;
-            }
-        }
-
-        if (opt.sse_sp[curpar])
-        {
-            if (!check_pixelcmp_sp(ref.sse_sp[curpar], opt.sse_sp[curpar]))
-            {
-                printf("sse_sp[%s]: failed!\n", FuncNames[curpar]);
-                return false;
-            }
-        }
-
-        if (opt.sse_ss[curpar])
-        {
-            if (!check_pixelcmp_ss(ref.sse_ss[curpar], opt.sse_ss[curpar]))
-            {
-                printf("sse_ss[%s]: failed!\n", FuncNames[curpar]);
-                return false;
-            }
-        }
-
-        if (opt.sad_x3[curpar])
-        {
-            if (!check_pixelcmp_x3(ref.sad_x3[curpar], opt.sad_x3[curpar]))
-            {
-                printf("sad_x3[%s]: failed!\n", FuncNames[curpar]);
-                return false;
-            }
-        }
-
-        if (opt.sad_x4[curpar])
-        {
-            if (!check_pixelcmp_x4(ref.sad_x4[curpar], opt.sad_x4[curpar]))
-            {
-                printf("sad_x4[%s]: failed!\n", FuncNames[curpar]);
-                return false;
-            }
+            part = PartitionFromSizes(size >> 2, size);
+            if (!testPartition(part, ref, opt)) return false;
+            part = PartitionFromSizes(3 * (size >> 2), size);
+            if (!testPartition(part, ref, opt)) return false;
         }
     }
 
@@ -546,7 +649,7 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
         {
             if (!check_calresidual(ref.calcresidual[i], opt.calcresidual[i]))
             {
-                printf("calcresifual width:%d failed!\n", 4 << i);
+                printf("calcresidual width: %d failed!\n", 4 << i);
                 return false;
             }
         }
@@ -565,6 +668,15 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
                 printf("sa8d[%dx%d]: failed!\n", 4 << i, 4 << i);
                 return false;
             }
+        }
+    }
+
+    if (opt.cvt32to16_shr)
+    {
+        if (!check_cvt32to16_shr_t(ref.cvt32to16_shr, opt.cvt32to16_shr))
+        {
+            printf("cvt32to16 failed!\n");
+            return false;
         }
     }
 
@@ -604,11 +716,20 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
         }
     }
 
+    if (opt.weightpUniPixel)
+    {
+        if (!check_weightpUni(ref.weightpUniPixel, opt.weightpUniPixel))
+        {
+            printf("Weighted Prediction for Unidir (Pixel) failed!\n");
+            return false;
+        }
+    }
+
     if (opt.weightpUni)
     {
         if (!check_weightpUni(ref.weightpUni, opt.weightpUni))
         {
-            printf("Weighted Prediction for Unidir failed!\n");
+            printf("Weighted Prediction for Unidir (int16_t) failed!\n");
             return false;
         }
     }
@@ -651,59 +772,92 @@ bool PixelHarness::testCorrectness(const EncoderPrimitives& ref, const EncoderPr
     return true;
 }
 
-void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimitives& opt)
+void PixelHarness::measurePartition(int part, const EncoderPrimitives& ref, const EncoderPrimitives& opt)
 {
     ALIGN_VAR_16(int, cres[16]);
     pixel *fref = pbuf2 + 2 * INCR;
 
-    for (int curpar = 0; curpar < NUM_PARTITIONS; curpar++)
+    if (opt.satd[part])
     {
-        if (opt.satd[curpar])
-        {
-            printf("  satd[%s]", FuncNames[curpar]);
-            REPORT_SPEEDUP(opt.satd[curpar], ref.satd[curpar], pbuf1, STRIDE, fref, STRIDE);
-        }
+        printf("  satd[%s]", lumaPartStr[part]);
+        REPORT_SPEEDUP(opt.satd[part], ref.satd[part], pbuf1, STRIDE, fref, STRIDE);
+    }
 
-        if (opt.sa8d_inter[curpar])
-        {
-            printf("  sa8d[%s]", FuncNames[curpar]);
-            REPORT_SPEEDUP(opt.sa8d_inter[curpar], ref.sa8d_inter[curpar], pbuf1, STRIDE, fref, STRIDE);
-        }
+    if (opt.pixelavg_pp[part])
+    {
+        printf("avg_pp[%s]", lumaPartStr[part]);
+        REPORT_SPEEDUP(opt.pixelavg_pp[part], ref.pixelavg_pp[part], pbuf1, STRIDE, pbuf2, STRIDE, pbuf3, STRIDE, 0);
+    }
 
-        if (opt.sad[curpar])
-        {
-            printf("   sad[%s]", FuncNames[curpar]);
-            REPORT_SPEEDUP(opt.sad[curpar], ref.sad[curpar], pbuf1, STRIDE, fref, STRIDE);
-        }
+    if (opt.sa8d_inter[part])
+    {
+        printf("  sa8d[%s]", lumaPartStr[part]);
+        REPORT_SPEEDUP(opt.sa8d_inter[part], ref.sa8d_inter[part], pbuf1, STRIDE, fref, STRIDE);
+    }
 
-        if (opt.sse_pp[curpar])
-        {
-            printf("sse_pp[%s]", FuncNames[curpar]);
-            REPORT_SPEEDUP(opt.sse_pp[curpar], ref.sse_pp[curpar], pbuf1, STRIDE, fref, STRIDE);
-        }
+    if (opt.sad[part])
+    {
+        printf("   sad[%s]", lumaPartStr[part]);
+        REPORT_SPEEDUP(opt.sad[part], ref.sad[part], pbuf1, STRIDE, fref, STRIDE);
+    }
 
-        if (opt.sse_sp[curpar])
-        {
-            printf("sse_sp[%s]", FuncNames[curpar]);
-            REPORT_SPEEDUP(opt.sse_sp[curpar], ref.sse_sp[curpar], (short*)pbuf1, STRIDE, fref, STRIDE);
-        }
+    if (opt.sad_x3[part])
+    {
+        printf("sad_x3[%s]", lumaPartStr[part]);
+        REPORT_SPEEDUP(opt.sad_x3[part], ref.sad_x3[part], pbuf1, fref, fref + 1, fref - 1, FENC_STRIDE + 5, &cres[0]);
+    }
 
-        if (opt.sse_ss[curpar])
-        {
-            printf("sse_ss[%s]", FuncNames[curpar]);
-            REPORT_SPEEDUP(opt.sse_ss[curpar], ref.sse_ss[curpar], (short*)pbuf1, STRIDE, (short*)fref, STRIDE);
-        }
+    if (opt.sad_x4[part])
+    {
+        printf("sad_x4[%s]", lumaPartStr[part]);
+        REPORT_SPEEDUP(opt.sad_x4[part], ref.sad_x4[part], pbuf1, fref, fref + 1, fref - 1, fref - INCR, FENC_STRIDE + 5, &cres[0]);
+    }
 
-        if (opt.sad_x3[curpar])
-        {
-            printf("sad_x3[%s]", FuncNames[curpar]);
-            REPORT_SPEEDUP(opt.sad_x3[curpar], ref.sad_x3[curpar], pbuf1, fref, fref + 1, fref - 1, FENC_STRIDE + 5, &cres[0]);
-        }
+    if (opt.sse_pp[part])
+    {
+        printf("sse_pp[%s]", lumaPartStr[part]);
+        REPORT_SPEEDUP(opt.sse_pp[part], ref.sse_pp[part], pbuf1, STRIDE, fref, STRIDE);
+    }
 
-        if (opt.sad_x4[curpar])
+    if (opt.sse_sp[part])
+    {
+        printf("sse_sp[%s]", lumaPartStr[part]);
+        REPORT_SPEEDUP(opt.sse_sp[part], ref.sse_sp[part], (short*)pbuf1, STRIDE, fref, STRIDE);
+    }
+
+    if (opt.sse_ss[part])
+    {
+        printf("sse_ss[%s]", lumaPartStr[part]);
+        REPORT_SPEEDUP(opt.sse_ss[part], ref.sse_ss[part], (short*)pbuf1, STRIDE, (short*)fref, STRIDE);
+    }
+}
+
+void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimitives& opt)
+{
+    for (int size = 4; size <= 64; size *= 2)
+    {
+        int part = PartitionFromSizes(size, size); // 2Nx2N
+        measurePartition(part, ref, opt);
+
+        if (size > 4)
         {
-            printf("sad_x4[%s]", FuncNames[curpar]);
-            REPORT_SPEEDUP(opt.sad_x4[curpar], ref.sad_x4[curpar], pbuf1, fref, fref + 1, fref - 1, fref - INCR, FENC_STRIDE + 5, &cres[0]);
+            part = PartitionFromSizes(size, size >> 1); // 2NxN
+            measurePartition(part, ref, opt);
+            part = PartitionFromSizes(size >> 1, size); // Nx2N
+            measurePartition(part, ref, opt);
+        }
+        if (size > 8)
+        {
+            // 4 AMP modes
+            part = PartitionFromSizes(size, size >> 2);
+            measurePartition(part, ref, opt);
+            part = PartitionFromSizes(size, 3 * (size >> 2));
+            measurePartition(part, ref, opt);
+
+            part = PartitionFromSizes(size >> 2, size);
+            measurePartition(part, ref, opt);
+            part = PartitionFromSizes(3 * (size >> 2), size);
+            measurePartition(part, ref, opt);
         }
     }
 
@@ -725,6 +879,12 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
             printf("recon[%dx%d]", 4 << i, 4 << i);
             REPORT_SPEEDUP(opt.calcrecon[i], ref.calcrecon[i], pbuf1, sbuf1, pbuf2, sbuf1, pbuf1, 64, 64, 64);
         }
+    }
+
+    if (opt.cvt32to16_shr)
+    {
+        printf("cvt32to16_shr");
+        REPORT_SPEEDUP(opt.cvt32to16_shr, ref.cvt32to16_shr, sbuf1, ibuf1, 64, 5, 64);
     }
 
     if (opt.blockcpy_pp)
@@ -751,10 +911,16 @@ void PixelHarness::measureSpeed(const EncoderPrimitives& ref, const EncoderPrimi
         REPORT_SPEEDUP(opt.blockcpy_sc, ref.blockcpy_sc, 64, 64, (short*)pbuf1, FENC_STRIDE, (uint8_t*)pbuf2, STRIDE);
     }
 
+    if (opt.weightpUniPixel)
+    {
+        printf("WeightpUni");
+        REPORT_SPEEDUP(opt.weightpUniPixel, ref.weightpUniPixel, pbuf1, pbuf2, 64, 64, 32, 32, 128, 1 << 9, 10, 100);
+    }
+
     if (opt.weightpUni)
     {
         printf("WeightpUni");
-        REPORT_SPEEDUP(opt.weightpUni, ref.weightpUni, sbuf1, pbuf1, 64, 64, 32, 32, 128, 1 << 9, 10, 100);
+        REPORT_SPEEDUP(opt.weightpUni, ref.weightpUni, (int16_t*)sbuf1, pbuf1, 64, 64, 32, 32, 128, 1 << 9, 10, 100);
     }
 
     if (opt.pixelsub_sp)

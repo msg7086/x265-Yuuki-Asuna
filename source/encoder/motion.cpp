@@ -38,7 +38,6 @@
 using namespace x265;
 
 namespace {
-
 struct SubpelWorkload
 {
     int hpel_iters;
@@ -48,7 +47,8 @@ struct SubpelWorkload
     bool hpel_satd;
 };
 
-SubpelWorkload workload[X265_MAX_SUBPEL_LEVEL+1] = {
+SubpelWorkload workload[X265_MAX_SUBPEL_LEVEL + 1] =
+{
     { 1, 4, 0, 4, false }, // 4 SAD HPEL only
     { 1, 4, 1, 4, false }, // 4 SAD HPEL + 4 SATD QPEL
     { 1, 4, 1, 4, true },  // 4 SATD HPEL + 4 SATD QPEL
@@ -58,25 +58,41 @@ SubpelWorkload workload[X265_MAX_SUBPEL_LEVEL+1] = {
     { 2, 8, 1, 8, true },  // 2x8 SATD HPEL + 8 SATD QPEL
     { 2, 8, 2, 8, true },  // 2x8 SATD HPEL + 2x8 SATD QPEL
 };
-
 }
 
-static int size_scale[NUM_PARTITIONS];
+static int size_scale[NUM_LUMA_PARTITIONS];
 #define SAD_THRESH(v) (bcost < (((v >> 4) * size_scale[partEnum])))
 
 static void init_scales(void)
 {
-    int dims[] = { 4, 8, 12, 16, 24, 32, 48, 64 };
-
-    int i = 0;
-
-    for (size_t h = 0; h < sizeof(dims) / sizeof(int); h++)
-    {
-        for (size_t w = 0; w < sizeof(dims) / sizeof(int); w++)
-        {
-            size_scale[i++] = (dims[h] * dims[w]) >> 4;
-        }
-    }
+#define SETUP_SCALE(W, H) \
+    size_scale[LUMA_ ## W ## x ## H] = (H * H) >> 4;
+    SETUP_SCALE(4, 4);
+    SETUP_SCALE(8, 8);
+    SETUP_SCALE(8, 4);
+    SETUP_SCALE(4, 8);
+    SETUP_SCALE(16, 16);
+    SETUP_SCALE(16, 8);
+    SETUP_SCALE(8, 16);
+    SETUP_SCALE(16, 12);
+    SETUP_SCALE(12, 16);
+    SETUP_SCALE(4, 16);
+    SETUP_SCALE(16, 4);
+    SETUP_SCALE(32, 32);
+    SETUP_SCALE(32, 16);
+    SETUP_SCALE(16, 32);
+    SETUP_SCALE(32, 24);
+    SETUP_SCALE(24, 32);
+    SETUP_SCALE(32, 8);
+    SETUP_SCALE(8, 32);
+    SETUP_SCALE(64, 64);
+    SETUP_SCALE(64, 32);
+    SETUP_SCALE(32, 64);
+    SETUP_SCALE(64, 48);
+    SETUP_SCALE(48, 64);
+    SETUP_SCALE(64, 16);
+    SETUP_SCALE(16, 64);
+#undef SETUP_SCALE
 }
 
 MotionEstimate::MotionEstimate()
@@ -87,18 +103,17 @@ MotionEstimate::MotionEstimate()
         init_scales();
 
     fenc = (pixel*)X265_MALLOC(pixel, MAX_CU_SIZE * MAX_CU_SIZE);
-    subpelbuf = (pixel*)X265_MALLOC(pixel, MAX_CU_SIZE * MAX_CU_SIZE);
-    immedVal = (short*)X265_MALLOC(short, MAX_CU_SIZE * (MAX_CU_SIZE + NTAPS_LUMA - 1));
+    subpelbuf = (pixel*)X265_MALLOC(pixel, (MAX_CU_SIZE + 1) * (MAX_CU_SIZE + 1));
+    immedVal = (short*)X265_MALLOC(short, (MAX_CU_SIZE + 1) * (MAX_CU_SIZE + 1 + NTAPS_LUMA - 1));
+    immedVal2 = (int16_t*)X265_MALLOC(int16_t, (MAX_CU_SIZE + 1) * (MAX_CU_SIZE + 1 + NTAPS_LUMA - 1));
 }
 
 MotionEstimate::~MotionEstimate()
 {
-    if (fenc)
-        X265_FREE(fenc);
-    if (subpelbuf)
-        X265_FREE(subpelbuf);
-    if (immedVal)
-        X265_FREE(immedVal);
+    X265_FREE(fenc);
+    X265_FREE(subpelbuf);
+    X265_FREE(immedVal);
+    X265_FREE(immedVal2);
 }
 
 void MotionEstimate::setSourcePU(int offset, int width, int height)
@@ -107,6 +122,7 @@ void MotionEstimate::setSourcePU(int offset, int width, int height)
     primitives.blockcpy_pp(width, height, fenc, FENC_STRIDE, fencplane + offset, fencLumaStride);
 
     partEnum = PartitionFromSizes(width, height);
+    assert(LUMA_4x4 != partEnum);
     sad = primitives.sad[partEnum];
     satd = primitives.satd[partEnum];
     sa8d = primitives.sa8d_inter[partEnum];
@@ -122,6 +138,7 @@ void MotionEstimate::setSourcePU(int offset, int width, int height)
 static const MV hex2[8] = { MV(-1, -2), MV(-2, 0), MV(-1, 2), MV(1, 2), MV(2, 0), MV(1, -2), MV(-1, -2), MV(-2, 0) };
 static const uint8_t mod6m1[8] = { 5, 0, 1, 2, 3, 4, 5, 0 };  /* (x-1)%6 */
 static const MV square1[9] = { MV(0, 0), MV(0, -1), MV(0, 1), MV(-1, 0), MV(1, 0), MV(-1, -1), MV(-1, 1), MV(1, -1), MV(1, 1) };
+static const int square1_dir[9] = { 0, 1, 1, 2, 2, 1, 1, 1, 1 };
 static const MV hex4[16] =
 {
     MV(0, -4),  MV(0, 4),  MV(-2, -3), MV(2, -3),
@@ -443,7 +460,6 @@ me_hex2:
     {
         int ucost1, ucost2;
         int16_t cross_start = 1;
-        assert(PARTITION_4x4 != partEnum);
 
         /* refine predictors */
         omv = bmv;
@@ -502,7 +518,7 @@ me_hex2:
 
             if (numCandidates == 1)
             {
-                if (PARTITION_64x64 == partEnum)
+                if (LUMA_64x64 == partEnum)
                     /* mvc is probably the same as mvp, so the difference isn't meaningful.
                      * but prediction usually isn't too bad, so just use medium range */
                     mvd = 25;
@@ -518,7 +534,7 @@ me_hex2:
 
                 denom = numCandidates - 1;
                 mvd = 0;
-                if (partEnum != PARTITION_64x64)
+                if (partEnum != LUMA_64x64)
                 {
                     mvd = abs(qmvp.x - mvc[0].x) + abs(qmvp.y - mvc[0].y);
                     denom++;
@@ -732,8 +748,10 @@ me_hex2:
                 break;
             }
         }
+
+        break;
     }
-    break;
+
     case X265_FULL_SEARCH:
     {
         // dead slow exhaustive search, but at least it uses sad_x4()
@@ -767,6 +785,8 @@ me_hex2:
                     COST_MV(tmv.x, tmv.y);
             }
         }
+
+        break;
     }
 
     default:
@@ -793,17 +813,57 @@ me_hex2:
     else
         hpelcomp = sad;
 
-    for (int iter = 0; iter < wl.hpel_iters; iter++)
+    if (ref->isLowres)
     {
-        int bdir = 0, cost;
-        for (int i = 1; i <= wl.hpel_dirs; i++)
+        for (int iter = 0; iter < wl.hpel_iters; iter++)
         {
-            MV qmv = bmv + square1[i] * 2;
-            cost = subpelCompare(ref, qmv, hpelcomp) + mvcost(qmv);
-            COPY2_IF_LT(bcost, cost, bdir, i);
-        }
+            int bdir = 0, cost;
+            for (int i = 1; i <= wl.hpel_dirs; i++)
+            {
+                MV qmv = bmv + square1[i] * 2;
+                cost = subpelCompare(ref, qmv, hpelcomp) + mvcost(qmv);
+                COPY2_IF_LT(bcost, cost, bdir, i + 0);
+            }
 
-        bmv += square1[bdir] * 2;
+            bmv += square1[bdir] * 2;
+        }
+    }
+    else
+    {
+        for (int iter = 0; iter < wl.hpel_iters; iter++)
+        {
+            int bdir = 0, cost0, cost1;
+            for (int i = 1; i <= wl.hpel_dirs; i += 2)
+            {
+                MV qmv0 = bmv + square1[i] * 2;
+                MV qmv1 = bmv + square1[i + 1] * 2;
+                int mvcost0 = mvcost(qmv0);
+                int mvcost1 = mvcost(qmv1);
+                int dir = square1_dir[i];
+
+                pixel *fqref = ref->fpelPlane + blockOffset + (qmv0.x >> 2) + (qmv0.y >> 2) * ref->lumaStride;
+                int xFrac = qmv0.x & 0x3;
+                int yFrac = qmv0.y & 0x3;
+
+                // TODO: sad_x2
+                if (xFrac == 0 && yFrac == 0)
+                {
+                    intptr_t offset = (dir == 2) + (dir == 1 ? ref->lumaStride : 0);
+                    cost0 = hpelcomp(fenc, FENC_STRIDE, fqref, ref->lumaStride) + mvcost0;
+                    cost1 = hpelcomp(fenc, FENC_STRIDE, fqref + offset, ref->lumaStride) + mvcost1;
+                }
+                else
+                {
+                    subpelInterpolate(ref, qmv0, dir);
+                    cost0 = hpelcomp(fenc, FENC_STRIDE, subpelbuf, FENC_STRIDE + (dir == 2)) + mvcost0;
+                    cost1 = hpelcomp(fenc, FENC_STRIDE, subpelbuf + (dir == 2) + (dir == 1 ? FENC_STRIDE : 0), FENC_STRIDE + (dir == 2)) + mvcost1;
+                }
+                COPY2_IF_LT(bcost, cost0, bdir, i + 0);
+                COPY2_IF_LT(bcost, cost1, bdir, i + 1);
+            }
+
+            bmv += square1[bdir] * 2;
+        }
     }
     /* if HPEL search used SAD, remeasure with SATD before QPEL */
     if (!wl.hpel_satd)
@@ -818,6 +878,7 @@ me_hex2:
             cost = subpelCompare(ref, qmv, satd) + mvcost(qmv);
             COPY2_IF_LT(bcost, cost, bdir, i);
         }
+
         bmv += square1[bdir];
     }
 
@@ -1082,10 +1143,8 @@ int MotionEstimate::subpelCompare(ReferencePlanes *ref, const MV& qmv, pixelcmp_
             int hpelB = (qmvB.y & 2) | ((qmvB.x & 2) >> 1);
             pixel *frefB = ref->lowresPlane[hpelB] + blockOffset + (qmvB.x >> 2) + (qmvB.y >> 2) * ref->lumaStride;
 
-            /* TODO: make this into a lowres MC primitive */
-            for (int y = 0; y < blockheight; y++)
-                for (int x = 0; x < blockwidth; x++)
-                    subpelbuf[y * FENC_STRIDE + x] = (frefA[y * ref->lumaStride + x] + frefB[y * ref->lumaStride + x] + 1) >> 1;
+            // average nearest two HPEL pixels to generate H.264 style QPEL pixels
+            primitives.pixelavg_pp[LUMA_8x8](subpelbuf, FENC_STRIDE, frefA, ref->lumaStride, frefB, ref->lumaStride, 32);
             return cmp(fenc, FENC_STRIDE, subpelbuf, FENC_STRIDE);
         }
         else
@@ -1106,22 +1165,64 @@ int MotionEstimate::subpelCompare(ReferencePlanes *ref, const MV& qmv, pixelcmp_
         {
             return cmp(fenc, FENC_STRIDE, fref, ref->lumaStride);
         }
-        else if (yFrac == 0)
+        else
         {
-            primitives.ipfilter_pp[FILTER_H_P_P_8](fref, ref->lumaStride, subpelbuf, FENC_STRIDE, blockwidth, blockheight, g_lumaFilter[xFrac]);
+            subpelInterpolate(ref, qmv, 0);
+        }
+        return cmp(fenc, FENC_STRIDE, subpelbuf, FENC_STRIDE);
+    }
+}
+
+void MotionEstimate::subpelInterpolate(ReferencePlanes *ref, MV qmv, int dir)
+{
+    int xFrac = qmv.x & 0x3;
+    int yFrac = qmv.y & 0x3;
+
+    assert(yFrac | xFrac);
+    int realWidth = blockwidth + (dir == 2);
+    int realHeight = blockheight + (dir == 1);
+    intptr_t realStride = FENC_STRIDE + (dir == 2);
+    pixel *fref = ref->unweightedFPelPlane + blockOffset + (qmv.x >> 2) + (qmv.y >> 2) * ref->lumaStride;
+    int shiftNum = IF_INTERNAL_PREC - X265_DEPTH;
+    int local_shift = ref->shift + shiftNum;
+    int local_round = local_shift ? (1 << (local_shift - 1)) : 0;
+    if (ref->isWeighted)
+    {
+        if (yFrac == 0)
+        {
+            primitives.ipfilter_ps[FILTER_H_P_S_8](fref, ref->lumaStride, immedVal, realStride, realWidth, realHeight, g_lumaFilter[xFrac]);
+            primitives.weightpUni(immedVal, subpelbuf, realStride, realStride, realWidth, realHeight, ref->weight, local_round, local_shift, ref->offset);
         }
         else if (xFrac == 0)
         {
-            primitives.ipfilter_pp[FILTER_V_P_P_8](fref, ref->lumaStride, subpelbuf, FENC_STRIDE, blockwidth, blockheight, g_lumaFilter[yFrac]);
+            primitives.ipfilter_ps[FILTER_V_P_S_8](fref, ref->lumaStride, immedVal, realStride, realWidth, realHeight, g_lumaFilter[yFrac]);
+            primitives.weightpUni(immedVal, subpelbuf, realStride, realStride, realWidth, realHeight, ref->weight, local_round, local_shift, ref->offset);
         }
         else
         {
             int filterSize = NTAPS_LUMA;
             int halfFilterSize = (filterSize >> 1);
-            primitives.ipfilter_ps[FILTER_H_P_S_8](fref - (halfFilterSize - 1) * ref->lumaStride, ref->lumaStride, immedVal, blockwidth, blockwidth, blockheight + filterSize - 1, g_lumaFilter[xFrac]);
-            primitives.ipfilter_sp[FILTER_V_S_P_8](immedVal + (halfFilterSize - 1) * blockwidth, blockwidth, subpelbuf, FENC_STRIDE, blockwidth, blockheight, g_lumaFilter[yFrac]);
+            primitives.ipfilter_ps[FILTER_H_P_S_8](fref - (halfFilterSize - 1) * ref->lumaStride, ref->lumaStride, immedVal, realWidth, realWidth, realHeight + filterSize - 1, g_lumaFilter[xFrac]);
+            primitives.ipfilter_ss[FILTER_V_S_S_8](immedVal + (halfFilterSize - 1) * realWidth, realWidth, immedVal2, realStride, realWidth, realHeight, g_lumaFilter[yFrac]);
+            primitives.weightpUni(immedVal2, subpelbuf, realStride, realStride, realWidth, realHeight, ref->weight, local_round, local_shift, ref->offset);
         }
-
-        return cmp(fenc, FENC_STRIDE, subpelbuf, FENC_STRIDE);
+    }
+    else
+    {
+        if (yFrac == 0)
+        {
+            primitives.ipfilter_pp[FILTER_H_P_P_8](fref, ref->lumaStride, subpelbuf, realStride, realWidth, realHeight, g_lumaFilter[xFrac]);
+        }
+        else if (xFrac == 0)
+        {
+            primitives.ipfilter_pp[FILTER_V_P_P_8](fref, ref->lumaStride, subpelbuf, realStride, realWidth, realHeight, g_lumaFilter[yFrac]);
+        }
+        else
+        {
+            int filterSize = NTAPS_LUMA;
+            int halfFilterSize = (filterSize >> 1);
+            primitives.ipfilter_ps[FILTER_H_P_S_8](fref - (halfFilterSize - 1) * ref->lumaStride, ref->lumaStride, immedVal, realWidth, realWidth, realHeight + filterSize - 1, g_lumaFilter[xFrac]);
+            primitives.ipfilter_sp[FILTER_V_S_P_8](immedVal + (halfFilterSize - 1) * realWidth, realWidth, subpelbuf, realStride, realWidth, realHeight, g_lumaFilter[yFrac]);
+        }
     }
 }

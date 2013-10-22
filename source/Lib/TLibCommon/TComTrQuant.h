@@ -157,7 +157,6 @@ public:
     void xSetScalingListEnc(TComScalingList *scalingList, UInt list, UInt size, UInt qp);
     void xSetScalingListDec(TComScalingList *scalingList, UInt list, UInt size, UInt qp);
     void setScalingList(TComScalingList *scalingList);
-    void setScalingListDec(TComScalingList *scalingList);
     void processScalingListEnc(int *coeff, int *quantcoeff, int quantScales, UInt height, UInt width, UInt ratio, int sizuNum, UInt dc);
     void processScalingListDec(int *coeff, int *dequantcoeff, int invQuantScales, UInt height, UInt width, UInt ratio, int sizuNum, UInt dc);
 
@@ -201,8 +200,8 @@ private:
     UInt xRateDistOptQuant(TComDataCU* cu, int* srcCoeff, TCoeff* dstCoeff, UInt width, UInt height, TextType ttype, UInt absPartIdx, int *lastPos);
 
     inline UInt xGetCodedLevel(double& codedCost, double& codedCost0, double& codedCostSig, int levelDouble,
-                                 UInt maxAbsLevel, UShort ctxNumSig, UShort ctxNumOne, UShort ctxNumAbs, UShort absGoRice,
-                                 UInt c1Idx, UInt c2Idx, int qbits, double scale, bool bLast) const;
+                               UInt maxAbsLevel, UShort ctxNumSig, UShort ctxNumOne, UShort ctxNumAbs, UShort absGoRice,
+                               UInt c1Idx, UInt c2Idx, int qbits, double scale, bool bLast) const;
 
     inline double xGetICRateCost(UInt absLevel, UShort ctxNumOne, UShort ctxNumAbs, UShort absGoRice, UInt c1Idx, UInt c2Idx) const;
 
@@ -217,10 +216,6 @@ private:
     inline double xGetICost(double rage) const { return m_lambda * rage; } ///< Get the cost for a specific rate
 
     inline double xGetIEPRate() const          { return 32768; }            ///< Get the cost of an equal probable bit
-
-    void xDeQuant(const TCoeff* src, int* dst, int width, int height, int scalingListType);
-
-    void xIT(UInt mode, int* coeff, short* residual, UInt stride, int width, int height);
 
     void xITransformSkip(int* coeff, short* residual, UInt stride, int width, int height);
 };

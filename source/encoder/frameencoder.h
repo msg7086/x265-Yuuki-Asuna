@@ -27,7 +27,7 @@
 
 #include "TLibCommon/TComBitCounter.h"
 #include "TLibCommon/TComPic.h"
-#include "TLibCommon/AccessUnit.h"
+#include "TLibCommon/NAL.h"
 
 #include "TLibEncoder/TEncCu.h"
 #include "TLibEncoder/TEncSearch.h"
@@ -47,7 +47,7 @@ namespace x265 {
 // private x265 namespace
 
 class ThreadPool;
-class TEncTop;
+class Encoder;
 
 // Manages the wave-front processing of a single encoding frame
 class FrameEncoder : public WaveFront, public Thread
@@ -60,7 +60,7 @@ public:
 
     void setThreadPool(ThreadPool *p);
 
-    void init(TEncTop *top, int numRows);
+    void init(Encoder *top, int numRows);
 
     void destroy();
 
@@ -135,7 +135,7 @@ public:
         }
     }
 
-    int getStreamHeaders(AccessUnit& accessUnitOut);
+    int getStreamHeaders(NALUnitEBSP **nalunits);
 
     void initSlice(TComPic* pic);
 
@@ -148,7 +148,7 @@ public:
     void encodeSlice(TComOutputBitstream* substreams);
 
     /* blocks until worker thread is done, returns encoded picture and bitstream */
-    TComPic *getEncodedPicture(AccessUnit& accessUnit);
+    TComPic *getEncodedPicture(NALUnitEBSP **nalunits);
 
     // worker thread
     void threadMain();
@@ -166,7 +166,7 @@ protected:
 
     void determineSliceBounds();
 
-    TEncTop*                 m_top;
+    Encoder*                 m_top;
     TEncCfg*                 m_cfg;
 
     WeightPredAnalysis       m_wp;
@@ -178,7 +178,8 @@ protected:
 
     /* Picture being encoded, and its output NAL list */
     TComPic*                 m_pic;
-    AccessUnit               m_accessUnit;
+    NALUnitEBSP*             m_nalList[MAX_NAL_UNITS];
+    int                      m_nalCount;
 
     int                      m_numRows;
     int                      m_filterRowDelay;

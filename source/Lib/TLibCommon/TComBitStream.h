@@ -38,11 +38,11 @@
 #ifndef X265_COMBITSTREAM_H
 #define X265_COMBITSTREAM_H
 
+#include "CommonDef.h"
+
 #include <stdint.h>
-#include <vector>
 #include <stdio.h>
 #include <assert.h>
-#include "CommonDef.h"
 
 //! \ingroup TLibCommon
 //! \{
@@ -64,6 +64,7 @@ public:
     virtual void        writeAlignZero() {}
 
     virtual void        write(UInt uiBits, UInt uiNumberOfBits)  = 0;
+    virtual void        writeByte(UInt val)                      = 0;
     virtual void        resetBits()                              = 0;
     virtual UInt getNumberOfWrittenBits() const = 0;
     virtual ~TComBitIf() {}
@@ -82,7 +83,9 @@ class TComOutputBitstream : public TComBitIf
      *  - &fifo.front() to get a pointer to the data array.
      *    NB, this pointer is only valid until the next push_back()/clear()
      */
-    std::vector<uint8_t> *m_fifo;
+    uint8_t *m_fifo;
+    UInt m_fsize;
+    UInt buffsize;
 
     UInt m_num_held_bits; /// number of bits not flushed to bytestream.
     UChar m_held_bits; /// the bits held and not flushed to bytestream.
@@ -101,6 +104,7 @@ public:
      * the current bitstream
      */
     void        write(UInt uiBits, UInt uiNumberOfBits);
+    void        writeByte(UInt val);
 
     /** insert one bits until the bitstream is byte-aligned */
     void        writeAlignOne();
@@ -140,26 +144,24 @@ public:
     /**
      * Return the number of bits that have been written since the last clear()
      */
-    UInt getNumberOfWrittenBits() const { return UInt(m_fifo->size()) * 8 + m_num_held_bits; }
-
-    void insertAt(const TComOutputBitstream& src, UInt pos);
+    UInt getNumberOfWrittenBits() const { return m_fsize * 8 + m_num_held_bits; }
 
     /**
      * Return a reference to the internal fifo
      */
-    std::vector<uint8_t>& getFIFO() { return *m_fifo; }
+    uint8_t* getFIFO() { return m_fifo; }
 
     UChar getHeldBits()          { return m_held_bits; }
 
-    TComOutputBitstream& operator =(const TComOutputBitstream& src);
     /** Return a reference to the internal fifo */
-    std::vector<uint8_t>& getFIFO() const { return *m_fifo; }
+    uint8_t* getFIFO() const { return m_fifo; }
 
     void          addSubstream(TComOutputBitstream* pcSubstream);
     void writeByteAlignment();
 
     //! returns the number of start code emulations contained in the current buffer
     int countStartCodeEmulations();
+    void push_back(uint8_t val);
 };
 }
 //! \}

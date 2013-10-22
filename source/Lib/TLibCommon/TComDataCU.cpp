@@ -197,34 +197,25 @@ void TComDataCU::destroy()
     if (m_iPCMSampleY) { X265_FREE(m_iPCMSampleY); m_iPCMSampleY = NULL; }
     if (m_iPCMSampleCb) { X265_FREE(m_iPCMSampleCb); m_iPCMSampleCb = NULL; }
     if (m_iPCMSampleCr) { X265_FREE(m_iPCMSampleCr); m_iPCMSampleCr = NULL; }
-    delete[] m_cuTransquantBypass; m_cuTransquantBypass = NULL;
-    delete[] m_mvpIdx[0]; m_mvpIdx[0] = NULL;
-    delete[] m_mvpIdx[1]; m_mvpIdx[1] = NULL;
-    delete[] m_mvpNum[0]; m_mvpNum[0] = NULL;
-    delete[] m_mvpNum[1]; m_mvpNum[1] = NULL;
-    delete[] m_skipFlag; m_skipFlag = NULL;
-    delete[] m_partSizes; m_partSizes = NULL;
-    delete[] m_predModes; m_predModes = NULL;
+    delete[] m_cuTransquantBypass;
+    m_cuTransquantBypass = NULL;
+    delete[] m_mvpIdx[0];
+    m_mvpIdx[0] = NULL;
+    delete[] m_mvpIdx[1];
+    m_mvpIdx[1] = NULL;
+    delete[] m_mvpNum[0];
+    m_mvpNum[0] = NULL;
+    delete[] m_mvpNum[1];
+    m_mvpNum[1] = NULL;
+    delete[] m_skipFlag;
+    m_skipFlag = NULL;
+    delete[] m_partSizes;
+    m_partSizes = NULL;
+    delete[] m_predModes;
+    m_predModes = NULL;
 
     m_cuMvField[0].destroy();
     m_cuMvField[1].destroy();
-}
-
-const NDBFBlockInfo& NDBFBlockInfo::operator =(const NDBFBlockInfo& src)
-{
-    this->sliceID = src.sliceID;
-    this->startSU = src.startSU;
-    this->endSU  = src.endSU;
-    this->widthSU = src.widthSU;
-    this->heightSU = src.heightSU;
-    this->posX   = src.posX;
-    this->posY   = src.posY;
-    this->width  = src.width;
-    this->height = src.height;
-    ::memcpy(this->isBorderAvailable, src.isBorderAvailable, sizeof(bool) * ((int)NUM_SGU_BORDER));
-    this->allBordersAvailable = src.allBordersAvailable;
-
-    return *this;
 }
 
 // ====================================================================================================================
@@ -254,7 +245,6 @@ void TComDataCU::initCU(TComPic* pic, UInt cuAddr)
     m_totalCost        = MAX_INT64;
     m_totalDistortion  = 0;
     m_totalBits        = 0;
-    m_totalBins        = 0;
     m_numPartitions    = pic->getNumPartInCU();
 
     // CHECK_ME: why partStartIdx always negative
@@ -409,7 +399,6 @@ void TComDataCU::initEstData(UInt depth, int qp)
     m_totalCost        = MAX_INT64;
     m_totalDistortion  = 0;
     m_totalBits        = 0;
-    m_totalBins        = 0;
 
     UChar width  = g_maxCUWidth  >> depth;
     UChar height = g_maxCUHeight >> depth;
@@ -479,7 +468,6 @@ void TComDataCU::initSubCU(TComDataCU* cu, UInt partUnitIdx, UInt depth, int qp)
     m_totalCost        = MAX_INT64;
     m_totalDistortion  = 0;
     m_totalBits        = 0;
-    m_totalBins        = 0;
     m_numPartitions    = cu->getTotalNumPart() >> 2;
 
     int iSizeInUchar = sizeof(UChar) * m_numPartitions;
@@ -741,7 +729,6 @@ void TComDataCU::copyPartFrom(TComDataCU* cu, UInt partUnitIdx, UInt depth, bool
     memcpy(m_trCoeffCr + uiTmp2, cu->getCoeffCr(), sizeof(TCoeff) * uiTmp);
     memcpy(m_iPCMSampleCb + uiTmp2, cu->getPCMSampleCb(), sizeof(Pel) * uiTmp);
     memcpy(m_iPCMSampleCr + uiTmp2, cu->getPCMSampleCr(), sizeof(Pel) * uiTmp);
-    m_totalBins += cu->m_totalBins;
 }
 
 // Copy current predicted part to a CU in picture.
@@ -805,7 +792,6 @@ void TComDataCU::copyToPic(UChar uhDepth)
     memcpy(rpcCU->getCoeffCr() + tmp2, m_trCoeffCr, sizeof(TCoeff) * tmp);
     memcpy(rpcCU->getPCMSampleCb() + tmp2, m_iPCMSampleCb, sizeof(Pel) * tmp);
     memcpy(rpcCU->getPCMSampleCr() + tmp2, m_iPCMSampleCr, sizeof(Pel) * tmp);
-    rpcCU->m_totalBins = m_totalBins;
 }
 
 void TComDataCU::copyToPic(UChar depth, UInt partIdx, UInt partDepth)
@@ -867,7 +853,6 @@ void TComDataCU::copyToPic(UChar depth, UInt partIdx, UInt partDepth)
     memcpy(cu->getCoeffCr() + tmp2, m_trCoeffCr, sizeof(TCoeff) * tmp);
     memcpy(cu->getPCMSampleCb() + tmp2, m_iPCMSampleCb, sizeof(Pel) * tmp);
     memcpy(cu->getPCMSampleCr() + tmp2, m_iPCMSampleCr, sizeof(Pel) * tmp);
-    cu->m_totalBins = m_totalBins;
 }
 
 // --------------------------------------------------------------------------------------------------------------------
@@ -1139,7 +1124,7 @@ TComDataCU* TComDataCU::getPUAboveRightAdi(UInt& arPartUnitIdx, UInt curPartUnit
     UInt numPartInCUWidth = m_pic->getNumPartInWidth();
 
     if ((m_pic->getCU(m_cuAddr)->getCUPelX() + g_rasterToPelX[absPartIdxRT] + (m_pic->getPicSym()->getMinCUHeight() * partUnitOffset)) >=
-         m_slice->getSPS()->getPicWidthInLumaSamples())
+        m_slice->getSPS()->getPicWidthInLumaSamples())
     {
         arPartUnitIdx = MAX_UINT;
         return NULL;
@@ -1197,7 +1182,7 @@ TComDataCU* TComDataCU::getQpMinCuLeft(UInt& lPartUnitIdx, UInt curAbsIdxInLCU)
 {
     UInt numPartInCUWidth = m_pic->getNumPartInWidth();
     UInt absZorderQpMinCUIdx = (curAbsIdxInLCU >> ((g_maxCUDepth - getSlice()->getPPS()->getMaxCuDQPDepth()) << 1)) <<
-                                ((g_maxCUDepth - getSlice()->getPPS()->getMaxCuDQPDepth()) << 1);
+        ((g_maxCUDepth - getSlice()->getPPS()->getMaxCuDQPDepth()) << 1);
     UInt absRorderQpMinCUIdx = g_zscanToRaster[absZorderQpMinCUIdx];
 
     // check for left LCU boundary
@@ -1222,7 +1207,7 @@ TComDataCU* TComDataCU::getQpMinCuAbove(UInt& aPartUnitIdx, UInt curAbsIdxInLCU)
 {
     UInt numPartInCUWidth = m_pic->getNumPartInWidth();
     UInt absZorderQpMinCUIdx = (curAbsIdxInLCU >> ((g_maxCUDepth - getSlice()->getPPS()->getMaxCuDQPDepth()) << 1)) <<
-                                ((g_maxCUDepth - getSlice()->getPPS()->getMaxCuDQPDepth()) << 1);
+        ((g_maxCUDepth - getSlice()->getPPS()->getMaxCuDQPDepth()) << 1);
     UInt absRorderQpMinCUIdx = g_zscanToRaster[absZorderQpMinCUIdx];
 
     // check for top LCU boundary
@@ -1280,7 +1265,7 @@ char TComDataCU::getLastCodedQP(UInt absPartIdx)
             return getPic()->getCU(getAddr())->getLastCodedQP(getZorderIdxInCU());
         }
         else if (getAddr() > 0 && !(getSlice()->getPPS()->getEntropyCodingSyncEnabledFlag() &&
-                 getAddr() % getPic()->getFrameWidthInCU() == 0))
+                                    getAddr() % getPic()->getFrameWidthInCU() == 0))
         {
             return getPic()->getCU(getAddr() - 1)->getLastCodedQP(getPic()->getNumPartInCU());
         }
@@ -1332,12 +1317,11 @@ void TComDataCU::getAllowedChromaDir(UInt absPartIdx, UInt* modeList)
 *\param   piMode          it is set with MPM mode in case both MPM are equal. It is used to restrict RD search at encode side.
 *\returns Number of MPM
 */
-int TComDataCU::getIntraDirLumaPredictor(UInt absPartIdx, int* intraDirPred, int* modes)
+void TComDataCU::getIntraDirLumaPredictor(UInt absPartIdx, int* intraDirPred, int* modes)
 {
     TComDataCU* tempCU;
     UInt        tempPartIdx;
     int         leftIntraDir, aboveIntraDir;
-    int         predNum = 0;
 
     // Get intra direction of left PU
     tempCU = getPULeft(tempPartIdx, m_absIdxInLCU + absPartIdx);
@@ -1349,7 +1333,6 @@ int TComDataCU::getIntraDirLumaPredictor(UInt absPartIdx, int* intraDirPred, int
 
     aboveIntraDir = tempCU ? (tempCU->isIntra(tempPartIdx) ? tempCU->getLumaIntraDir(tempPartIdx) : DC_IDX) : DC_IDX;
 
-    predNum = 3;
     if (leftIntraDir == aboveIntraDir)
     {
         if (modes)
@@ -1388,8 +1371,6 @@ int TComDataCU::getIntraDirLumaPredictor(UInt absPartIdx, int* intraDirPred, int
             intraDirPred[2] =  (leftIntraDir + aboveIntraDir) < 2 ? VER_IDX : DC_IDX;
         }
     }
-
-    return predNum;
 }
 
 UInt TComDataCU::getCtxSplitFlag(UInt absPartIdx, UInt depth)
@@ -2029,7 +2010,7 @@ void TComDataCU::deriveLeftBottomIdx(UInt partIdx, UInt& outPartIdxLB)
 void TComDataCU::deriveRightBottomIdx(UInt partIdx, UInt& outPartIdxRB)
 {
     outPartIdxRB = g_rasterToZscan[g_zscanToRaster[m_absIdxInLCU] + (((m_height[0] / m_pic->getMinCUHeight()) >> 1) - 1) *
-                   m_pic->getNumPartInWidth() +  m_width[0] / m_pic->getMinCUWidth() - 1];
+                                   m_pic->getNumPartInWidth() +  m_width[0] / m_pic->getMinCUWidth() - 1];
 
     switch (m_partSizes[0])
     {
@@ -3179,192 +3160,6 @@ UInt TComDataCU::getCoefScanIdx(UInt absPartIdx, UInt width, bool bIsLuma, bool 
 UInt TComDataCU::getSCUAddr()
 {
     return (m_cuAddr) * (1 << (m_slice->getSPS()->getMaxCUDepth() << 1)) + m_absIdxInLCU;
-}
-
-/** Set neighboring blocks availabilities for non-deblocked filtering
- * \param numLCUInPicWidth number of LCUs in picture width
- * \param numLCUInPicHeight number of LCUs in picture height
- * \param numSUInLCUWidth number of SUs in LCU width
- * \param numSUInLCUHeight number of SUs in LCU height
- * \param picWidth picture width
- * \param picHeight picture height
- * \param bIndependentSliceBoundaryEnabled true for independent slice boundary enabled
- * \param bTopTileBoundary true means that top boundary coincides tile boundary
- * \param bDownTileBoundary true means that bottom boundary coincides tile boundary
- * \param bLeftTileBoundary true means that left boundary coincides tile boundary
- * \param bRightTileBoundary true means that right boundary coincides tile boundary
- * \param bIndependentTileBoundaryEnabled true for independent tile boundary enabled
- */
-void TComDataCU::setNDBFilterBlockBorderAvailability(UInt /*numLCUInPicWidth*/, UInt /*numLCUInPicHeight*/, UInt numSUInLCUWidth, UInt numSUInLCUHeight,
-                                                     UInt picWidth, UInt picHeight, bool bTopTileBoundary, bool bDownTileBoundary, bool bLeftTileBoundary,
-                                                     bool bRightTileBoundary, bool bIndependentTileBoundaryEnabled)
-{
-    UInt lpelx, tpely;
-    UInt width, height;
-    bool bPicRBoundary, bPicBBoundary, bPicTBoundary, bPicLBoundary;
-    bool bLCURBoundary = false, bLCUBBoundary = false, bLCUTBoundary = false, bLCULBoundary = false;
-    bool* bAvailBorder;
-    bool* bAvail;
-    UInt rTLSU, rBRSU, widthSU;
-    UInt numSGU = (UInt)m_vNDFBlock.size();
-
-    for (int i = 0; i < numSGU; i++)
-    {
-        NDBFBlockInfo& rSGU = m_vNDFBlock[i];
-
-        lpelx = rSGU.posX;
-        tpely = rSGU.posY;
-        width   = rSGU.width;
-        height  = rSGU.height;
-        rTLSU     = g_zscanToRaster[rSGU.startSU];
-        rBRSU     = g_zscanToRaster[rSGU.endSU];
-        widthSU   = rSGU.widthSU;
-
-        bAvailBorder = rSGU.isBorderAvailable;
-
-        bPicTBoundary = (tpely == 0) ? (true) : (false);
-        bPicLBoundary = (lpelx == 0) ? (true) : (false);
-        bPicRBoundary = (!(lpelx + width < picWidth)) ? (true) : (false);
-        bPicBBoundary = (!(tpely + height < picHeight)) ? (true) : (false);
-
-        bLCULBoundary = (rTLSU % numSUInLCUWidth == 0) ? (true) : (false);
-        bLCURBoundary = ((rTLSU + widthSU) % numSUInLCUWidth == 0) ? (true) : (false);
-        bLCUTBoundary = ((UInt)(rTLSU / numSUInLCUWidth) == 0) ? (true) : (false);
-        bLCUBBoundary = ((UInt)(rBRSU / numSUInLCUWidth) == (numSUInLCUHeight - 1)) ? (true) : (false);
-
-        //       SGU_L
-        bAvail = &(bAvailBorder[SGU_L]);
-        if (bPicLBoundary)
-        {
-            *bAvail = false;
-        }
-        else
-        {
-            *bAvail = true;
-        }
-
-        //       SGU_R
-        bAvail = &(bAvailBorder[SGU_R]);
-        if (bPicRBoundary)
-        {
-            *bAvail = false;
-        }
-        else
-        {
-            *bAvail = true;
-        }
-
-        //       SGU_T
-        bAvail = &(bAvailBorder[SGU_T]);
-        if (bPicTBoundary)
-        {
-            *bAvail = false;
-        }
-        else
-        {
-            *bAvail = true;
-        }
-
-        //       SGU_B
-        bAvail = &(bAvailBorder[SGU_B]);
-        if (bPicBBoundary)
-        {
-            *bAvail = false;
-        }
-        else
-        {
-            *bAvail = true;
-        }
-
-        //       SGU_TL
-        bAvail = &(bAvailBorder[SGU_TL]);
-        if (bPicTBoundary || bPicLBoundary)
-        {
-            *bAvail = false;
-        }
-        else
-        {
-            *bAvail = true;
-        }
-
-        //       SGU_TR
-        bAvail = &(bAvailBorder[SGU_TR]);
-        if (bPicTBoundary || bPicRBoundary)
-        {
-            *bAvail = false;
-        }
-        else
-        {
-            *bAvail = true;
-        }
-
-        //       SGU_BL
-        bAvail = &(bAvailBorder[SGU_BL]);
-        if (bPicBBoundary || bPicLBoundary)
-        {
-            *bAvail = false;
-        }
-        else
-        {
-            *bAvail = true;
-        }
-
-        //       SGU_BR
-        bAvail = &(bAvailBorder[SGU_BR]);
-        if (bPicBBoundary || bPicRBoundary)
-        {
-            *bAvail = false;
-        }
-        else
-        {
-            *bAvail = true;
-        }
-
-        if (bIndependentTileBoundaryEnabled)
-        {
-            //left LCU boundary
-            if (!bPicLBoundary && bLCULBoundary)
-            {
-                if (bLeftTileBoundary)
-                {
-                    bAvailBorder[SGU_L] = bAvailBorder[SGU_TL] = bAvailBorder[SGU_BL] = false;
-                }
-            }
-            //right LCU boundary
-            if (!bPicRBoundary && bLCURBoundary)
-            {
-                if (bRightTileBoundary)
-                {
-                    bAvailBorder[SGU_R] = bAvailBorder[SGU_TR] = bAvailBorder[SGU_BR] = false;
-                }
-            }
-            //top LCU boundary
-            if (!bPicTBoundary && bLCUTBoundary)
-            {
-                if (bTopTileBoundary)
-                {
-                    bAvailBorder[SGU_T] = bAvailBorder[SGU_TL] = bAvailBorder[SGU_TR] = false;
-                }
-            }
-            //down LCU boundary
-            if (!bPicBBoundary && bLCUBBoundary)
-            {
-                if (bDownTileBoundary)
-                {
-                    bAvailBorder[SGU_B] = bAvailBorder[SGU_BL] = bAvailBorder[SGU_BR] = false;
-                }
-            }
-        }
-        rSGU.allBordersAvailable = true;
-        for (int b = 0; b < NUM_SGU_BORDER; b++)
-        {
-            if (bAvailBorder[b] == false)
-            {
-                rSGU.allBordersAvailable = false;
-                break;
-            }
-        }
-    }
 }
 
 //! \}

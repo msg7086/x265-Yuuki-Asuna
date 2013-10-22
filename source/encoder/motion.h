@@ -54,6 +54,7 @@ protected:
     /* subpel generation buffers */
     pixel *subpelbuf;
     short *immedVal;
+    int16_t *immedVal2;
     int blockwidth;
     int blockheight;
 
@@ -94,7 +95,9 @@ public:
 
     int motionEstimate(ReferencePlanes *ref, const MV & mvmin, const MV & mvmax, const MV & qmvp, int numCandidates, const MV * mvc, int merange, MV & outQMv);
 
-    int subpelCompare(ReferencePlanes *ref, const MV & qmv, pixelcmp_t);
+    int subpelCompare(ReferencePlanes * ref, const MV &qmv, pixelcmp_t);
+
+    inline void subpelInterpolate(ReferencePlanes *ref, MV qmv, int dir);
 
 protected:
 

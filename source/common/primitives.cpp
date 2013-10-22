@@ -24,7 +24,6 @@
 #include "TLibCommon/TComRom.h"
 #include "TLibCommon/ContextModel.h"
 #include "primitives.h"
-#include "instrset.h"
 #include "common.h"
 
 #include <assert.h>
@@ -36,21 +35,37 @@
 namespace x265 {
 // x265 private namespace
 
-//                           4   8  12  16/48   24     32/64
-static int8_t psize[16] = {  0,  1,  2,  3, -1,  4, -1, 5,
-                            -1, -1, -1,  6, -1, -1, -1, 7 };
+static int8_t maptable[] =
+{
+//  4          8          12          16          20  24          28  32          36  40  44  48          52  56  60  64
+    LUMA_4x4,  LUMA_4x8,  -1,         LUMA_4x16,  -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 4
+    LUMA_8x4,  LUMA_8x8,  -1,         LUMA_8x16,  -1, -1,         -1, LUMA_8x32,  -1, -1, -1, -1,         -1, -1, -1, -1,         // 8
+    -1,        -1,        -1,         LUMA_12x16, -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 12
+    LUMA_16x4, LUMA_16x8, LUMA_16x12, LUMA_16x16, -1, -1,         -1, LUMA_16x32, -1, -1, -1, -1,         -1, -1, -1, LUMA_16x64, // 16
+    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 20
+    -1,        -1,        -1,         -1,         -1, -1,         -1, LUMA_24x32, -1, -1, -1, -1,         -1, -1, -1, -1,         // 24
+    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 28
+    -1,        LUMA_32x8, -1,         LUMA_32x16, -1, LUMA_32x24, -1, LUMA_32x32, -1, -1, -1, -1,         -1, -1, -1, LUMA_32x64, // 32
+    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 36
+    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 40
+    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 44
+    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, LUMA_48x64, // 48
+    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 52
+    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 56
+    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 60
+    -1,        -1,        -1,         LUMA_64x16, -1, -1,         -1, LUMA_64x32, -1, -1, -1, LUMA_64x48, -1, -1, -1, LUMA_64x64  // 64
+};
 
-// Returns a Partitions enum if the size matches a supported performance primitive
+// Returns a LumaPartitions enum if the size matches a supported partition dimension
 int PartitionFromSizes(int width, int height)
 {
-    int8_t w = psize[(width >> 2) - 1];
-    int8_t h = psize[(height >> 2) - 1];
-
     assert(((width | height) & ~(4 | 8 | 16 | 32 | 64)) == 0);
-    assert((w | h) >= 0);
 
-    // there are currently eight height partitions per width
-    return (w << 3) + h;
+    int8_t w = (width >> 2) - 1;
+    int8_t h = (height >> 2) - 1;
+    int part = (int)maptable[(w << 4) + h];
+    assert(part >= 0);
+    return part;
 }
 
 /* the "authoritative" set of encoder primitives */
@@ -69,20 +84,6 @@ void Setup_C_Primitives(EncoderPrimitives &p)
     Setup_C_IPredPrimitives(p);      // intrapred.cpp
 }
 }
-
-static const char *CpuType[] =
-{
-    "",
-    "",
-    "SSE2",
-    "SSE3",
-    "SSSE3",
-    "SSE4.1",
-    "SSE4.2",
-    "AVX",
-    "AVX2",
-    0
-};
 
 using namespace x265;
 
@@ -105,23 +106,31 @@ void x265_setup_primitives(x265_param_t *param, int cpuid)
     }
     if (cpuid == 0)
     {
-        cpuid = instrset_detect(); // Detect supported instruction set
-        if (param->logLevel >= X265_LOG_INFO)
+        cpuid = x265::cpu_detect();
+    }
+    if (param->logLevel >= X265_LOG_INFO)
+    {
+        char buf[1000];
+        char *p = buf + sprintf(buf, "using cpu capabilities:");
+        for (int i = 0; x265::cpu_names[i].flags; i++)
         {
-            x265_log(param, X265_LOG_INFO, "detected SIMD architectures");
-            for (int i = 1; i <= cpuid; i++)
-            {
-                fprintf(stderr, "%s ", CpuType[i]);
-            }
-
-            if (cpuid >= 7)
-            {
-                if (hasXOP()) fprintf(stderr, "XOP ");
-                if (hasFMA3()) fprintf(stderr, "FMA3 ");
-                if (hasFMA4()) fprintf(stderr, "FMA4 ");
-            }
-            fprintf(stderr, "\n");
+            if (!strcmp(x265::cpu_names[i].name, "SSE2")
+                && cpuid & (X265_CPU_SSE2_IS_FAST | X265_CPU_SSE2_IS_SLOW))
+                continue;
+            if (!strcmp(x265::cpu_names[i].name, "SSE3")
+                && (cpuid & X265_CPU_SSSE3 || !(cpuid & X265_CPU_CACHELINE_64)))
+                continue;
+            if (!strcmp(x265::cpu_names[i].name, "SSE4.1")
+                && (cpuid & X265_CPU_SSE42))
+                continue;
+            if ((cpuid & x265::cpu_names[i].flags) == x265::cpu_names[i].flags
+                && (!i || x265::cpu_names[i].flags != x265::cpu_names[i - 1].flags))
+                p += sprintf(p, " %s", x265::cpu_names[i].name);
         }
+
+        if (!cpuid)
+            p += sprintf(p, " none!");
+        x265_log(param, X265_LOG_INFO, "%s\n", buf);
     }
 
     x265_log(param, X265_LOG_INFO, "performance primitives:");
@@ -130,11 +139,29 @@ void x265_setup_primitives(x265_param_t *param, int cpuid)
 
 #if ENABLE_VECTOR_PRIMITIVES
     Setup_Vector_Primitives(primitives, cpuid);
-    if (param->logLevel >= X265_LOG_INFO) fprintf(stderr, " intrinsic");
 #endif
-
 #if ENABLE_ASM_PRIMITIVES
     Setup_Assembly_Primitives(primitives, cpuid);
+#endif
+
+    primitives.sa8d_inter[LUMA_8x8] = primitives.sa8d[BLOCK_8x8];
+    primitives.sa8d_inter[LUMA_16x16] = primitives.sa8d[BLOCK_16x16];
+    primitives.sa8d_inter[LUMA_32x32] = primitives.sa8d[BLOCK_32x32];
+    primitives.sa8d_inter[LUMA_64x64] = primitives.sa8d[BLOCK_64x64];
+
+    // SA8D devolves to SATD for blocks not even multiples of 8x8
+    primitives.sa8d_inter[LUMA_4x4]   = primitives.satd[LUMA_4x4];
+    primitives.sa8d_inter[LUMA_4x8]   = primitives.satd[LUMA_4x8];
+    primitives.sa8d_inter[LUMA_4x16]  = primitives.satd[LUMA_4x16];
+    primitives.sa8d_inter[LUMA_8x4]   = primitives.satd[LUMA_8x4];
+    primitives.sa8d_inter[LUMA_16x4]  = primitives.satd[LUMA_16x4];
+    primitives.sa8d_inter[LUMA_16x12] = primitives.satd[LUMA_16x12];
+    primitives.sa8d_inter[LUMA_12x16] = primitives.satd[LUMA_12x16];
+
+#if ENABLE_VECTOR_PRIMITIVES
+    if (param->logLevel >= X265_LOG_INFO) fprintf(stderr, " intrinsic");
+#endif
+#if ENABLE_ASM_PRIMITIVES
     if (param->logLevel >= X265_LOG_INFO) fprintf(stderr, " assembly");
 #endif
 
@@ -145,4 +172,5 @@ void x265_setup_primitives(x265_param_t *param, int cpuid)
 // the intrinsic primitives will not use MMX instructions, so if assembly
 // is disabled there should be no reason to use EMMS.
 extern "C" void x265_cpu_emms(void) {}
+
 #endif

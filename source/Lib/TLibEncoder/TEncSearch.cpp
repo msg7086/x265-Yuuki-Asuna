@@ -56,32 +56,6 @@ DECLARE_CYCLE_COUNTER(ME);
 //! \ingroup TLibEncoder
 //! \{
 
-static const MV s_mvRefineHpel[9] =
-{
-    MV(0,  0),  // 0
-    MV(0, -1),  // 1
-    MV(0,  1),  // 2
-    MV(-1,  0), // 3
-    MV(1,  0),  // 4
-    MV(-1, -1), // 5
-    MV(1, -1),  // 6
-    MV(-1,  1), // 7
-    MV(1,  1)   // 8
-};
-
-static const MV s_mvRefineQPel[9] =
-{
-    MV(0,  0),  // 0
-    MV(0, -1),  // 1
-    MV(0,  1),  // 2
-    MV(-1, -1), // 5
-    MV(1, -1),  // 6
-    MV(-1,  0), // 3
-    MV(1,  0),  // 4
-    MV(-1,  1), // 7
-    MV(1,  1)   // 8
-};
-
 TEncSearch::TEncSearch()
 {
     m_qtTempCoeffY  = NULL;
@@ -149,7 +123,6 @@ void TEncSearch::init(TEncCfg* cfg, TComRdCost* rdCost, TComTrQuant* trQuant)
     m_trQuant = trQuant;
     m_rdCost  = rdCost;
 
-    m_bipredSearchRange = cfg->param.bipredSearchRange;
     m_me.setSearchMethod(cfg->param.searchMethod);
     m_me.setSubpelRefine(cfg->param.subpelRefine);
 
@@ -219,69 +192,6 @@ void TEncSearch::setQPLambda(int QP, double lambdaLuma, double lambdaChroma)
 {
     m_trQuant->setLambda(lambdaLuma, lambdaChroma);
     m_me.setQP(QP);
-}
-
-UInt TEncSearch::xPatternRefinement(TComPattern* patternKey, Pel *fenc, int fracBits, MV& inOutMv, TComPicYuv* refPic, TComDataCU* cu, UInt partAddr)
-{
-    ALIGN_VAR_32(Pel, qref[64 * 64]);
-    const MV* mvRefine = (fracBits == 2 ? s_mvRefineHpel : s_mvRefineQPel);
-
-    int  stride = refPic->getStride();
-    int  width = patternKey->getROIYWidth();
-    int  height = patternKey->getROIYHeight();
-    pixelcmp_t satd = primitives.satd[PartitionFromSizes(width, height)];
-    Pel *fref = refPic->getLumaAddr(cu->getAddr(), cu->getZorderIdxInCU() + partAddr);
-
-    /* temp buffer for intermediate outputs of horizontal interpolation */
-    int filterSize = NTAPS_LUMA;
-    int tmpStride = width;
-    int halfFilterSize = (filterSize >> 1);
-    short *tmp = (short*)malloc(width * (height + filterSize - 1) * sizeof(short));
-
-    UInt bcost = MAX_UINT;
-    UInt bestDir = 0;
-    for (int i = 0; i < 9; i++)
-    {
-        MV mv = (inOutMv + mvRefine[i]) * fracBits;
-        Pel *src = fref + (mv.x >> 2) + (mv.y >> 2) * stride;
-
-        int xFrac = mv.x & 0x3;
-        int yFrac = mv.y & 0x3;
-        UInt cost = m_me.mvcost(mv);
-        if (yFrac == 0)
-        {
-            if (xFrac == 0)
-            {
-                cost += satd(fenc, FENC_STRIDE, src, stride);
-            }
-            else
-            {
-                primitives.ipfilter_pp[FILTER_H_P_P_8](src, stride, qref, 64, width, height, g_lumaFilter[xFrac]);
-                cost += satd(fenc, FENC_STRIDE, qref, 64);
-            }
-        }
-        else if (xFrac == 0)
-        {
-            primitives.ipfilter_pp[FILTER_V_P_P_8](src, stride, qref, 64, width, height, g_lumaFilter[yFrac]);
-            cost += satd(fenc, FENC_STRIDE, qref, 64);
-        }
-        else
-        {
-            primitives.ipfilter_ps[FILTER_H_P_S_8](src - (halfFilterSize - 1) * stride, stride, tmp, tmpStride, width, height + filterSize - 1, g_lumaFilter[xFrac]);
-            primitives.ipfilter_sp[FILTER_V_S_P_8](tmp + (halfFilterSize - 1) * tmpStride, tmpStride, qref, 64, width, height, g_lumaFilter[yFrac]);
-            cost += satd(fenc, FENC_STRIDE, qref, 64);
-        }
-
-        if (cost < bcost)
-        {
-            bcost  = cost;
-            bestDir = i;
-        }
-    }
-
-    free(tmp);
-    inOutMv += mvRefine[bestDir];
-    return bcost;
 }
 
 void TEncSearch::xEncSubdivCbfQT(TComDataCU* cu, UInt trDepth, UInt absPartIdx, bool bLuma, bool bChroma)
@@ -581,7 +491,7 @@ void TEncSearch::xIntraCodingLumaBlk(TComDataCU* cu,
     {
         short* resiTmp = residual;
         memset(coeff, 0, sizeof(TCoeff) * width * height);
-        primitives.blockfil_s[size](resiTmp, stride, 0);
+        primitives.blockfill_s[size](resiTmp, stride, 0);
     }
 
     //===== reconstruction =====
@@ -714,7 +624,7 @@ void TEncSearch::xIntraCodingChromaBlk(TComDataCU* cu,
         {
             short* resiTmp = residual;
             memset(coeff, 0, sizeof(TCoeff) * width * height);
-            primitives.blockfil_s[size](resiTmp, stride, 0);
+            primitives.blockfill_s[size](resiTmp, stride, 0);
         }
     }
 
@@ -1768,7 +1678,8 @@ void TEncSearch::estIntraPredQT(TComDataCU* cu, TComYuv* fencYuv, TComYuv* predY
 
             int preds[3] = { -1, -1, -1 };
             int mode = -1;
-            int numCand = cu->getIntraDirLumaPredictor(partOffset, preds, &mode);
+            int numCand = 3;
+            cu->getIntraDirLumaPredictor(partOffset, preds, &mode);
             if (mode >= 0)
             {
                 numCand = mode;
@@ -2282,24 +2193,13 @@ void TEncSearch::xRestrictBipredMergeCand(TComDataCU* cu, UInt puIdx, TComMvFiel
 
 /** search of the best candidate for inter prediction
  * \param cu
- * \param fencYuv
- * \param rpcPredYuv
- * \param rpcResiYuv
- * \param rpcRecoYuv
- * \param bUseRes
+ * \param predYuv
+ * \param bUseMRG
  * \returns void
  */
-void TEncSearch::predInterSearch(TComDataCU* cu, TComYuv* fencYuv, TComYuv* predYuv, bool bUseMRG)
+void TEncSearch::predInterSearch(TComDataCU* cu, TComYuv* predYuv, bool bUseMRG, bool bLuma, bool bChroma)
 {
-    m_predYuv[0].clear();
-    m_predYuv[1].clear();
-    m_predTempYuv.clear();
-    predYuv->clear();
-
-    MV mvmin;
-    MV mvmax;
     MV mvzero(0, 0);
-    MV mvtmp;
     MV mv[2];
     MV mvBidir[2];
     MV mvTemp[2][33];
@@ -2313,50 +2213,33 @@ void TEncSearch::predInterSearch(TComDataCU* cu, TComYuv* fencYuv, TComYuv* pred
 
     UInt mbBits[3] = { 1, 1, 0 };
     int refIdx[2] = { 0, 0 }; // If un-initialized, may cause SEGV in bi-directional prediction iterative stage.
-    int refIdxBidir[2];
-
-    UInt partAddr;
-    int  roiWidth, roiHeight;
-    int refStart, refEnd;
+    int refIdxBidir[2] = { 0, 0 };
 
     PartSize partSize = cu->getPartitionSize(0);
-    int bestBiPRefIdxL1 = 0;
-    int bestBiPMvpL1 = 0;
     UInt lastMode = 0;
     int numPart = cu->getNumPartInter();
     int numPredDir = cu->getSlice()->isInterP() ? 1 : 2;
     UInt biPDistTemp = MAX_INT;
 
-    /* TODO: this could be as high as FrameEncoder::prepareEncode() */
     TComPicYuv *fenc = cu->getSlice()->getPic()->getPicYuvOrg();
-    m_me.setSourcePlane(fenc->getLumaAddr(), fenc->getStride());
-
     TComMvField mvFieldNeighbours[MRG_MAX_NUM_CANDS << 1]; // double length for mv of both lists
     UChar interDirNeighbours[MRG_MAX_NUM_CANDS];
     int numValidMergeCand = 0;
 
-    if (!m_cfg->param.bEnableRDO)
-        cu->m_totalCost = 0;
-
     for (int partIdx = 0; partIdx < numPart; partIdx++)
     {
-        UInt bitsTempL0[MAX_NUM_REF];
         UInt listCost[2] = { MAX_UINT, MAX_UINT };
         UInt bits[3];
         UInt costbi = MAX_UINT;
         UInt costTemp = 0;
         UInt bitsTemp;
-        UInt bestBiPDist = MAX_INT;
         MV   mvValidList1;
         int  refIdxValidList1 = 0;
         UInt bitsValidList1 = MAX_UINT;
         UInt costValidList1 = MAX_UINT;
-        UInt costTempL0[MAX_NUM_REF];
-        for (int ref = 0; ref < MAX_NUM_REF; ref++)
-        {
-            costTempL0[ref] = MAX_UINT;
-        }
 
+        UInt partAddr;
+        int  roiWidth, roiHeight;
         xGetBlkBits(partSize, cu->getSlice()->isInterP(), partIdx, lastMode, mbBits);
         cu->getPartIndexAndSize(partIdx, partAddr, roiWidth, roiHeight);
 
@@ -2377,114 +2260,64 @@ void TEncSearch::predInterSearch(TComDataCU* cu, TComYuv* fencYuv, TComYuv* pred
         if (bTestNormalMC)
         {
             // Uni-directional prediction
-            for (int refList = 0; refList < numPredDir; refList++)
+            for (int list = 0; list < numPredDir; list++)
             {
-                RefPicList picList = (refList ? REF_PIC_LIST_1 : REF_PIC_LIST_0);
+                RefPicList picList = (list ? REF_PIC_LIST_1 : REF_PIC_LIST_0);
 
-                for (int refIdxTmp = 0; refIdxTmp < cu->getSlice()->getNumRefIdx(picList); refIdxTmp++)
+                for (int idx = 0; idx < cu->getSlice()->getNumRefIdx(picList); idx++)
                 {
-                    bitsTemp = mbBits[refList];
+                    bitsTemp = mbBits[list];
                     if (cu->getSlice()->getNumRefIdx(picList) > 1)
                     {
-                        bitsTemp += refIdxTmp + 1;
-                        if (refIdxTmp == cu->getSlice()->getNumRefIdx(picList) - 1) bitsTemp--;
+                        bitsTemp += idx + 1;
+                        if (idx == cu->getSlice()->getNumRefIdx(picList) - 1) bitsTemp--;
                     }
-                    xEstimateMvPredAMVP(cu, partIdx, picList, refIdxTmp, mvPred[refList][refIdxTmp], &biPDistTemp);
-                    mvpIdx[refList][refIdxTmp] = cu->getMVPIdx(picList, partAddr);
-                    mvpNum[refList][refIdxTmp] = cu->getMVPNum(picList, partAddr);
+                    xEstimateMvPredAMVP(cu, partIdx, picList, idx, mvPred[list][idx], &biPDistTemp);
+                    mvpIdx[list][idx] = cu->getMVPIdx(picList, partAddr);
+                    mvpNum[list][idx] = cu->getMVPNum(picList, partAddr);
 
-                    if (cu->getSlice()->getMvdL1ZeroFlag() && refList == 1 && biPDistTemp < bestBiPDist)
+                    bitsTemp += m_mvpIdxCost[mvpIdx[list][idx]][AMVP_MAX_NUM_CANDS];
+                    int merange = m_adaptiveRange[picList][idx];
+                    MV& mvp = mvPred[list][idx];
+                    MV& outmv = mvTemp[list][idx];
+
+                    MV mvmin, mvmax;
+                    xSetSearchRange(cu, mvp, merange, mvmin, mvmax);
+                    int satdCost = m_me.motionEstimate(cu->getSlice()->m_mref[picList][idx],
+                                                       mvmin, mvmax, mvp, 3, m_mvPredictors, merange, outmv);
+
+                    /* Get total cost of partition, but only include MV bit cost once */
+                    bitsTemp += m_me.bitcost(outmv);
+                    costTemp = (satdCost - m_me.mvcost(outmv)) + m_rdCost->getCost(bitsTemp);
+
+                    xCopyAMVPInfo(cu->getCUMvField(picList)->getAMVPInfo(), &amvpInfo[list][idx]); // must always be done ( also when AMVP_MODE = AM_NONE )
+                    xCheckBestMVP(cu, picList, mvTemp[list][idx], mvPred[list][idx], mvpIdx[list][idx], bitsTemp, costTemp);
+
+                    if (costTemp < listCost[list])
                     {
-                        bestBiPDist = biPDistTemp;
-                        bestBiPMvpL1 = mvpIdx[refList][refIdxTmp];
-                        bestBiPRefIdxL1 = refIdxTmp;
-                    }
-
-                    bitsTemp += m_mvpIdxCost[mvpIdx[refList][refIdxTmp]][AMVP_MAX_NUM_CANDS];
-
-                    if (refList == 1) // list 1
-                    {
-                        if (cu->getSlice()->getList1IdxToList0Idx(refIdxTmp) >= 0)
-                        {
-                            mvTemp[1][refIdxTmp] = mvTemp[0][cu->getSlice()->getList1IdxToList0Idx(refIdxTmp)];
-                            costTemp = costTempL0[cu->getSlice()->getList1IdxToList0Idx(refIdxTmp)];
-
-                            /* first subtract the bit-rate part of the cost of the other list */
-                            costTemp -= m_rdCost->getCost(bitsTempL0[cu->getSlice()->getList1IdxToList0Idx(refIdxTmp)]);
-
-                            /* correct the bit-rate part of the current ref */
-                            m_me.setMVP(mvPred[refList][refIdxTmp]);
-                            bitsTemp += m_me.bitcost(mvTemp[1][refIdxTmp]);
-
-                            /* calculate the correct cost */
-                            costTemp += m_rdCost->getCost(bitsTemp);
-                        }
-                        else
-                        {
-                            CYCLE_COUNTER_START(ME);
-                            int merange = m_adaptiveRange[picList][refIdxTmp];
-                            MV& mvp = mvPred[refList][refIdxTmp];
-                            MV& outmv = mvTemp[refList][refIdxTmp];
-                            xSetSearchRange(cu, mvp, merange, mvmin, mvmax);
-                            int satdCost = m_me.motionEstimate(cu->getSlice()->m_mref[picList][refIdxTmp],
-                                                               mvmin, mvmax, mvp, 3, m_mvPredictors, merange, outmv);
-
-                            /* Get total cost of partition, but only include MV bit cost once */
-                            bitsTemp += m_me.bitcost(outmv);
-                            costTemp = (satdCost - m_me.mvcost(outmv)) + m_rdCost->getCost(bitsTemp);
-                            CYCLE_COUNTER_STOP(ME);
-                        }
-                    }
-                    else
-                    {
-                        CYCLE_COUNTER_START(ME);
-                        int merange = m_adaptiveRange[picList][refIdxTmp];
-                        MV& mvp = mvPred[refList][refIdxTmp];
-                        MV& outmv = mvTemp[refList][refIdxTmp];
-                        xSetSearchRange(cu, mvp, merange, mvmin, mvmax);
-                        int satdCost = m_me.motionEstimate(cu->getSlice()->m_mref[picList][refIdxTmp],
-                                                            mvmin, mvmax, mvp, 3, m_mvPredictors, merange, outmv);
-
-                        /* Get total cost of partition, but only include MV bit cost once */
-                        bitsTemp += m_me.bitcost(outmv);
-                        costTemp = (satdCost - m_me.mvcost(outmv)) + m_rdCost->getCost(bitsTemp);
-                        CYCLE_COUNTER_STOP(ME);
-                    }
-                    xCopyAMVPInfo(cu->getCUMvField(picList)->getAMVPInfo(), &amvpInfo[refList][refIdxTmp]); // must always be done ( also when AMVP_MODE = AM_NONE )
-                    xCheckBestMVP(cu, picList, mvTemp[refList][refIdxTmp], mvPred[refList][refIdxTmp], mvpIdx[refList][refIdxTmp], bitsTemp, costTemp);
-
-                    if (refList == 0)
-                    {
-                        costTempL0[refIdxTmp] = costTemp;
-                        bitsTempL0[refIdxTmp] = bitsTemp;
-                    }
-                    if (costTemp < listCost[refList])
-                    {
-                        listCost[refList] = costTemp;
-                        bits[refList] = bitsTemp; // storing for bi-prediction
+                        listCost[list] = costTemp;
+                        bits[list] = bitsTemp; // storing for bi-prediction
 
                         // set motion
-                        mv[refList] = mvTemp[refList][refIdxTmp];
-                        refIdx[refList] = refIdxTmp;
+                        mv[list] = mvTemp[list][idx];
+                        refIdx[list] = idx;
                     }
 
-                    if (refList == 1 && costTemp < costValidList1 && cu->getSlice()->getList1IdxToList0Idx(refIdxTmp) < 0)
+                    if (list == 1 && costTemp < costValidList1)
                     {
                         costValidList1 = costTemp;
                         bitsValidList1 = bitsTemp;
 
                         // set motion
-                        mvValidList1     = mvTemp[refList][refIdxTmp];
-                        refIdxValidList1 = refIdxTmp;
+                        mvValidList1     = mvTemp[list][idx];
+                        refIdxValidList1 = idx;
                     }
                 }
             }
 
-            //  Bi-directional prediction
+            // Bi-directional prediction
             if ((cu->getSlice()->isInterB()) && (cu->isBipredRestriction(partIdx) == false))
             {
-                UInt motBits[2];
-
                 mvBidir[0] = mv[0];
                 mvBidir[1] = mv[1];
                 refIdxBidir[0] = refIdx[0];
@@ -2493,109 +2326,62 @@ void TEncSearch::predInterSearch(TComDataCU* cu, TComYuv* fencYuv, TComYuv* pred
                 ::memcpy(mvPredBi, mvPred, sizeof(mvPred));
                 ::memcpy(mvpIdxBi, mvpIdx, sizeof(mvpIdx));
 
-                if (cu->getSlice()->getMvdL1ZeroFlag())
+                // Generate reference subpels
+                xPredInterLumaBlk(cu, cu->getSlice()->m_mref[0][refIdx[0]], partAddr, &mv[0], roiWidth, roiHeight, &m_predYuv[0]);
+                xPredInterLumaBlk(cu, cu->getSlice()->m_mref[1][refIdx[1]], partAddr, &mv[1], roiWidth, roiHeight, &m_predYuv[1]);
+
+                pixel *ref0 = m_predYuv[0].getLumaAddr(partAddr);
+                pixel *ref1 = m_predYuv[1].getLumaAddr(partAddr);
+
+                ALIGN_VAR_32(pixel, avg[MAX_CU_SIZE * MAX_CU_SIZE]);
+
+                int partEnum = PartitionFromSizes(roiWidth, roiHeight);
+                primitives.pixelavg_pp[partEnum](avg, roiWidth, ref0, m_predYuv[0].getStride(), ref1, m_predYuv[1].getStride(), 32);
+                int satdCost = primitives.satd[partEnum](pu, fenc->getStride(), avg, roiWidth);
+                x265_emms();
+                bits[2] = bits[0] + bits[1] - mbBits[0] - mbBits[1] + mbBits[2];
+                costbi =  satdCost + m_rdCost->getCost(bits[2]);
+
+                if (mv[0].notZero() || mv[1].notZero())
                 {
-                    xCopyAMVPInfo(&amvpInfo[1][bestBiPRefIdxL1], cu->getCUMvField(REF_PIC_LIST_1)->getAMVPInfo());
-                    cu->setMVPIdxSubParts(bestBiPMvpL1, REF_PIC_LIST_1, partAddr, partIdx, cu->getDepth(partAddr));
-                    mvpIdxBi[1][bestBiPRefIdxL1] = bestBiPMvpL1;
-                    mvPredBi[1][bestBiPRefIdxL1] = cu->getCUMvField(REF_PIC_LIST_1)->getAMVPInfo()->m_mvCand[bestBiPMvpL1];
+                    ref0 = cu->getSlice()->m_mref[0][refIdx[0]]->fpelPlane + (pu - fenc->getLumaAddr());  //MV(0,0) of ref0
+                    ref1 = cu->getSlice()->m_mref[1][refIdx[1]]->fpelPlane + (pu - fenc->getLumaAddr());  //MV(0,0) of ref1
+                    intptr_t refStride = cu->getSlice()->m_mref[0][refIdx[0]]->lumaStride;
 
-                    mvBidir[1] = mvPredBi[1][bestBiPRefIdxL1];
-                    refIdxBidir[1] = bestBiPRefIdxL1;
-                    cu->getCUMvField(REF_PIC_LIST_1)->setAllMv(mvBidir[1], partSize, partAddr, 0, partIdx);
-                    cu->getCUMvField(REF_PIC_LIST_1)->setAllRefIdx(refIdxBidir[1], partSize, partAddr, 0, partIdx);
-                    motionCompensation(cu, &m_predYuv[1], REF_PIC_LIST_1, partIdx);
+                    primitives.pixelavg_pp[partEnum](avg, roiWidth, ref0, refStride, ref1, refStride, 32);
+                    satdCost = primitives.satd[partEnum](pu, fenc->getStride(), avg, roiWidth);
+                    x265_emms();
 
-                    motBits[0] = bits[0] - mbBits[0];
-                    motBits[1] = mbBits[1];
+                    unsigned int bitsZero0, bitsZero1;
+                    m_me.setMVP(mvPredBi[0][refIdxBidir[0]]);
+                    bitsZero0 = bits[0] - m_me.bitcost(mv[0]) + m_me.bitcost(mvzero);
 
-                    if (cu->getSlice()->getNumRefIdx(REF_PIC_LIST_1) > 1)
+                    m_me.setMVP(mvPredBi[1][refIdxBidir[1]]);
+                    bitsZero1 = bits[1] - m_me.bitcost(mv[1]) + m_me.bitcost(mvzero);
+
+                    UInt costZero = satdCost + m_rdCost->getCost(bitsZero0) + m_rdCost->getCost(bitsZero1);
+
+                    MV mvpZero[2];
+                    int mvpidxZero[2];
+                    mvpZero[0] = mvPredBi[0][refIdxBidir[0]];
+                    mvpidxZero[0] = mvpIdxBi[0][refIdxBidir[0]];
+                    xCopyAMVPInfo(&amvpInfo[0][refIdxBidir[0]], cu->getCUMvField(REF_PIC_LIST_0)->getAMVPInfo());
+                    xCheckBestMVP(cu, REF_PIC_LIST_0, mvzero, mvpZero[0], mvpidxZero[0], bitsZero0, costZero);
+                    mvpZero[1] = mvPredBi[1][refIdxBidir[1]];
+                    mvpidxZero[1] = mvpIdxBi[1][refIdxBidir[1]];
+                    xCopyAMVPInfo(&amvpInfo[1][refIdxBidir[1]], cu->getCUMvField(REF_PIC_LIST_1)->getAMVPInfo());
+                    xCheckBestMVP(cu, REF_PIC_LIST_1, mvzero, mvpZero[1], mvpidxZero[1], bitsZero1, costZero);
+
+                    if (costZero < costbi)
                     {
-                        motBits[1] += bestBiPRefIdxL1 + 1;
-                        if (bestBiPRefIdxL1 == cu->getSlice()->getNumRefIdx(REF_PIC_LIST_1) - 1) motBits[1]--;
-                    }
-
-                    motBits[1] += m_mvpIdxCost[mvpIdxBi[1][bestBiPRefIdxL1]][AMVP_MAX_NUM_CANDS];
-
-                    bits[2] = mbBits[2] + motBits[0] + motBits[1];
-
-                    mvTemp[1][bestBiPRefIdxL1] = mvBidir[1];
-                }
-                else
-                {
-                    motBits[0] = bits[0] - mbBits[0];
-                    motBits[1] = bits[1] - mbBits[1];
-                    bits[2] = mbBits[2] + motBits[0] + motBits[1];
-                }
-
-                int refList = 0;
-                if (listCost[0] <= listCost[1])
-                {
-                    refList = 1;
-                }
-                else
-                {
-                    refList = 0;
-                }
-                if (!cu->getSlice()->getMvdL1ZeroFlag())
-                {
-                    cu->getCUMvField(RefPicList(1 - refList))->setAllMv(mv[1 - refList], partSize, partAddr, 0, partIdx);
-                    cu->getCUMvField(RefPicList(1 - refList))->setAllRefIdx(refIdx[1 - refList], partSize, partAddr, 0, partIdx);
-                    motionCompensation(cu, &m_predYuv[1 - refList], RefPicList(1 - refList), partIdx);
-                }
-                RefPicList  picList = (refList ? REF_PIC_LIST_1 : REF_PIC_LIST_0);
-
-                if (cu->getSlice()->getMvdL1ZeroFlag())
-                {
-                    refList = 0;
-                    picList = REF_PIC_LIST_0;
-                }
-
-                bool bChanged = false;
-
-                refStart = 0;
-                refEnd   = cu->getSlice()->getNumRefIdx(picList) - 1;
-
-                for (int refIdxTmp = refStart; refIdxTmp <= refEnd; refIdxTmp++)
-                {
-                    bitsTemp = mbBits[2] + motBits[1 - refList];
-                    if (cu->getSlice()->getNumRefIdx(picList) > 1)
-                    {
-                        bitsTemp += refIdxTmp + 1;
-                        if (refIdxTmp == cu->getSlice()->getNumRefIdx(picList) - 1) bitsTemp--;
-                    }
-                    bitsTemp += m_mvpIdxCost[mvpIdxBi[refList][refIdxTmp]][AMVP_MAX_NUM_CANDS];
-                    // call bidir ME
-                    xMotionEstimation(cu, fencYuv, partIdx, picList, &mvPredBi[refList][refIdxTmp], refIdxTmp, mvTemp[refList][refIdxTmp],
-                                      bitsTemp, costTemp);
-                    xCopyAMVPInfo(&amvpInfo[refList][refIdxTmp], cu->getCUMvField(picList)->getAMVPInfo());
-                    xCheckBestMVP(cu, picList, mvTemp[refList][refIdxTmp], mvPredBi[refList][refIdxTmp], mvpIdxBi[refList][refIdxTmp],
-                                  bitsTemp, costTemp);
-
-                    if (costTemp < costbi)
-                    {
-                        bChanged = true;
-
-                        mvBidir[refList]     = mvTemp[refList][refIdxTmp];
-                        refIdxBidir[refList] = refIdxTmp;
-
-                        costbi           = costTemp;
-                        motBits[refList] = bitsTemp - mbBits[2] - motBits[1 - refList];
-                        bits[2]          = bitsTemp;
-                    }
-                } // for loop-refIdxTmp
-
-                if (!bChanged)
-                {
-                    if (costbi <= listCost[0] && costbi <= listCost[1])
-                    {
-                        xCopyAMVPInfo(&amvpInfo[0][refIdxBidir[0]], cu->getCUMvField(REF_PIC_LIST_0)->getAMVPInfo());
-                        xCheckBestMVP(cu, REF_PIC_LIST_0, mvBidir[0], mvPredBi[0][refIdxBidir[0]], mvpIdxBi[0][refIdxBidir[0]], bits[2], costbi);
-                        if (!cu->getSlice()->getMvdL1ZeroFlag())
-                        {
-                            xCopyAMVPInfo(&amvpInfo[1][refIdxBidir[1]], cu->getCUMvField(REF_PIC_LIST_1)->getAMVPInfo());
-                            xCheckBestMVP(cu, REF_PIC_LIST_1, mvBidir[1], mvPredBi[1][refIdxBidir[1]], mvpIdxBi[1][refIdxBidir[1]], bits[2], costbi);
-                        }
+                        costbi = costZero;
+                        mvBidir[0].x = mvBidir[0].y = 0;
+                        mvBidir[1].x = mvBidir[1].y = 0;
+                        mvPredBi[0][refIdxBidir[0]] = mvpZero[0];
+                        mvPredBi[1][refIdxBidir[1]] = mvpZero[1];
+                        mvpIdxBi[0][refIdxBidir[0]] = mvpidxZero[0];
+                        mvpIdxBi[1][refIdxBidir[1]] = mvpidxZero[1];
+                        bits[2] = bitsZero0 + bitsZero1 - mbBits[0] - mbBits[1] + mbBits[2];
                     }
                 }
             } // if (B_SLICE)
@@ -2631,11 +2417,11 @@ void TEncSearch::predInterSearch(TComDataCU* cu, TComYuv* fencYuv, TComYuv* pred
                     cu->getCUMvField(REF_PIC_LIST_1)->setAllRefIdx(refIdxBidir[1], partSize, partAddr, 0, partIdx);
                 }
                 {
-                    mvtmp = mvBidir[0] - mvPredBi[0][refIdxBidir[0]];
+                    MV mvtmp = mvBidir[0] - mvPredBi[0][refIdxBidir[0]];
                     cu->getCUMvField(REF_PIC_LIST_0)->setAllMvd(mvtmp, partSize, partAddr, 0, partIdx);
                 }
                 {
-                    mvtmp = mvBidir[1] - mvPredBi[1][refIdxBidir[1]];
+                    MV mvtmp = mvBidir[1] - mvPredBi[1][refIdxBidir[1]];
                     cu->getCUMvField(REF_PIC_LIST_1)->setAllMvd(mvtmp, partSize, partAddr, 0, partIdx);
                 }
 
@@ -2654,7 +2440,7 @@ void TEncSearch::predInterSearch(TComDataCU* cu, TComYuv* fencYuv, TComYuv* pred
                 cu->getCUMvField(REF_PIC_LIST_0)->setAllMv(mv[0], partSize, partAddr, 0, partIdx);
                 cu->getCUMvField(REF_PIC_LIST_0)->setAllRefIdx(refIdx[0], partSize, partAddr, 0, partIdx);
                 {
-                    mvtmp = mv[0] - mvPred[0][refIdx[0]];
+                    MV mvtmp = mv[0] - mvPred[0][refIdx[0]];
                     cu->getCUMvField(REF_PIC_LIST_0)->setAllMvd(mvtmp, partSize, partAddr, 0, partIdx);
                 }
                 cu->setInterDirSubParts(1, partAddr, partIdx, cu->getDepth(0));
@@ -2670,7 +2456,7 @@ void TEncSearch::predInterSearch(TComDataCU* cu, TComYuv* fencYuv, TComYuv* pred
                 cu->getCUMvField(REF_PIC_LIST_1)->setAllMv(mv[1], partSize, partAddr, 0, partIdx);
                 cu->getCUMvField(REF_PIC_LIST_1)->setAllRefIdx(refIdx[1], partSize, partAddr, 0, partIdx);
                 {
-                    mvtmp = mv[1] - mvPred[1][refIdx[1]];
+                    MV mvtmp = mv[1] - mvPred[1][refIdx[1]];
                     cu->getCUMvField(REF_PIC_LIST_1)->setAllMvd(mvtmp, partSize, partAddr, 0, partIdx);
                 }
                 cu->setInterDirSubParts(2, partAddr, partIdx, cu->getDepth(0));
@@ -2733,8 +2519,6 @@ void TEncSearch::predInterSearch(TComDataCU* cu, TComYuv* fencYuv, TComYuv* pred
 #if CU_STAT_LOGFILE
                 meCost += mrgCost;
 #endif
-                if (!m_cfg->param.bEnableRDO)
-                    cu->m_totalCost += mrgCost;
             }
             else
             {
@@ -2748,16 +2532,9 @@ void TEncSearch::predInterSearch(TComDataCU* cu, TComYuv* fencYuv, TComYuv* pred
 #if CU_STAT_LOGFILE
                 meCost += meCost;
 #endif
-                if (!m_cfg->param.bEnableRDO)
-                    cu->m_totalCost += meCost;
             }
         }
-        else
-        {
-            if (!m_cfg->param.bEnableRDO)
-                cu->m_totalCost += costTemp;
-        }
-        motionCompensation(cu, predYuv, REF_PIC_LIST_X, partIdx);
+        motionCompensation(cu, predYuv, REF_PIC_LIST_X, partIdx, bLuma, bChroma);
     }
 
     setWpScalingDistParam(cu, -1, REF_PIC_LIST_X);
@@ -2957,53 +2734,6 @@ UInt TEncSearch::xGetTemplateCost(TComDataCU* cu, UInt partAddr, TComYuv* templa
     return m_rdCost->calcRdSADCost(cost, m_mvpIdxCost[mvpIdx][mvpCandCount]);
 }
 
-void TEncSearch::xMotionEstimation(TComDataCU* cu, TComYuv* fencYuv, int partIdx, RefPicList picList, MV* mvp, int refIdxPred,
-                                   MV& outmv, UInt& outBits, UInt& outCost)
-{
-    /* This function only performs bidirectional search */
-    ALIGN_VAR_32(pixel, fenc[64 * 64]);
-    int merange = m_bipredSearchRange;
-    UInt partAddr;
-    int width, height;
-    cu->getPartIndexAndSize(partIdx, partAddr, width, height);
-
-    TComYuv* yuv = fencYuv;
-    TComYuv* yuvOther = &m_predYuv[1 - (int)picList];
-    yuv = &m_predTempYuv;
-    fencYuv->copyPartToPartYuv(yuv, partAddr, width, height);
-    yuv->removeHighFreq(yuvOther, partAddr, width, height);
-
-    // Search key pattern initialization
-    TComPattern* patternKey = cu->getPattern();
-    patternKey->initPattern(yuv->getLumaAddr(partAddr), yuv->getCbAddr(partAddr), yuv->getCrAddr(partAddr), width, height, yuv->getStride(), 0, 0);
-    // copy smoothed pixels into aligned fenc buffer
-    primitives.blockcpy_pp(width, height, fenc, 64, yuv->getLumaAddr(partAddr), yuv->getStride());
-
-    MV mvmin, mvmax;
-    xSetSearchRange(cu, outmv, merange, mvmin, mvmax);
-    //setWpScalingDistParam(cu, refIdxPred, picList);
-
-    TComPicYuv* refPic = cu->getSlice()->getRefPic(picList, refIdxPred)->getPicYuvRec();
-    Pel* fref = refPic->getLumaAddr(cu->getAddr(), cu->getZorderIdxInCU() + partAddr);
-    int  stride = refPic->getStride();
-
-    // Configure the MV bit cost calculator
-    m_me.setMVP(*mvp);
-
-    // Do integer search
-    xPatternSearch(patternKey, fenc, fref, stride, &mvmin, &mvmax, outmv, outCost);
-
-    outmv <<= 1; // now HPEL
-    xPatternRefinement(patternKey, fenc, 2, outmv, refPic, cu, partAddr);
-
-    outmv <<= 1; // now QPEL
-    outCost = xPatternRefinement(patternKey, fenc, 1, outmv, refPic, cu, partAddr);
-
-    UInt mvbits = m_me.bitcost(outmv);
-    outBits += mvbits;
-    outCost = ((outCost - m_rdCost->getCost(mvbits)) >> 1) + m_rdCost->getCost(outBits);
-}
-
 void TEncSearch::xSetSearchRange(TComDataCU* cu, MV mvp, int merange, MV& mvmin, MV& mvmax)
 {
     cu->clipMv(mvp);
@@ -3021,67 +2751,6 @@ void TEncSearch::xSetSearchRange(TComDataCU* cu, MV mvp, int merange, MV& mvmin,
     /* conditional clipping for frame parallelism */
     mvmin.y = X265_MIN(mvmin.y, m_refLagPixels);
     mvmax.y = X265_MIN(mvmax.y, m_refLagPixels);
-}
-
-void TEncSearch::xPatternSearch(TComPattern* patternKey, Pel *fenc, Pel* refY, int stride, MV* mvmin, MV* mvmax, MV& outmv, UInt& outcost)
-{
-    int srchRngHorLeft   = mvmin->x;
-    int srchRngHorRight  = mvmax->x;
-    int srchRngVerTop    = mvmin->y;
-    int srchRngVerBottom = mvmax->y;
-
-    int part = PartitionFromSizes(patternKey->getROIYWidth(), patternKey->getROIYHeight());
-    pixelcmp_t sad = primitives.sad[part];
-    pixelcmp_x4_t sad_x4 = primitives.sad_x4[part];
-    ALIGN_VAR_32(int, costs[16]);
-
-    refY += srchRngVerTop * stride;
-
-    // find min. distortion position
-    UInt bcost = MAX_UINT;
-    for (int y = srchRngVerTop; y <= srchRngVerBottom; y++)
-    {
-        for (int x = srchRngHorLeft; x <= srchRngHorRight; x++)
-        {
-            MV mv(x, y);
-            if (x + 3 <= srchRngHorRight)
-            {
-                pixel *pix_base = refY + x;
-                sad_x4(fenc,
-                    pix_base,
-                    pix_base + 1,
-                    pix_base + 2,
-                    pix_base + 3,
-                    stride, costs);
-                costs[0] += m_me.mvcost(mv << 2);
-                COPY2_IF_LT(bcost, costs[0], outmv, mv);
-                mv.x++;
-                costs[1] += m_me.mvcost(mv << 2);
-                COPY2_IF_LT(bcost, costs[1], outmv, mv);
-                mv.x++;
-                costs[2] += m_me.mvcost(mv << 2);
-                COPY2_IF_LT(bcost, costs[2], outmv, mv);
-                mv.x++;
-                costs[3] += m_me.mvcost(mv << 2);
-                COPY2_IF_LT(bcost, costs[3], outmv, mv);
-                x += 3;
-            }
-            else
-            {
-                UInt cost = sad(fenc, FENC_STRIDE, refY + x, stride) + m_me.mvcost(mv << 2);
-
-                if (cost < bcost)
-                {
-                    bcost = cost;
-                    outmv = mv;
-                }
-            }
-        }
-
-        refY += stride;
-    }
-
-    outcost = bcost - m_me.mvcost(outmv << 2);
 }
 
 /** encode residual and calculate rate-distortion for a CU block
@@ -3459,7 +3128,7 @@ void TEncSearch::xEstimateResidualQT(TComDataCU* cu,
             const UInt stride = m_qtTempTComYuv[qtlayer].m_width;
 
             assert(trWidth == trHeight);
-            primitives.blockfil_s[(int)g_convertToBit[trWidth]](ptr, stride, 0);
+            primitives.blockfill_s[(int)g_convertToBit[trWidth]](ptr, stride, 0);
         }
 
         UInt distU = 0;
@@ -3533,7 +3202,7 @@ void TEncSearch::xEstimateResidualQT(TComDataCU* cu,
                 const UInt stride = m_qtTempTComYuv[qtlayer].m_cwidth;
 
                 assert(trWidthC == trHeightC);
-                primitives.blockfil_s[(int)g_convertToBit[trWidthC]](ptr, stride, 0);
+                primitives.blockfill_s[(int)g_convertToBit[trWidthC]](ptr, stride, 0);
             }
 
             distV = m_rdCost->scaleChromaDistCr(primitives.sse_sp[partSizeC](resiYuv->getCrAddr(absTUPartIdxC), resiYuv->m_cwidth, m_tempPel, trWidthC));
@@ -3599,7 +3268,7 @@ void TEncSearch::xEstimateResidualQT(TComDataCU* cu,
                 const UInt stride = m_qtTempTComYuv[qtlayer].m_cwidth;
 
                 assert(trWidthC == trHeightC);
-                primitives.blockfil_s[(int)g_convertToBit[trWidthC]](ptr, stride, 0);
+                primitives.blockfill_s[(int)g_convertToBit[trWidthC]](ptr, stride, 0);
             }
         }
         cu->setCbfSubParts(absSumY ? setCbf : 0, TEXT_LUMA, absPartIdx, depth);
@@ -4198,218 +3867,6 @@ UInt  TEncSearch::estimateHeaderBits(TComDataCU* cu, UInt absPartIdx)
     return bits;
 }
 
-/**
- * \brief Generate half-sample interpolated block
- *
- * \param pattern Reference picture ROI
- * \param biPred    Flag indicating whether block is for biprediction
- */
-void TEncSearch::xExtDIFUpSamplingH(TComPattern* pattern)
-{
-    assert(X265_DEPTH == 8);
-
-    int width      = pattern->getROIYWidth();
-    int height     = pattern->getROIYHeight();
-    int srcStride  = pattern->getPatternLStride();
-
-    int intStride = m_filteredBlockTmp[0].m_width;
-    int dstStride = m_filteredBlock[0][0].getStride();
-
-    Pel *srcPtr;    // Contains raw pixels
-    short *intPtr;  // Intermediate results in short
-    Pel *dstPtr;    // Final filtered blocks in Pel
-
-    int filterSize = NTAPS_LUMA;
-    int halfFilterSize = (filterSize >> 1);
-
-    srcPtr = (Pel*)pattern->getROIY() - halfFilterSize * srcStride - 1;
-
-    dstPtr = m_filteredBlock[0][0].getLumaAddr();
-
-    primitives.blockcpy_pp(width, height, dstPtr, dstStride, srcPtr + halfFilterSize * srcStride + 1, srcStride);
-
-    intPtr = m_filteredBlockTmp[0].getLumaAddr();
-    primitives.ipfilter_p2s(srcPtr, srcStride, intPtr, intStride, width + 1, height + filterSize);
-
-    intPtr = m_filteredBlockTmp[0].getLumaAddr() + (halfFilterSize - 1) * intStride + 1;
-    dstPtr = m_filteredBlock[2][0].getLumaAddr();
-    primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width, height + 1, g_lumaFilter[2]);
-
-    intPtr = m_filteredBlockTmp[2].getLumaAddr();
-    primitives.ipfilter_ps[FILTER_H_P_S_8](srcPtr, srcStride, intPtr, intStride, width + 1, height + filterSize,  g_lumaFilter[2]);
-
-    intPtr = m_filteredBlockTmp[2].getLumaAddr() + halfFilterSize * intStride;
-    dstPtr = m_filteredBlock[0][2].getLumaAddr();
-    primitives.ipfilter_s2p(intPtr, intStride, dstPtr, dstStride, width + 1, height + 0);
-
-    intPtr = m_filteredBlockTmp[2].getLumaAddr() + (halfFilterSize - 1) * intStride;
-    dstPtr = m_filteredBlock[2][2].getLumaAddr();
-    primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width + 1, height + 1, g_lumaFilter[2]);
-}
-
-/**
- * \brief Generate quarter-sample interpolated blocks
- *
- * \param pattern    Reference picture ROI
- * \param halfPelRef Half-pel mv
- * \param biPred     Flag indicating whether block is for biprediction
- */
-void TEncSearch::xExtDIFUpSamplingQ(TComPattern* pattern, MV halfPelRef)
-{
-    assert(X265_DEPTH == 8);
-
-    int width      = pattern->getROIYWidth();
-    int height     = pattern->getROIYHeight();
-    int srcStride  = pattern->getPatternLStride();
-
-    int intStride = m_filteredBlockTmp[0].m_width;
-    int dstStride = m_filteredBlock[0][0].getStride();
-
-    Pel *srcPtr;    //Contains raw pixels
-    short *intPtr;  // Intermediate results in short
-    Pel *dstPtr;    // Final filtered blocks in Pel
-    int filterSize = NTAPS_LUMA;
-    int halfFilterSize = (filterSize >> 1);
-    int extHeight = (halfPelRef.y == 0) ? height + filterSize : height + filterSize - 1;
-
-    // Horizontal filter 1/4
-    srcPtr = pattern->getROIY() - halfFilterSize * srcStride - 1;
-    intPtr = m_filteredBlockTmp[1].getLumaAddr();
-    if (halfPelRef.y > 0)
-    {
-        srcPtr += srcStride;
-    }
-    if (halfPelRef.x >= 0)
-    {
-        srcPtr += 1;
-    }
-    primitives.ipfilter_ps[FILTER_H_P_S_8](srcPtr, srcStride, intPtr, intStride, width, extHeight, g_lumaFilter[1]);
-
-    // Horizontal filter 3/4
-    srcPtr = pattern->getROIY() - halfFilterSize * srcStride - 1;
-    intPtr = m_filteredBlockTmp[3].getLumaAddr();
-    if (halfPelRef.y > 0)
-    {
-        srcPtr += srcStride;
-    }
-    if (halfPelRef.x > 0)
-    {
-        srcPtr += 1;
-    }
-    primitives.ipfilter_ps[FILTER_H_P_S_8](srcPtr, srcStride, intPtr, intStride, width, extHeight, g_lumaFilter[3]);
-
-    // Generate @ 1,1
-    intPtr = m_filteredBlockTmp[1].getLumaAddr() + (halfFilterSize - 1) * intStride;
-    dstPtr = m_filteredBlock[1][1].getLumaAddr();
-    if (halfPelRef.y == 0)
-    {
-        intPtr += intStride;
-    }
-    primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width, height, g_lumaFilter[1]);
-
-    // Generate @ 3,1
-    intPtr = m_filteredBlockTmp[1].getLumaAddr() + (halfFilterSize - 1) * intStride;
-    dstPtr = m_filteredBlock[3][1].getLumaAddr();
-    primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width, height, g_lumaFilter[3]);
-
-    if (halfPelRef.y != 0)
-    {
-        // Generate @ 2,1
-        intPtr = m_filteredBlockTmp[1].getLumaAddr() + (halfFilterSize - 1) * intStride;
-        dstPtr = m_filteredBlock[2][1].getLumaAddr();
-        if (halfPelRef.y == 0)
-        {
-            intPtr += intStride;
-        }
-        primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width, height, g_lumaFilter[2]);
-
-        // Generate @ 2,3
-        intPtr = m_filteredBlockTmp[3].getLumaAddr() + (halfFilterSize - 1) * intStride;
-        dstPtr = m_filteredBlock[2][3].getLumaAddr();
-        if (halfPelRef.y == 0)
-        {
-            intPtr += intStride;
-        }
-        primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width, height, g_lumaFilter[2]);
-    }
-    else
-    {
-        // Generate @ 0,1
-        intPtr = m_filteredBlockTmp[1].getLumaAddr() + halfFilterSize * intStride;
-        dstPtr = m_filteredBlock[0][1].getLumaAddr();
-        primitives.ipfilter_s2p(intPtr, intStride, dstPtr, dstStride, width, height);
-
-        // Generate @ 0,3
-        intPtr = m_filteredBlockTmp[3].getLumaAddr() + halfFilterSize * intStride;
-        dstPtr = m_filteredBlock[0][3].getLumaAddr();
-        primitives.ipfilter_s2p(intPtr, intStride, dstPtr, dstStride, width, height);
-    }
-
-    if (halfPelRef.x != 0)
-    {
-        // Generate @ 1,2
-        intPtr = m_filteredBlockTmp[2].getLumaAddr() + (halfFilterSize - 1) * intStride;
-        dstPtr = m_filteredBlock[1][2].getLumaAddr();
-        if (halfPelRef.x > 0)
-        {
-            intPtr += 1;
-        }
-        if (halfPelRef.y >= 0)
-        {
-            intPtr += intStride;
-        }
-
-        primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width, height, g_lumaFilter[1]);
-
-        // Generate @ 3,2
-        intPtr = m_filteredBlockTmp[2].getLumaAddr() + (halfFilterSize - 1) * intStride;
-        dstPtr = m_filteredBlock[3][2].getLumaAddr();
-        if (halfPelRef.x > 0)
-        {
-            intPtr += 1;
-        }
-        if (halfPelRef.y > 0)
-        {
-            intPtr += intStride;
-        }
-        primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width, height, g_lumaFilter[3]);
-    }
-    else
-    {
-        // Generate @ 1,0
-        intPtr = m_filteredBlockTmp[0].getLumaAddr() + (halfFilterSize - 1) * intStride + 1;
-        dstPtr = m_filteredBlock[1][0].getLumaAddr();
-        if (halfPelRef.y >= 0)
-        {
-            intPtr += intStride;
-        }
-        primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width, height, g_lumaFilter[1]);
-
-        // Generate @ 3,0
-        intPtr = m_filteredBlockTmp[0].getLumaAddr() + (halfFilterSize - 1) * intStride + 1;
-        dstPtr = (Pel*)m_filteredBlock[3][0].getLumaAddr();
-        if (halfPelRef.y > 0)
-        {
-            intPtr += intStride;
-        }
-        primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width, height, g_lumaFilter[3]);
-    }
-
-    // Generate @ 1,3
-    intPtr = m_filteredBlockTmp[3].getLumaAddr() + (halfFilterSize - 1) * intStride;
-    dstPtr = m_filteredBlock[1][3].getLumaAddr();
-    if (halfPelRef.y == 0)
-    {
-        intPtr += intStride;
-    }
-    primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width, height, g_lumaFilter[1]);
-
-    // Generate @ 3,3
-    intPtr = m_filteredBlockTmp[3].getLumaAddr() + (halfFilterSize - 1) * intStride;
-    dstPtr = m_filteredBlock[3][3].getLumaAddr();
-    primitives.ipfilter_sp[FILTER_V_S_P_8](intPtr, intStride, dstPtr, dstStride, width, height, g_lumaFilter[3]);
-}
-
 void  TEncSearch::setWpScalingDistParam(TComDataCU*, int, RefPicList)
 {
 #if 0 // dead code
@@ -4443,7 +3900,7 @@ void  TEncSearch::setWpScalingDistParam(TComDataCU*, int, RefPicList)
     {
         m_distParam.wpCur = wp1;
     }
-#endif
+#endif // if 0
 }
 
 //! \}

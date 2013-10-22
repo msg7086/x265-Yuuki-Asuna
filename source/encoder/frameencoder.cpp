@@ -26,8 +26,8 @@
 #include "PPA/ppa.h"
 #include "wavefront.h"
 
-#include "TLibEncoder/TEncTop.h"
 #include "TLibEncoder/NALwrite.h"
+#include "encoder.h"
 #include "frameencoder.h"
 #include "cturow.h"
 
@@ -55,7 +55,14 @@ FrameEncoder::FrameEncoder()
     , m_cfg(NULL)
     , m_pic(NULL)
     , m_rows(NULL)
-{}
+{
+    for (int i = 0; i < MAX_NAL_UNITS; i++)
+    {
+        m_nalList[i] = NULL;
+    }
+
+    m_nalCount = 0;
+}
 
 void FrameEncoder::setThreadPool(ThreadPool *p)
 {
@@ -69,6 +76,14 @@ void FrameEncoder::destroy()
     m_threadActive = false;
     m_enable.trigger();
 
+    // flush condition, release queued NALs
+    for (int i = 0; i < m_nalCount; i++)
+    {
+        NALUnitEBSP *nalu = m_nalList[i];
+        free(nalu->m_nalUnitData);
+        X265_FREE(nalu);
+    }
+
     if (m_rows)
     {
         for (int i = 0; i < m_numRows; ++i)
@@ -80,18 +95,17 @@ void FrameEncoder::destroy()
     }
 
     m_frameFilter.destroy();
-
     // wait for worker thread to exit
     stop();
 }
 
-void FrameEncoder::init(TEncTop *top, int numRows)
+void FrameEncoder::init(Encoder *top, int numRows)
 {
     m_top = top;
     m_cfg = top;
     m_numRows = numRows;
     m_filterRowDelay = (m_cfg->param.saoLcuBasedOptimization && m_cfg->param.saoLcuBoundary) ?
-                        2 : (m_cfg->param.bEnableSAO || m_cfg->param.bEnableLoopFilter ? 1 : 0);
+        2 : (m_cfg->param.bEnableSAO || m_cfg->param.bEnableLoopFilter ? 1 : 0);
 
     m_rows = new CTURow[m_numRows];
     for (int i = 0; i < m_numRows; ++i)
@@ -109,17 +123,16 @@ void FrameEncoder::init(TEncTop *top, int numRows)
     m_frameFilter.init(top, numRows, getRDGoOnSbacCoder(0));
 
     // initialize SPS
-    top->xInitSPS(&m_sps);
+    top->initSPS(&m_sps);
 
     // initialize PPS
     m_pps.setSPS(&m_sps);
 
-    top->xInitPPS(&m_pps);
+    top->initPPS(&m_pps);
 
     m_sps.setNumLongTermRefPicSPS(0);
     if (m_cfg->getPictureTimingSEIEnabled() || m_cfg->getDecodingUnitInfoSEIEnabled())
     {
-        m_sps.getVuiParameters()->getHrdParameters()->setNumDU(0);
         m_sps.setHrdParameters(m_cfg->param.frameRate, 0, m_cfg->param.rc.bitrate, m_cfg->param.bframes > 0);
     }
     if (m_cfg->getBufferingPeriodSEIEnabled() || m_cfg->getPictureTimingSEIEnabled() || m_cfg->getDecodingUnitInfoSEIEnabled())
@@ -137,6 +150,7 @@ void FrameEncoder::init(TEncTop *top, int numRows)
             m_rows[i].m_trQuant.setFlatScalingList();
             m_rows[i].m_trQuant.setUseScalingList(false);
         }
+
         m_sps.setScalingListPresentFlag(false);
         m_pps.setScalingListPresentFlag(false);
     }
@@ -147,6 +161,7 @@ void FrameEncoder::init(TEncTop *top, int numRows)
             m_rows[i].m_trQuant.setScalingList(m_top->getScalingList());
             m_rows[i].m_trQuant.setUseScalingList(true);
         }
+
         m_sps.setScalingListPresentFlag(false);
         m_pps.setScalingListPresentFlag(false);
     }
@@ -155,33 +170,41 @@ void FrameEncoder::init(TEncTop *top, int numRows)
         printf("error : ScalingList == %d not supported\n", m_top->getUseScalingListId());
         assert(0);
     }
+
     start();
 }
 
-int FrameEncoder::getStreamHeaders(AccessUnit& accessUnit)
+int FrameEncoder::getStreamHeaders(NALUnitEBSP **nalunits)
 {
     TEncEntropy* entropyCoder = getEntropyCoder(0);
 
     entropyCoder->setEntropyCoder(&m_cavlcCoder, NULL);
+    int count = 0;
 
     /* headers for start of bitstream */
     OutputNALUnit nalu(NAL_UNIT_VPS);
     entropyCoder->setBitstream(&nalu.m_Bitstream);
     entropyCoder->encodeVPS(m_cfg->getVPS());
     writeRBSPTrailingBits(nalu.m_Bitstream);
-    accessUnit.push_back(new NALUnitEBSP(nalu));
+    CHECKED_MALLOC(nalunits[count], NALUnitEBSP, 1);
+    nalunits[count]->init(nalu);
+    count++;
 
     nalu = NALUnit(NAL_UNIT_SPS);
     entropyCoder->setBitstream(&nalu.m_Bitstream);
     entropyCoder->encodeSPS(&m_sps);
     writeRBSPTrailingBits(nalu.m_Bitstream);
-    accessUnit.push_back(new NALUnitEBSP(nalu));
+    CHECKED_MALLOC(nalunits[count], NALUnitEBSP, 1);
+    nalunits[count]->init(nalu);
+    count++;
 
     nalu = NALUnit(NAL_UNIT_PPS);
     entropyCoder->setBitstream(&nalu.m_Bitstream);
     entropyCoder->encodePPS(&m_pps);
     writeRBSPTrailingBits(nalu.m_Bitstream);
-    accessUnit.push_back(new NALUnitEBSP(nalu));
+    CHECKED_MALLOC(nalunits[count], NALUnitEBSP, 1);
+    nalunits[count]->init(nalu);
+    count++;
 
     if (m_cfg->getActiveParameterSetsSEIEnabled())
     {
@@ -195,7 +218,9 @@ int FrameEncoder::getStreamHeaders(AccessUnit& accessUnit)
         entropyCoder->setBitstream(&nalu.m_Bitstream);
         m_seiWriter.writeSEImessage(nalu.m_Bitstream, sei, &m_sps);
         writeRBSPTrailingBits(nalu.m_Bitstream);
-        accessUnit.push_back(new NALUnitEBSP(nalu));
+        CHECKED_MALLOC(nalunits[count], NALUnitEBSP, 1);
+        nalunits[count]->init(nalu);
+        count++;
     }
 
     if (m_cfg->getDisplayOrientationSEIAngle())
@@ -210,9 +235,13 @@ int FrameEncoder::getStreamHeaders(AccessUnit& accessUnit)
         entropyCoder->setBitstream(&nalu.m_Bitstream);
         m_seiWriter.writeSEImessage(nalu.m_Bitstream, sei, &m_sps);
         writeRBSPTrailingBits(nalu.m_Bitstream);
-        accessUnit.push_back(new NALUnitEBSP(nalu));
+        CHECKED_MALLOC(nalunits[count], NALUnitEBSP, 1);
+        nalunits[count]->init(nalu);
     }
     return 0;
+
+fail:
+    return -1;
 }
 
 void FrameEncoder::initSlice(TComPic* pic)
@@ -226,7 +255,7 @@ void FrameEncoder::initSlice(TComPic* pic)
     slice->initSlice();
     slice->setPicOutputFlag(true);
     int type = pic->m_lowres.sliceType;
-    SliceType sliceType = IS_X265_TYPE_B(type)? B_SLICE : ((type == X265_TYPE_P) ? P_SLICE: I_SLICE);
+    SliceType sliceType = IS_X265_TYPE_B(type) ? B_SLICE : ((type == X265_TYPE_P) ? P_SLICE : I_SLICE);
     slice->setSliceType(sliceType);
     slice->setReferenced(true);
     slice->setScalingList(m_top->getScalingList());
@@ -262,7 +291,7 @@ void FrameEncoder::threadMain()
     // worker thread routine for FrameEncoder
     do
     {
-        m_enable.wait(); // TEncTop::encode() triggers this event
+        m_enable.wait(); // Encoder::encode() triggers this event
         if (m_threadActive)
         {
             compressFrame();
@@ -275,19 +304,19 @@ void FrameEncoder::threadMain()
 void FrameEncoder::compressFrame()
 {
     PPAScopeEvent(FrameEncoder_compressFrame);
-
     TEncEntropy* entropyCoder = getEntropyCoder(0);
     TComSlice*   slice        = m_pic->getSlice();
+    m_nalCount = 0;
 
     int qp = slice->getSliceQp();
     double lambda = 0;
     if (slice->getSliceType() == I_SLICE)
     {
-        lambda = X265_MAX(1,x265_lambda2_tab_I[qp]);
+        lambda = X265_MAX(1, x265_lambda2_tab_I[qp]);
     }
     else
     {
-        lambda = X265_MAX(1,x265_lambda2_non_I[qp]);
+        lambda = X265_MAX(1, x265_lambda2_non_I[qp]);
     }
 
     // for RDO
@@ -302,9 +331,11 @@ void FrameEncoder::compressFrame()
     double crWeight = pow(2.0, (qp - g_chromaScale[qpc])); // takes into account of the chroma qp mapping and chroma qp Offset
     double chromaLambda = lambda / crWeight;
 
+    TComPicYuv *fenc = slice->getPic()->getPicYuvOrg();
     for (int i = 0; i < m_numRows; i++)
     {
         m_rows[i].m_search.setQPLambda(qp, lambda, chromaLambda);
+        m_rows[i].m_search.m_me.setSourcePlane(fenc->getLumaAddr(), fenc->getStride());
         m_rows[i].m_rdCost.setLambda(lambda);
         m_rows[i].m_rdCost.setCbDistortionWeight(cbWeight);
         m_rows[i].m_rdCost.setCrDistortionWeight(crWeight);
@@ -422,11 +453,6 @@ void FrameEncoder::compressFrame()
     cntIntraNxN = 0;
 #endif // if CU_STAT_LOGFILE
 
-    if (m_sps.getUseSAO())
-    {
-        m_pic->createNonDBFilterInfo(slice->getSliceCurEndCUAddr(), 0);
-    }
-
     // Analyze CTU rows, most of the hard work is done here
     // frame is compressed in a wave-front pattern if WPP is enabled. Loop filter runs as a
     // wave-front behind the CU compression and reconstruction
@@ -457,7 +483,6 @@ void FrameEncoder::compressFrame()
     }
 
     m_wp.xRestoreWPparam(slice);
-
     if ((m_cfg->getRecoveryPointSEIEnabled()) && (slice->getSliceType() == I_SLICE))
     {
         if (m_cfg->getGradualDecodingRefreshInfoEnabled() && !slice->getRapPicFlag())
@@ -470,7 +495,12 @@ void FrameEncoder::compressFrame()
 
             m_seiWriter.writeSEImessage(nalu.m_Bitstream, seiGradualDecodingRefreshInfo, slice->getSPS());
             writeRBSPTrailingBits(nalu.m_Bitstream);
-            m_accessUnit.push_back(new NALUnitEBSP(nalu));
+            m_nalList[m_nalCount] = (NALUnitEBSP*)X265_MALLOC(NALUnitEBSP, 1);
+            if (m_nalList[m_nalCount])
+            {
+                m_nalList[m_nalCount]->init(nalu);
+                m_nalCount++;
+            }
         }
         // Recovery point SEI
         OutputNALUnit nalu(NAL_UNIT_PREFIX_SEI);
@@ -482,7 +512,12 @@ void FrameEncoder::compressFrame()
 
         m_seiWriter.writeSEImessage(nalu.m_Bitstream, sei_recovery_point, slice->getSPS());
         writeRBSPTrailingBits(nalu.m_Bitstream);
-        m_accessUnit.push_back(new NALUnitEBSP(nalu));
+        m_nalList[m_nalCount] = (NALUnitEBSP*)X265_MALLOC(NALUnitEBSP, 1);
+        if (m_nalList[m_nalCount])
+        {
+            m_nalList[m_nalCount]->init(nalu);
+            m_nalCount++;
+        }
     }
 
     /* use the main bitstream buffer for storing the marshaled picture */
@@ -497,7 +532,7 @@ void FrameEncoder::compressFrame()
             PCMLFDisableProcess(m_pic);
 
             // Extend border after whole-frame SAO is finished
-            for(int row = 0; row < m_numRows; row++)
+            for (int row = 0; row < m_numRows; row++)
             {
                 m_frameFilter.processRowPost(row);
             }
@@ -522,8 +557,8 @@ void FrameEncoder::compressFrame()
     entropyCoder->resetEntropy();
 
     /* start slice NALunit */
-    OutputNALUnit nalu(slice->getNalUnitType(), 0);
     bool sliceSegment = !slice->isNextSlice();
+    OutputNALUnit nalu(slice->getNalUnitType(), 0);
     entropyCoder->setBitstream(&nalu.m_Bitstream);
     entropyCoder->encodeSliceHeader(slice);
 
@@ -622,13 +657,16 @@ void FrameEncoder::compressFrame()
     }
     entropyCoder->setBitstream(&nalu.m_Bitstream);
     bitstreamRedirect->clear();
-
-    m_accessUnit.push_back(new NALUnitEBSP(nalu));
+    m_nalList[m_nalCount] = (NALUnitEBSP*)X265_MALLOC(NALUnitEBSP, 1);
+    if (m_nalList[m_nalCount])
+    {
+        m_nalList[m_nalCount]->init(nalu);
+        m_nalCount++;
+    }
 
     if (m_sps.getUseSAO())
     {
         m_frameFilter.end();
-        m_pic->destroyNonDBFilterInfo();
     }
 
     // TODO: merge into compress loop, need some time to verify, remove later
@@ -839,21 +877,27 @@ void FrameEncoder::determineSliceBounds()
 void FrameEncoder::compressCTURows()
 {
     PPAScopeEvent(FrameEncoder_compressRows);
+    TComSlice* slice = m_pic->getSlice();
+
     // reset entropy coders
     m_sbacCoder.init(&m_binCoderCABAC);
     for (int i = 0; i < this->m_numRows; i++)
     {
-        m_rows[i].init();
-        m_rows[i].m_entropyCoder.setEntropyCoder(&m_sbacCoder, m_pic->getSlice());
+        m_rows[i].init(slice);
+        m_rows[i].m_entropyCoder.setEntropyCoder(&m_sbacCoder, slice);
         m_rows[i].m_entropyCoder.resetEntropy();
 
         m_rows[i].m_rdSbacCoders[0][CI_CURR_BEST]->load(&m_sbacCoder);
         m_rows[i].m_completed = 0;
+        m_rows[i].m_rdGoOnBinCodersCABAC.m_fracBits = 0;
     }
 
-    UInt refLagRows = ((m_cfg->param.searchRange + NTAPS_LUMA/2 + g_maxCUHeight - 1) / g_maxCUHeight) + 1;
-    TComSlice* slice = m_pic->getSlice();
+    UInt refLagRows = ((m_cfg->param.searchRange + NTAPS_LUMA / 2 + g_maxCUHeight - 1) / g_maxCUHeight) + 1;
     int numPredDir = slice->isInterP() ? 1 : slice->isInterB() ? 2 : 0;
+
+    m_pic->m_SSDY = 0;
+    m_pic->m_SSDU = 0;
+    m_pic->m_SSDV = 0;
 
     m_frameFilter.start(m_pic);
 
@@ -874,6 +918,11 @@ void FrameEncoder::compressCTURows()
                     while ((refpic->m_reconRowCount != (UInt)m_numRows) && (refpic->m_reconRowCount < row + refLagRows))
                     {
                         refpic->m_reconRowWait.wait();
+                    }
+
+                    if (slice->getPPS()->getUseWP() && (slice->getSliceType() == P_SLICE))
+                    {
+                        slice->m_mref[list][ref]->applyWeight(row + refLagRows, m_numRows);
                     }
                 }
             }
@@ -906,6 +955,11 @@ void FrameEncoder::compressCTURows()
                         while ((refpic->m_reconRowCount != (UInt)m_numRows) && (refpic->m_reconRowCount < i + refLagRows))
                         {
                             refpic->m_reconRowWait.wait();
+                        }
+
+                        if (slice->getPPS()->getUseWP() && (slice->getSliceType() == P_SLICE))
+                        {
+                            slice->m_mref[list][ref]->applyWeight(i + refLagRows, m_numRows);
                         }
                     }
                 }
@@ -970,6 +1024,7 @@ void FrameEncoder::processRowEncoder(int row)
             return;
         }
     }
+
     // this row of CTUs has been encoded
 
     // Run row-wise loop filters
@@ -983,12 +1038,14 @@ void FrameEncoder::processRowEncoder(int row)
     }
     if (row == m_numRows - 1)
     {
-        for(int i = m_numRows - m_filterRowDelay; i < m_numRows; i++)
+        for (int i = m_numRows - m_filterRowDelay; i < m_numRows; i++)
+        {
             enableRowFilter(i);
+        }
     }
 }
 
-TComPic *FrameEncoder::getEncodedPicture(AccessUnit& accessUnit)
+TComPic *FrameEncoder::getEncodedPicture(NALUnitEBSP **nalunits)
 {
     if (m_pic)
     {
@@ -998,8 +1055,13 @@ TComPic *FrameEncoder::getEncodedPicture(AccessUnit& accessUnit)
         TComPic *ret = m_pic;
         m_pic = NULL;
 
-        // move NALs from member variable list to end of user's container
-        accessUnit.splice(accessUnit.end(), m_accessUnit);
+        if (nalunits)
+        {
+            // move NALs from member variable to user's container
+            assert(m_nalCount <= MAX_NAL_UNITS);
+            ::memcpy(nalunits, m_nalList, sizeof(NALUnitEBSP*) * m_nalCount);
+            m_nalCount = 0;
+        }
         return ret;
     }
 

@@ -29,43 +29,6 @@
 
 #define CU_STAT_LOGFILE 0
 
-// ====================================================================================================================
-// Platform information
-// ====================================================================================================================
-
-#if defined(__GNUC__) && !defined(__INTEL_COMPILER)
-#define NVM_COMPILEDBY  "[GCC %d.%d.%d]", __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__
-#ifdef __IA64__
-#define NVM_ONARCH    "[on 64-bit] "
-#else
-#define NVM_ONARCH    "[on 32-bit] "
-#endif
-#endif
-
-#ifdef __INTEL_COMPILER
-#define NVM_COMPILEDBY  "[ICC %d]", __INTEL_COMPILER
-#elif  _MSC_VER
-#define NVM_COMPILEDBY  "[VS %d]", _MSC_VER
-#endif
-
-#ifndef NVM_COMPILEDBY
-#define NVM_COMPILEDBY "[Unk-CXX]"
-#endif
-
-#ifdef _WIN32
-#define NVM_ONOS        "[Windows]"
-#elif  __linux
-#define NVM_ONOS        "[Linux]"
-#elif  __CYGWIN__
-#define NVM_ONOS        "[Cygwin]"
-#elif __APPLE__
-#define NVM_ONOS        "[Mac OS X]"
-#else
-#define NVM_ONOS "[Unk-OS]"
-#endif
-
-#define NVM_BITS          "[%d bit] ", (sizeof(void*) == 8 ? 64 : 32) ///< used for checking 64-bit O/S
-
 #define X265_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define X265_MAX(a, b) ((a) > (b) ? (a) : (b))
 #define COPY1_IF_LT(x, y) if ((y) < (x)) (x) = (y);
@@ -94,7 +57,32 @@
 #define X265_MAX3(a, b, c) X265_MAX((a), X265_MAX((b), (c)))
 #define X265_MIN4(a, b, c, d) X265_MIN((a), X265_MIN3((b), (c), (d)))
 #define X265_MAX4(a, b, c, d) X265_MAX((a), X265_MAX3((b), (c), (d)))
-#define QP_BD_OFFSET (6*(X265_DEPTH-8))
+#define QP_BD_OFFSET (6 * (X265_DEPTH - 8))
+
+// arbitrary, but low because SATD scores are 1/4 normal
+#define X265_LOOKAHEAD_QP (12 + QP_BD_OFFSET)
+#define X265_LOOKAHEAD_MAX 250
+
+// Use the same size blocks as x264.  Using larger blocks seems to give artificially
+// high cost estimates (intra and inter both suffer)
+#define X265_LOWRES_CU_SIZE   8
+#define X265_LOWRES_CU_BITS   3
+
+#define X265_BFRAME_MAX      16
+
+#define MAX_NAL_UNITS 5
+#define MIN_FIFO_SIZE 1000
+#define EMULATION_SIZE 1000
+
+#define CHECKED_MALLOC(var, type, count) \
+    { \
+        var = (type*)x265_malloc(sizeof(type) * (count)); \
+        if (!var) \
+        { \
+            x265_log(NULL, X265_LOG_ERROR, "malloc of size %d failed\n", sizeof(type) * (count)); \
+            goto fail; \
+        } \
+    }
 
 #define ENABLE_CYCLE_COUNTERS 0
 #if ENABLE_CYCLE_COUNTERS
@@ -114,8 +102,8 @@
 #endif // if ENABLE_CYCLE_COUNTERS
 
 #if defined(_MSC_VER)
-#define X265_LOG2F(x) (logf(x)*1.44269504088896405f)
-#define X265_LOG2(x) (log(x)*1.4426950408889640513713538072172)
+#define X265_LOG2F(x) (logf((float)(x)) * 1.44269504088896405f)
+#define X265_LOG2(x) (log((double)(x)) * 1.4426950408889640513713538072172)
 #else
 #define X265_LOG2F(x) log2f(x)
 #define X265_LOG2(x)  log2(x)
@@ -126,9 +114,6 @@ void x265_log(x265_param_t *param, int level, const char *fmt, ...);
 int  x265_check_params(x265_param_t *param);
 void x265_print_params(x265_param_t *param);
 int x265_set_globals(x265_param_t *param);
-int64_t x265_mdate(void);
-
-/* defined in primitives.cpp */
-void x265_setup_primitives(x265_param_t *param, int cpuid = 0);
+char *x265_param2string(x265_param_t *p);
 
 #endif // ifndef X265_COMMON_H

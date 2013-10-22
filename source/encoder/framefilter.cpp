@@ -22,7 +22,7 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
-#include "TLibEncoder/TEncTop.h"
+#include "encoder.h"
 #include "PPA/ppa.h"
 #include "framefilter.h"
 #include "wavefront.h"
@@ -35,6 +35,8 @@ using namespace x265;
 FrameFilter::FrameFilter()
     : m_cfg(NULL)
     , m_pic(NULL)
+    , m_rdGoOnBinCodersCABAC(true)
+    , m_ssimBuf(NULL)
 {
 }
 
@@ -51,9 +53,10 @@ void FrameFilter::destroy()
         m_sao.destroy();
         m_sao.destroyEncBuffer();
     }
+    X265_FREE(m_ssimBuf);
 }
 
-void FrameFilter::init(TEncTop *top, int numRows, TEncSbac* rdGoOnSbacCoder)
+void FrameFilter::init(Encoder *top, int numRows, TEncSbac* rdGoOnSbacCoder)
 {
     m_cfg = top;
     m_numRows = numRows;
@@ -74,6 +77,9 @@ void FrameFilter::init(TEncTop *top, int numRows, TEncSbac* rdGoOnSbacCoder)
         m_sao.create(top->param.sourceWidth, top->param.sourceHeight, g_maxCUWidth, g_maxCUHeight);
         m_sao.createEncBuffer();
     }
+
+    if (m_cfg->param.bEnableSsim)
+        m_ssimBuf = (ssim_t*)x265_malloc(sizeof(ssim_t) * 8 * (m_cfg->param.sourceWidth / 4 + 3));
 }
 
 void FrameFilter::start(TComPic *pic)
@@ -85,18 +91,24 @@ void FrameFilter::start(TComPic *pic)
     m_rdGoOnSbacCoder.init(&m_rdGoOnBinCodersCABAC);
     m_entropyCoder.setEntropyCoder(&m_rdGoOnSbacCoder, pic->getSlice());
     m_entropyCoder.setBitstream(&m_bitCounter);
-
-    if (m_cfg->param.bEnableLoopFilter)
-    {
-        m_sao.resetStats();
-        m_sao.createPicSaoInfo(pic);
-    }
+    m_rdGoOnBinCodersCABAC.m_fracBits = 0;
 
     if (m_cfg->param.bEnableSAO)
     {
+        m_sao.resetStats();
+        m_sao.createPicSaoInfo(pic);
+
         SAOParam* saoParam = pic->getPicSym()->getSaoParam();
         m_sao.resetSAOParam(saoParam);
         m_sao.rdoSaoUnitRowInit(saoParam);
+
+        // NOTE: Disable SAO automatic turn-off when frame parallelism is
+        // enabled for output exact independent of frame thread count
+        if (m_cfg->param.frameNumThreads > 1)
+        {
+            saoParam->bSaoFlag[0] = true;
+            saoParam->bSaoFlag[1] = true;
+        }
     }
 }
 
@@ -122,7 +134,7 @@ void FrameFilter::processRow(int row)
     if (row == 0 && m_cfg->param.bEnableSAO)
     {
         // NOTE: not need, seems HM's bug, I want to keep output exact matched.
-        m_rdGoOnBinCodersCABAC.m_fracBits = ((TEncBinCABACCounter*)((TEncSbac*)m_rdGoOnSbacCoderRow0->m_pcBinIf))->m_fracBits;
+        m_rdGoOnBinCodersCABAC.m_fracBits = ((TEncBinCABAC*)((TEncSbac*)m_rdGoOnSbacCoderRow0->m_binIf))->m_fracBits;
         m_sao.startSaoEnc(m_pic, &m_entropyCoder, &m_rdGoOnSbacCoder);
     }
 
@@ -187,7 +199,7 @@ void FrameFilter::processRow(int row)
         {
             m_sao.rdoSaoUnitRowEnd(saoParam, m_pic->getNumCUsInFrame());
 
-            for(int i = m_numRows - m_saoRowDelay; i < m_numRows; i++)
+            for (int i = m_numRows - m_saoRowDelay; i < m_numRows; i++)
             {
                 processSao(i);
             }
@@ -258,6 +270,196 @@ void FrameFilter::processRowPost(int row)
     {
         m_pic->m_reconRowWait.trigger();
     }
+
+    if (m_cfg->param.bEnablePsnr)
+    {
+        calculatePSNR(lineStartCUAddr, row);
+    }
+    if (m_cfg->param.bEnableSsim && m_ssimBuf)
+    {
+        pixel *rec = (pixel*)m_pic->getPicYuvRec()->getLumaAddr();
+        pixel *org = (pixel*)m_pic->getPicYuvOrg()->getLumaAddr();
+        int stride1 = m_pic->getPicYuvOrg()->getStride();
+        int stride2 = m_pic->getPicYuvRec()->getStride();
+        int bEnd = ((row + 1) == (this->m_numRows - 1));
+        int bStart = (row == 0);
+        int minPixY = row * 64 - 4 * !bStart;
+        int maxPixY = (row + 1) * 64 - 4 * !bEnd;
+        int ssim_cnt;
+        x265_emms();
+
+        /* SSIM is done for each row in blocks of 4x4 . The First blocks are offset by 2 pixels to the right
+        * to avoid alignment of ssim blocks with DCT blocks. */
+        minPixY += bStart ? 2 : -6;
+        m_pic->getSlice()->m_ssim += calculateSSIM(rec + 2 + minPixY * stride1, stride1, org + 2 + minPixY * stride2, stride2,
+                                                   m_cfg->param.sourceWidth - 2, maxPixY - minPixY, m_ssimBuf, &ssim_cnt);
+        m_pic->getSlice()->m_ssimCnt += ssim_cnt;
+    }
+}
+
+static UInt64 computeSSD(pixel *fenc, pixel *rec, int stride, int width, int height)
+{
+    UInt64 ssd = 0;
+
+    if ((width | height) & 3)
+    {
+        /* Slow Path */
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int diff = (int)(fenc[x] - rec[x]);
+                ssd += diff * diff;
+            }
+
+            fenc += stride;
+            rec += stride;
+        }
+
+        return ssd;
+    }
+
+    int y = 0;
+    /* Consume Y in chunks of 64 */
+    for (; y + 64 <= height; y += 64)
+    {
+        int x = 0;
+
+        if (!(stride & 31))
+            for (; x + 64 <= width; x += 64)
+            {
+                ssd += primitives.sse_pp[LUMA_64x64](fenc + x, stride, rec + x, stride);
+            }
+
+        if (!(stride & 15))
+            for (; x + 16 <= width; x += 16)
+            {
+                ssd += primitives.sse_pp[LUMA_16x64](fenc + x, stride, rec + x, stride);
+            }
+
+        for (; x + 4 <= width; x += 4)
+        {
+            ssd += primitives.sse_pp[LUMA_4x16](fenc + x, stride, rec + x, stride);
+            ssd += primitives.sse_pp[LUMA_4x16](fenc + x + 16 * stride, stride, rec + x + 16 * stride, stride);
+            ssd += primitives.sse_pp[LUMA_4x16](fenc + x + 32 * stride, stride, rec + x + 32 * stride, stride);
+            ssd += primitives.sse_pp[LUMA_4x16](fenc + x + 48 * stride, stride, rec + x + 48 * stride, stride);
+        }
+
+        fenc += stride * 64;
+        rec += stride * 64;
+    }
+
+    /* Consume Y in chunks of 16 */
+    for (; y + 16 <= height; y += 16)
+    {
+        int x = 0;
+
+        if (!(stride & 31))
+            for (; x + 64 <= width; x += 64)
+            {
+                ssd += primitives.sse_pp[LUMA_64x16](fenc + x, stride, rec + x, stride);
+            }
+
+        if (!(stride & 15))
+            for (; x + 16 <= width; x += 16)
+            {
+                ssd += primitives.sse_pp[LUMA_16x16](fenc + x, stride, rec + x, stride);
+            }
+
+        for (; x + 4 <= width; x += 4)
+        {
+            ssd += primitives.sse_pp[LUMA_4x16](fenc + x, stride, rec + x, stride);
+        }
+
+        fenc += stride * 16;
+        rec += stride * 16;
+    }
+
+    /* Consume Y in chunks of 4 */
+    for (; y + 4 <= height; y += 4)
+    {
+        int x = 0;
+
+        if (!(stride & 15))
+            for (; x + 16 <= width; x += 16)
+            {
+                ssd += primitives.sse_pp[LUMA_16x4](fenc + x, stride, rec + x, stride);
+            }
+
+        for (; x + 4 <= width; x += 4)
+        {
+            ssd += primitives.sse_pp[LUMA_4x4](fenc + x, stride, rec + x, stride);
+        }
+
+        fenc += stride * 4;
+        rec += stride * 4;
+    }
+
+    return ssd;
+}
+
+void FrameFilter::calculatePSNR(uint32_t cuAddr, int row)
+{
+    TComPicYuv* recon = m_pic->getPicYuvRec();
+    TComPicYuv* orig  = m_pic->getPicYuvOrg();
+
+    //===== calculate PSNR =====
+    int stride = recon->getStride();
+
+    int width  = recon->getWidth() - m_cfg->m_pad[0];
+    int height;
+
+    if (row == m_numRows - 1)
+        height = ((recon->getHeight() % g_maxCUHeight) ? (recon->getHeight() % g_maxCUHeight) : g_maxCUHeight);
+    else
+        height = g_maxCUHeight;
+
+    UInt64 ssdY = computeSSD(orig->getLumaAddr(cuAddr), recon->getLumaAddr(cuAddr), stride, width, height);
+
+    height >>= 1;
+    width  >>= 1;
+    stride = recon->getCStride();
+
+    UInt64 ssdU = computeSSD(orig->getCbAddr(cuAddr), recon->getCbAddr(cuAddr), stride, width, height);
+    UInt64 ssdV = computeSSD(orig->getCrAddr(cuAddr), recon->getCrAddr(cuAddr), stride, width, height);
+
+    m_pic->m_SSDY += ssdY;
+    m_pic->m_SSDU += ssdU;
+    m_pic->m_SSDV += ssdV;
+}
+
+/* Function to calculate SSIM for each row */
+float FrameFilter::calculateSSIM(pixel *pix1, intptr_t stride1, pixel *pix2, intptr_t stride2, int width, int height, void *buf, int *cnt)
+{
+    int z = 0;
+    float ssim = 0.0;
+
+    ssim_t(*sum0)[4] = (ssim_t(*)[4])buf;
+    ssim_t(*sum1)[4] = sum0 + (width >> 2) + 3;
+    width >>= 2;
+    height >>= 2;
+
+    for (int y = 1; y < height; y++)
+    {
+        for (; z <= y; z++)
+        {
+            void* swap = sum0;
+            sum0 = sum1;
+            sum1 = (ssim_t(*)[4])swap;
+            for (int x = 0; x < width; x += 2)
+            {
+                primitives.ssim_4x4x2_core(&pix1[(4 * x + (z * stride1))], stride1, &pix2[(4 * x + (z * stride2))], stride2, &sum0[x]);
+            }
+        }
+
+        for (int x = 0; x < width - 1; x += 4)
+        {
+            ssim += primitives.ssim_end_4(sum0 + x, sum1 + x, X265_MIN(4, width - x - 1));
+        }
+    }
+
+    *cnt = (height - 1) * (width - 1);
+    return ssim;
 }
 
 void FrameFilter::processSao(int row)

@@ -25,6 +25,7 @@
 #define X265_X265_H
 
 #include <stdint.h>
+#include "x265_config.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -130,12 +131,13 @@ x265_nal_t;
 
 typedef struct x265_picture_t
 {
-    void *planes[3];
-    int   stride[3];
-    int   bitDepth;
-    int   poc;
-    int   sliceType;
-    void *userData;
+    void*   planes[3];
+    int     stride[3];
+    int     bitDepth;
+    int     sliceType;
+    int     poc;
+    int64_t pts;
+    void*   userData;
 }
 x265_picture_t;
 
@@ -148,6 +150,43 @@ typedef enum
     X265_FULL_SEARCH
 }
 X265_ME_METHODS;
+
+/* CPU flags */
+
+/* x86 */
+#define X265_CPU_CMOV            0x0000001
+#define X265_CPU_MMX             0x0000002
+#define X265_CPU_MMX2            0x0000004  /* MMX2 aka MMXEXT aka ISSE */
+#define X265_CPU_MMXEXT          X265_CPU_MMX2
+#define X265_CPU_SSE             0x0000008
+#define X265_CPU_SSE2            0x0000010
+#define X265_CPU_SSE3            0x0000020
+#define X265_CPU_SSSE3           0x0000040
+#define X265_CPU_SSE4            0x0000080  /* SSE4.1 */
+#define X265_CPU_SSE42           0x0000100  /* SSE4.2 */
+#define X265_CPU_LZCNT           0x0000200  /* Phenom support for "leading zero count" instruction. */
+#define X265_CPU_AVX             0x0000400  /* AVX support: requires OS support even if YMM registers aren't used. */
+#define X265_CPU_XOP             0x0000800  /* AMD XOP */
+#define X265_CPU_FMA4            0x0001000  /* AMD FMA4 */
+#define X265_CPU_AVX2            0x0002000  /* AVX2 */
+#define X265_CPU_FMA3            0x0004000  /* Intel FMA3 */
+#define X265_CPU_BMI1            0x0008000  /* BMI1 */
+#define X265_CPU_BMI2            0x0010000  /* BMI2 */
+/* x86 modifiers */
+#define X265_CPU_CACHELINE_32    0x0020000  /* avoid memory loads that span the border between two cachelines */
+#define X265_CPU_CACHELINE_64    0x0040000  /* 32/64 is the size of a cacheline in bytes */
+#define X265_CPU_SSE2_IS_SLOW    0x0080000  /* avoid most SSE2 functions on Athlon64 */
+#define X265_CPU_SSE2_IS_FAST    0x0100000  /* a few functions are only faster on Core2 and Phenom */
+#define X265_CPU_SLOW_SHUFFLE    0x0200000  /* The Conroe has a slow shuffle unit (relative to overall SSE performance) */
+#define X265_CPU_STACK_MOD4      0x0400000  /* if stack is only mod4 and not mod16 */
+#define X265_CPU_SLOW_CTZ        0x0800000  /* BSR/BSF x86 instructions are really slow on some CPUs */
+#define X265_CPU_SLOW_ATOM       0x1000000  /* The Atom is terrible: slow SSE unaligned loads, slow
+                                             * SIMD multiplies, slow SIMD variable shifts, slow pshufb,
+                                             * cacheline split penalties -- gather everything here that
+                                             * isn't shared by other CPUs to avoid making half a dozen
+                                             * new SLOW flags. */
+#define X265_CPU_SLOW_PSHUFB     0x2000000  /* such as on the Intel Atom */
+#define X265_CPU_SLOW_PALIGNR    0x4000000  /* such as on the AMD Bobcat */
 
 static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star", "full", 0 };
 
@@ -171,8 +210,8 @@ static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star
 #define X265_TYPE_BREF          0x0004  /* Non-disposable B-frame */
 #define X265_TYPE_B             0x0005
 #define X265_TYPE_KEYFRAME      0x0006  /* IDR or I depending on b_open_gop option */
-#define IS_X265_TYPE_I(x) ((x)==X265_TYPE_I || (x)==X265_TYPE_IDR)
-#define IS_X265_TYPE_B(x) ((x)==X265_TYPE_B || (x)==X265_TYPE_BREF)
+#define IS_X265_TYPE_I(x) ((x) == X265_TYPE_I || (x) == X265_TYPE_IDR)
+#define IS_X265_TYPE_B(x) ((x) == X265_TYPE_B || (x) == X265_TYPE_BREF)
 
 /* rate tolerance method */
 typedef enum RcMethod
@@ -185,14 +224,27 @@ X265_RC_METHODS;
 
 /*Level of Rate Distortion Optimization Allowed */
 typedef enum RDOLevel
-{   
-    X265_NO_RDO_NO_RDOQ, /* Partial RDO during mode decision (only at each depth/mode), no RDO in quantization*/ 
+{
+    X265_NO_RDO_NO_RDOQ, /* Partial RDO during mode decision (only at each depth/mode), no RDO in quantization*/
     X265_NO_RDO,         /* Partial RDO during mode decision (only at each depth/mode), quantization RDO enabled */
     X265_FULL_RDO        /* Full RD-based mode decision */
 }
 X265_RDO_LEVEL;
 
+/* Output statistics from encoder */
+typedef struct x265_stats_t
+{
+    double    globalPsnrY;
+    double    globalPsnrU;
+    double    globalPsnrV;
+    double    globalPsnr;
+    double    globalSsim;
+    double    accBits;
+    uint32_t  totalNumPics;
+}
+x265_stats_t;
 
+/* Input parameters to the encoder */
 typedef struct x265_param_t
 {
     int       logLevel;
@@ -222,7 +274,7 @@ typedef struct x265_param_t
     int       lookaheadDepth;                  ///< Number of frames to use for lookahead, determines encoder latency
     int       bFrameAdaptive;                  ///< 0 - none, 1 - fast, 2 - full (trellis) adaptive B frame scheduling
     int       bFrameBias;
-    int       scenecutThreshold;               ///< how aggressively to insert extra I frames 
+    int       scenecutThreshold;               ///< how aggressively to insert extra I frames
 
     // Intra coding tools
     int       bEnableConstrainedIntra;         ///< enable constrained intra prediction (ignore inter predicted reference samples)
@@ -232,7 +284,6 @@ typedef struct x265_param_t
     int       searchMethod;                    ///< ME search method (DIA, HEX, UMH, STAR, FULL)
     int       subpelRefine;                    ///< amount of subpel work to perform (0 .. X265_MAX_SUBPEL_LEVEL)
     int       searchRange;                     ///< ME search range
-    int       bipredSearchRange;               ///< ME search range for bipred refinement
     uint32_t  maxNumMergeCand;                 ///< Max number of merge candidates
     int       bEnableWeightedPred;             ///< enable weighted prediction in P slices
     int       bEnableWeightedBiPred;           ///< enable bi-directional weighted prediction in B slices
@@ -241,13 +292,14 @@ typedef struct x265_param_t
     int       bEnableRectInter;                ///< enable rectangular inter modes 2NxN, Nx2N
     int       bEnableCbfFastMode;              ///< enable use of Cbf flags for fast mode decision
     int       bEnableEarlySkip;                ///< enable early skip (merge) detection
-    int       bRDLevel;                     ///< enable RD optimized quantization
+    int       rdLevel;                         ///< Configure RDO work level
     int       bEnableRDO;
     int       bEnableRDOQ;
     int       bEnableSignHiding;               ///< enable hiding one sign bit per TU via implicit signaling
     int       bEnableTransformSkip;            ///< enable intra transform skipping
     int       bEnableTSkipFast;                ///< enable fast intra transform skipping
     int       bEnableRDOQTS;                   ///< enable RD optimized quantization when transform skip is selected
+    int       maxNumReferences;                ///< maximum number of references a frame can have in L0
 
     // loop filter
     int       bEnableLoopFilter;               ///< enable Loop Filter
@@ -265,7 +317,10 @@ typedef struct x265_param_t
     // debugging
     int       decodedPictureHashSEI;           ///< Checksum(3)/CRC(2)/MD5(1)/disable(0) acting on decoded picture hash SEI message
 
-    struct 
+    // quality metrics
+    int       bEnablePsnr;
+    int       bEnableSsim;
+    struct
     {
         int       bitrate;
         double    rateTolerance;
@@ -273,32 +328,36 @@ typedef struct x265_param_t
         double    ipFactor;
         double    pbFactor;
         int       qpStep;
-        int       rateControlMode;             ///<Values corresponding to RcMethod 
+        int       rateControlMode;             ///<Values corresponding to RcMethod
         int       qp;                          ///< Constant QP base value
         int       rateFactor;                  ///< Constant rate factor (CRF)
+        int       aqMode;                      ///< Adaptive QP (AQ)
+        double    aqStrength;
     } rc;
 }
+
 x265_param_t;
 
-#define X265_CPU_LEVEL_AUTO  0
-#define X265_CPU_LEVEL_NONE  1 // C code only, no SIMD
-#define X265_CPU_LEVEL_SSE2  2
-#define X265_CPU_LEVEL_SSE3  3
-#define X265_CPU_LEVEL_SSSE3 4
-#define X265_CPU_LEVEL_SSE41 5
-#define X265_CPU_LEVEL_SSE42 6
-#define X265_CPU_LEVEL_AVX   7
-#define X265_CPU_LEVEL_AVX2  8
-
-/*** 
+/***
  * If not called, first encoder allocated will auto-detect the CPU and
  * initialize performance primitives, which are process global */
-void x265_setup_primitives(x265_param_t *param, int cpulevel);
+void x265_setup_primitives(x265_param_t *param, int cpu);
 
 /***
  * Initialize an x265_param_t structure to default values
  */
 void x265_param_default(x265_param_t *param);
+
+/* x265_param_parse:
+ *  set one parameter by name.
+ *  returns 0 on success, or returns one of the following errors.
+ *  note: BAD_VALUE occurs only if it can't even parse the value,
+ *  numerical range is not checked until x265_encoder_open() or
+ *  x265_encoder_reconfig().
+ *  value=NULL means "true" for boolean options, but is a BAD_VALUE for non-booleans. */
+#define X265_PARAM_BAD_NAME  (-1)
+#define X265_PARAM_BAD_VALUE (-2)
+int x265_param_parse(x265_param_t *p, const char *name, const char *value);
 
 /***
  * Initialize an x265_picture_t structure to default values
@@ -322,27 +381,46 @@ int x265_param_apply_profile(x265_param_t *, const char *profile);
  *      for all encoders allocated in the same process. */
 extern const int x265_max_bit_depth;
 
+/* x265_version_str:
+ *      A static string containing the version of this compiled x265 library */
+extern const char *x265_version_str;
+
+/* x265_build_info:
+ *      A static string describing the compiler and target architecture */
+extern const char *x265_build_info_str;
+
+/* Force a link error in the case of linking against an incompatible API version.
+ * Glue #defines exist to force correct macro expansion; the final output of the macro
+ * is x265_encoder_open_##X264_BUILD (for purposes of dlopen). */
+#define x265_encoder_glue1(x, y) x ## y
+#define x265_encoder_glue2(x, y) x265_encoder_glue1(x, y)
+#define x265_encoder_open x265_encoder_glue2(x265_encoder_open_, X265_BUILD)
+
 /* x265_encoder_open:
  *      create a new encoder handler, all parameters from x265_param_t are copied */
-x265_t *x265_encoder_open(x265_param_t *);
+x265_t* x265_encoder_open(x265_param_t *);
 
 /* x265_encoder_headers:
  *      return the SPS and PPS that will be used for the whole stream.
  *      *pi_nal is the number of NAL units outputted in pp_nal.
  *      returns negative on error.
  *      the payloads of all output NALs are guaranteed to be sequential in memory. */
-int     x265_encoder_headers(x265_t *, x265_nal_t **pp_nal, int *pi_nal);
+int x265_encoder_headers(x265_t *, x265_nal_t **pp_nal, int *pi_nal);
 
 /* x265_encoder_encode:
  *      encode one picture.
  *      *pi_nal is the number of NAL units outputted in pp_nal.
  *      returns negative on error, zero if no NAL units returned.
  *      the payloads of all output NALs are guaranteed to be sequential in memory. */
-int     x265_encoder_encode(x265_t *encoder, x265_nal_t **pp_nal, int *pi_nal, x265_picture_t *pic_in, x265_picture_t *pic_out);
+int x265_encoder_encode(x265_t *encoder, x265_nal_t **pp_nal, int *pi_nal, x265_picture_t *pic_in, x265_picture_t *pic_out);
+
+/* x265_encoder_stats:
+*       returns output stats from the encoder */
+void x265_encoder_get_stats(x265_t *encoder, x265_stats_t *);
 
 /* x265_encoder_close:
  *      close an encoder handler.  Optionally return the global PSNR value (6 * psnrY + psnrU + psnrV) / 8 */
-void    x265_encoder_close(x265_t *, double *globalPsnr);
+void x265_encoder_close(x265_t *, double *globalPsnr);
 
 /***
  * Release library static allocations

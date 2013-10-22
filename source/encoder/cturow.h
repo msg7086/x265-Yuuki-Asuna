@@ -36,7 +36,7 @@
 namespace x265 {
 // private x265 namespace
 
-class TEncTop;
+class Encoder;
 
 /* manages the state of encoding one row of CTU blocks.  When
  * WPP is active, several rows will be simultaneously encoded.
@@ -45,11 +45,13 @@ class CTURow
 {
 public:
 
+    CTURow() : m_rdGoOnBinCodersCABAC(true) {}
+
     TEncSbac               m_sbacCoder;
     TEncSbac               m_rdGoOnSbacCoder;
     TEncSbac               m_bufferSbacCoder;
     TEncBinCABAC           m_binCoderCABAC;
-    TEncBinCABACCounter    m_rdGoOnBinCodersCABAC;
+    TEncBinCABAC           m_rdGoOnBinCodersCABAC;
     TComBitCounter         m_bitCounter;
     TComRdCost             m_rdCost;
     TEncEntropy            m_entropyCoder;
@@ -57,15 +59,29 @@ public:
     TEncCu                 m_cuCoder;
     TComTrQuant            m_trQuant;
     TEncSbac            ***m_rdSbacCoders;
-    TEncBinCABACCounter ***m_binCodersCABAC;
+    TEncBinCABAC        ***m_binCodersCABAC;
 
-    void create(TEncTop* top);
+    void create(Encoder* top);
 
     void destroy();
 
-    void init()
+    void init(TComSlice *slice)
     {
         m_active = 0;
+
+        // Note: Reset status to avoid frame parallelism output mistake on different thread number
+        for (UInt depth = 0; depth < g_maxCUDepth + 1; depth++)
+        {
+            for (int ciIdx = 0; ciIdx < CI_NUM; ciIdx++)
+            {
+                m_rdSbacCoders[depth][ciIdx]->setSlice(slice);
+                m_rdSbacCoders[depth][ciIdx]->resetEntropy();
+                m_binCodersCABAC[depth][ciIdx]->m_fracBits = 0;
+            }
+        }
+
+        m_rdGoOnSbacCoder.setSlice(slice);
+        m_rdGoOnSbacCoder.resetEntropy();
     }
 
     void processCU(TComDataCU *cu, TComSlice *slice, TEncSbac *bufferSBac, bool bSaveCabac);
@@ -75,7 +91,6 @@ public:
     volatile bool       m_active;
     volatile uint32_t   m_completed;
 };
-
 }
 
 #endif // ifndef X265_CTUROW_H

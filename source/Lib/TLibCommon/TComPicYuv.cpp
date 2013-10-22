@@ -240,17 +240,20 @@ MotionReference* TComPicYuv::generateMotionReference(wpScalingParam *w)
     // NOTE: We extend border every CURow, so I remove code here
 
     MotionReference *mref;
+
     for (mref = m_refList; mref != NULL; mref = mref->m_next)
     {
         if (w)
-        {   
+        {
             if (mref->matchesWeight(*w))
                 return mref;
         }
         else if (mref->isWeighted == false)
             return mref;
     }
-    mref = new MotionReference(this, w);
+
+    mref = new MotionReference();
+    mref->init(this, w);
     mref->m_next = m_refList;
     m_refList = mref;
     return mref;

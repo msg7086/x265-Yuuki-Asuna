@@ -28,6 +28,7 @@
 #include "mbdstharness.h"
 #include "ipfilterharness.h"
 #include "intrapredharness.h"
+#include "cpu.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,25 +37,27 @@
 
 using namespace x265;
 
-static const char *CpuType[] =
+const char* lumaPartStr[NUM_LUMA_PARTITIONS] =
 {
-    "",
-    "",
-    "SSE2",
-    "SSE3",
-    "SSSE3",
-    "SSE4.1",
-    "SSE4.2",
-    "AVX",
-    "AVX2",
-    0
+    "  4x4",
+    "  8x8", "  8x4", "  4x8", 
+    "16x16", " 16x8", " 8x16", "16x12", "12x16", " 16x4", " 4x16",
+    "32x32", "32x16", "16x32", "32x24", "24x32", " 32x8", " 8x32",
+    "64x64", "64x32", "32x64", "64x48", "48x64", "64x16", "16x64",
 };
 
-extern int instrset_detect();
+const char* chromaPartStr[NUM_CHROMA_PARTITIONS] =
+{
+    "  2x2", // never used by HEVC
+    "  4x4", "  4x2", "  2x4",
+    "  8x8", "  8x4", "  4x8", "  8x6", "  6x8", "  8x2", "  2x8",
+    "16x16", " 16x8", " 8x16", "16x12", "12x16", " 16x4", " 4x16",
+    "32x32", "32x16", "16x32", "32x24", "24x32", " 32x8", " 8x32",
+};
 
 int main(int argc, char *argv[])
 {
-    int cpuid = instrset_detect(); // Detect supported instruction set
+    int cpuid = x265::cpu_detect();
     const char *testname = 0;
     int cpuid_user = -1;
 
@@ -94,20 +97,35 @@ int main(int argc, char *argv[])
     memset(&cprim, 0, sizeof(EncoderPrimitives));
     Setup_C_Primitives(cprim);
 
-    int cpuid_low = 2;
-    int cpuid_high = cpuid;
+    struct test_arch_t
+    {
+        char name[12];
+        int flag;
+    } test_arch[] =
+    {
+        { "SSE2", X265_CPU_SSE2 },
+        { "SSE3", X265_CPU_SSE3 },
+        { "SSSE3", X265_CPU_SSSE3 },
+        { "SSE4", X265_CPU_SSE4 },
+        { "AVX", X265_CPU_AVX },
+        { "XOP", X265_CPU_XOP },
+        { "AVX2", X265_CPU_AVX2 },
+        { "", 0 },
+    };
 
-    if (cpuid_user >= 0)
+    for (int i = 0; test_arch[i].flag; i++)
     {
-        cpuid_low = cpuid_high = cpuid_user;
-    }
-    for (int i = cpuid_low; i <= cpuid_high; i++)
-    {
+        if (test_arch[i].flag & cpuid)
+            printf("Testing primitives: %s\n", test_arch[i].name);
+        else
+            continue;
+        if (cpuid_user == i)
+            break;
+
 #if ENABLE_VECTOR_PRIMITIVES
         EncoderPrimitives vecprim;
         memset(&vecprim, 0, sizeof(vecprim));
-        Setup_Vector_Primitives(vecprim, i);
-        printf("Testing intrinsic primitives: %s (%d)\n", CpuType[i], i);
+        Setup_Vector_Primitives(vecprim, test_arch[i].flag);
         for (size_t h = 0; h < sizeof(harness) / sizeof(TestHarness*); h++)
         {
             if (testname && strncmp(testname, harness[h]->getName(), strlen(testname)))
@@ -124,8 +142,7 @@ int main(int argc, char *argv[])
 #if ENABLE_ASM_PRIMITIVES
         EncoderPrimitives asmprim;
         memset(&asmprim, 0, sizeof(asmprim));
-        Setup_Assembly_Primitives(asmprim, i);
-        printf("Testing assembly primitives: %s (%d)\n", CpuType[i], i);
+        Setup_Assembly_Primitives(asmprim, test_arch[i].flag);
         for (size_t h = 0; h < sizeof(harness) / sizeof(TestHarness*); h++)
         {
             if (testname && strncmp(testname, harness[h]->getName(), strlen(testname)))

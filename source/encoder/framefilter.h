@@ -32,7 +32,7 @@
 namespace x265 {
 // private x265 namespace
 
-class TEncTop;
+class Encoder;
 
 // Manages the processing of a single frame loopfilter
 class FrameFilter
@@ -43,7 +43,7 @@ public:
 
     virtual ~FrameFilter() {}
 
-    void init(TEncTop *top, int numRows, TEncSbac* rdGoOnSbacCoder);
+    void init(Encoder *top, int numRows, TEncSbac* rdGoOnSbacCoder);
 
     void destroy();
 
@@ -53,6 +53,8 @@ public:
     void processRow(int row);
     void processRowPost(int row);
     void processSao(int row);
+    void calculatePSNR(uint32_t cu, int row);
+    float calculateSSIM(pixel *pix1, intptr_t stride1, pixel *pix2, intptr_t stride2, int width, int height, void *buf, int *cnt);
 
 protected:
 
@@ -69,9 +71,11 @@ public:
     // SAO
     TEncEntropy                 m_entropyCoder;
     TEncSbac                    m_rdGoOnSbacCoder;
-    TEncBinCABACCounter         m_rdGoOnBinCodersCABAC;
+    TEncBinCABAC                m_rdGoOnBinCodersCABAC;
     TComBitCounter              m_bitCounter;
     TEncSbac*                   m_rdGoOnSbacCoderRow0;  // for bitstream exact only, depends on HM's bug
+    /* Temp storage for ssim computation that doesn't need repeated malloc */
+    void*                       m_ssimBuf;
 };
 }
 

@@ -1,3 +1,4 @@
+# vim: syntax=cmake
 if(NOT CMAKE_BUILD_TYPE)
     # default to Release build for GCC builds
     set(CMAKE_BUILD_TYPE Release CACHE STRING
@@ -6,7 +7,14 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 project (x265)
-cmake_minimum_required (VERSION 2.6)
+cmake_minimum_required (VERSION 2.8.8) # OBJECT libraries require 2.8.8
+
+# X265_BUILD must be incremented each time the public API is changed
+set(X265_BUILD 1)
+configure_file("${PROJECT_SOURCE_DIR}/x265.def.in"
+               "${PROJECT_BINARY_DIR}/x265.def")
+configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
+               "${PROJECT_BINARY_DIR}/x265_config.h")
 
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" "${CMAKE_MODULE_PATH}")
 
@@ -22,8 +30,18 @@ if (APPLE)
   add_definitions(-DMACOS)
 endif()
 
-# Enforce coding standards.  Full warnings and warnings as errors
-if("$ENV{CXX}" STREQUAL "icl")
+if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
+    set(CLANG 1)
+endif()
+if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
+    set(INTEL_CXX 1)
+endif()
+if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
+    set(GCC 1)
+endif()
+
+if(INTEL_CXX AND WIN32)
+    # treat icl roughly like MSVC
     set(MSVC 1)
 endif()
 if(MSVC)
@@ -34,6 +52,7 @@ if(MSVC)
             string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
         endforeach()
     endif (STATIC_LINK_CRT)
+    # Enforce coding standards.  Full warnings and warnings as errors
     add_definitions(/W4 /WX /D_CRT_SECURE_NO_WARNINGS)
     add_definitions(/Ob2) # always inline
     add_definitions(/Oi)  # enable intrinsics
@@ -41,30 +60,22 @@ if(MSVC)
     include_directories(compat/msvc)
 endif(MSVC)
 
-if("$ENV{CXX}" STREQUAL "icpc")
+if(INTEL_CXX AND UNIX)
+    # treat icpc roughly like gcc
     set(GCC 1)
     add_definitions(-Wall -Wextra -Wshadow -no-vec)
-elseif(CMAKE_COMPILER_IS_GNUCXX)
-    execute_process(COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
+elseif(CLANG)
+    # treat clang roughly like gcc
     set(GCC 1)
-    add_definitions(-Wall -Wextra -Wshadow -mstackrealign)
+    add_definitions(-Wall -Wextra -Wshadow -mstackrealign -ffast-math)
+elseif(CMAKE_COMPILER_IS_GNUCXX)
+    add_definitions(-Wall -Wextra -Wshadow -mstackrealign -ffast-math)
+    execute_process(COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
     if(NOT GCC_VERSION VERSION_LESS 4.7)
         # this is necessary to avoid name conflicts in vector class
         # library.  if vector classes are removed/replaced this can
         # likely be removed as well.
         add_definitions(-fabi-version=6)
-    endif()
-elseif(APPLE)
-    exec_program(uname ARGS -v OUTPUT_VARIABLE DARWIN_VERSION)
-    string(REGEX MATCH "[0-9]+" DARWIN_VERSION ${DARWIN_VERSION})
-    message(STATUS "DARWIN_VERSION=${DARWIN_VERSION}")
-    if (DARWIN_VERSION GREATER 12)
-        # Detect Mac OS X 10.8 llvm/gcc frankenstein's monster
-        if (${CMAKE_CXX_COMPILER} STREQUAL "/usr/bin/c++")
-            execute_process(COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
-            set(GCC 1)
-            add_definitions(-Wall -Wextra -Wshadow)
-        endif()
     endif()
 endif()
 if (GCC)
@@ -73,7 +84,7 @@ if (GCC)
         add_definitions(-Werror)
     endif(WARNINGS_AS_ERRORS)
     if(X64 AND NOT WIN32)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
+        add_definitions(-fPIC)
     endif(X64 AND NOT WIN32)
 endif(GCC)
 
@@ -89,6 +100,7 @@ find_package(Yasm)
 if(YASM_FOUND)
     if (YASM_VERSION_STRING VERSION_LESS "1.2.0")
         message(STATUS "Yasm version ${YASM_VERSION_STRING} is too old. 1.2.0 or later required")
+        option(ENABLE_PRIMITIVES_ASM "Enable use of assembly coded primitives" OFF)
     else()
         message(STATUS "Found Yasm ${YASM_VERSION_STRING} to build assembly primitives")
         option(ENABLE_PRIMITIVES_ASM "Enable use of assembly coded primitives" ON)
@@ -108,7 +120,7 @@ if(ENABLE_STLPORT)
     # STLPort headers must be included before system headers
     include_directories(BEFORE ${STLPORT_LOCATION}/stlport)
     link_directories(${STLPORT_LOCATION}/lib)
-    if("$ENV{CXX}" STREQUAL "icl")
+    if(INTEL_CXX)
         add_definitions(/Qwd1879)
     endif()
 endif(ENABLE_STLPORT)
@@ -117,7 +129,7 @@ option(ENABLE_PPA "Enable PPA profiling instrumentation" OFF)
 if(ENABLE_PPA)
     add_definitions(-DENABLE_PPA)
     add_subdirectory(PPA)
-    SET(PLATFORM_LIBS ${PLATFORM_LIBS} PPA)
+    SET(EXTRA_LIBS ${EXTRA_LIBS} PPA)
     if(UNIX)
         SET(PLATFORM_LIBS ${PLATFORM_LIBS} dl)
     endif(UNIX)
@@ -139,29 +151,51 @@ if (WIN32)
     endif(WINXP_SUPPORT)
 endif()
 
-include_directories(. Lib common encoder)
+include(version) # determine X265_VERSION and X265_LATEST_TAG
+include_directories(. Lib common encoder "${PROJECT_BINARY_DIR}")
 add_subdirectory(common)
 add_subdirectory(encoder)
 
-set(LIBS common encoder)
-if(ENABLE_PRIMITIVES_VEC)
-    set(LIBS ${LIBS} PrimitivesVec)
-endif(ENABLE_PRIMITIVES_VEC)
-
-if(ENABLE_PRIMITIVES_ASM)
-    set(LIBS ${LIBS} PrimitivesASM)
-endif(ENABLE_PRIMITIVES_ASM)
-
-if(NOT XCODE)
-    include(mergestaticlibs)
-    merge_static_libs(x265 ${LIBS})
+add_library(x265-static STATIC $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common>)
+add_library(x265-shared SHARED dllmain.cpp "${PROJECT_BINARY_DIR}/x265.def"
+                               $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common>)
+if(ENABLE_PRIMITIVES_ASM AND (MSVC_IDE OR XCODE))
+    SET(EXTRA_LIBS ${EXTRA_LIBS} assembly)
 endif()
+target_link_libraries(x265-shared ${EXTRA_LIBS})
+target_link_libraries(x265-static ${EXTRA_LIBS})
+set_target_properties(x265-shared PROPERTIES OUTPUT_NAME x265)
+if(NOT MSVC)
+    set_target_properties(x265-static PROPERTIES OUTPUT_NAME x265)
+endif()
+if(UNIX AND NOT CLANG)
+    set_target_properties(x265-shared PROPERTIES LINK_FLAGS "-Wl,-Bsymbolic")
+endif()
+# WIN32 builds static: x265-static.lib  shared: x265.dll + x265.lib (shim loader)
+# MINGW builds static: libx265-static.a shared: libx265.dll + libx265.dll.a
+# *NIX  builds static: libx265.a        shared: libx265.so
 
-# Test applications
-option(ENABLE_TESTS "Enable Unit Tests" OFF)
-if(ENABLE_TESTS)
-    add_subdirectory(test)
-endif(ENABLE_TESTS)
+if(X265_LATEST_TAG)
+    # shared library is not installed if a tag is not found
+    set_target_properties(x265-shared PROPERTIES VERSION ${X265_LATEST_TAG} SOVERSION ${X265_BUILD})
+    install(TARGETS x265-shared
+            RUNTIME DESTINATION bin
+            LIBRARY DESTINATION lib
+            ARCHIVE DESTINATION lib)
+endif()
+install(TARGETS x265-static
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
+install(FILES x265.h "${PROJECT_BINARY_DIR}/x265_config.h" DESTINATION include)
+
+if(NOT WIN32)
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
+                   "${CMAKE_CURRENT_BINARY_DIR}/cmake/cmake_uninstall.cmake"
+                   IMMEDIATE @ONLY)
+    add_custom_target(uninstall
+                      "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake/cmake_uninstall.cmake")
+endif()
 
 # Main CLI application
 option(ENABLE_CLI "Build standalone CLI application" ON)
@@ -170,21 +204,29 @@ if(ENABLE_CLI)
     file(GLOB OutputFiles output/*.cpp output/*.h)
     source_group(input FILES ${InputFiles})
     source_group(output FILES ${OutputFiles})
-    if (MSVC)
-        set_source_files_properties(compat/msvc/getopt.c PROPERTIES COMPILE_FLAGS "/wd4100")
+    if(MSVC)
+        set_source_files_properties(compat/msvc/getopt.c PROPERTIES COMPILE_FLAGS "/wd4100 /wd4131 -DHAVE_STRING_H=1")
     elseif(GCC)
         set_source_files_properties(compat/msvc/getopt.c PROPERTIES COMPILE_FLAGS "-Wno-unused-parameter")
     endif()
 
-    include(version) # determine X265_VERSION
-    set_source_files_properties(x265.cpp PROPERTIES COMPILE_FLAGS -DX265_VERSION=${X265_VERSION})
-    add_executable(cli ${EXTRAS} ../COPYING ${InputFiles} ${OutputFiles}
-        x265.cpp x265opts.h x265.h
-        compat/msvc/getopt.c compat/msvc/getopt.h)
-if(XCODE OR MSVC)
-    target_link_libraries(cli ${LIBS} ${PLATFORM_LIBS})
-else()
-    target_link_libraries(cli x265 ${PLATFORM_LIBS})
-endif()
-    SET_TARGET_PROPERTIES(cli PROPERTIES OUTPUT_NAME x265)
+    add_executable(cli ../COPYING ${InputFiles} ${OutputFiles}
+                   x265.cpp x265.h
+                   compat/msvc/getopt.c compat/msvc/getopt.h)
+    target_link_libraries(cli x265-static ${PLATFORM_LIBS})
+    set_target_properties(cli PROPERTIES OUTPUT_NAME x265)
+
+    install(TARGETS cli DESTINATION bin)
 endif(ENABLE_CLI)
+
+# Test applications
+option(ENABLE_TESTS "Enable Unit Tests" OFF)
+if(ENABLE_TESTS)
+    if(ENABLE_PRIMITIVES_VEC)
+        add_definitions(-DENABLE_VECTOR_PRIMITIVES=1)
+    endif(ENABLE_PRIMITIVES_VEC)
+    if(ENABLE_PRIMITIVES_ASM)
+        add_definitions(-DENABLE_ASM_PRIMITIVES=1)
+    endif(ENABLE_PRIMITIVES_ASM)
+    add_subdirectory(test)
+endif(ENABLE_TESTS)

@@ -48,6 +48,8 @@
 namespace x265 {
 // private namespace
 
+class TEncCfg;
+
 //! \ingroup TLibCommon
 //! \{
 
@@ -78,13 +80,21 @@ public:
     volatile uint32_t     m_countRefEncoders;   // count of FrameEncoder threads monitoring m_reconRowCount
     Event                 m_reconRowWait;       // event triggered m_countRefEncoders times each time a recon row is completed
     void*                 m_userData;           // user provided pointer passed in with this picture
+    int64_t               m_pts;                // user provided presentation time stamp
 
     Lowres                m_lowres;
+
+    TComPic*              m_next;
+    TComPic*              m_prev;
+    double*               m_qpAqOffset;
+    UInt64                m_SSDY;
+    UInt64                m_SSDU;
+    UInt64                m_SSDV;
 
     TComPic();
     virtual ~TComPic();
 
-    void          create(int width, int height, UInt maxWidth, UInt maxHeight, UInt maxDepth, Window &conformanceWindow, Window &defaultDisplayWindow, int bframes);
+    void          create(TEncCfg* cfg);
 
     virtual void  destroy(int bframes);
 
@@ -139,10 +149,6 @@ public:
     Window&       getConformanceWindow()  { return m_conformanceWindow; }
 
     Window&       getDefDisplayWindow()   { return m_defaultDisplayWindow; }
-
-    void          createNonDBFilterInfo(int lastSliceCUAddr, int sliceGranularityDepth);
-    void          createNonDBFilterInfoLCU(int sliceID, TComDataCU* cu, UInt startSU, UInt endSU, int sliceGranularyDepth, UInt picWidth, UInt picHeight);
-    void          destroyNonDBFilterInfo();
 }; // END CLASS DEFINITION TComPic
 }
 //! \}

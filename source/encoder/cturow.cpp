@@ -23,30 +23,30 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
-#include "TLibEncoder/TEncTop.h"
+#include "encoder.h"
 #include "PPA/ppa.h"
 #include "cturow.h"
 
 using namespace x265;
 
-void CTURow::create(TEncTop* top)
+void CTURow::create(Encoder* top)
 {
     m_rdGoOnSbacCoder.init(&m_rdGoOnBinCodersCABAC);
     m_sbacCoder.init(&m_binCoderCABAC);
     m_trQuant.init(1 << top->getQuadtreeTULog2MaxSize(), top->param.bEnableRDOQ, top->param.bEnableRDOQTS, top->param.bEnableTSkipFast);
 
     m_rdSbacCoders = new TEncSbac **[g_maxCUDepth + 1];
-    m_binCodersCABAC = new TEncBinCABACCounter **[g_maxCUDepth + 1];
+    m_binCodersCABAC = new TEncBinCABAC **[g_maxCUDepth + 1];
 
     for (UInt depth = 0; depth < g_maxCUDepth + 1; depth++)
     {
         m_rdSbacCoders[depth]  = new TEncSbac*[CI_NUM];
-        m_binCodersCABAC[depth] = new TEncBinCABACCounter*[CI_NUM];
+        m_binCodersCABAC[depth] = new TEncBinCABAC*[CI_NUM];
 
         for (int ciIdx = 0; ciIdx < CI_NUM; ciIdx++)
         {
             m_rdSbacCoders[depth][ciIdx] = new TEncSbac;
-            m_binCodersCABAC[depth][ciIdx] = new TEncBinCABACCounter;
+            m_binCodersCABAC[depth][ciIdx] = new TEncBinCABAC(true);
             m_rdSbacCoders[depth][ciIdx]->init(m_binCodersCABAC[depth][ciIdx]);
         }
     }
@@ -68,11 +68,6 @@ void CTURow::create(TEncTop* top)
 
 void CTURow::processCU(TComDataCU *cu, TComSlice *slice, TEncSbac *bufferSbac, bool bSaveSBac)
 {
-    TEncBinCABAC* rdSbacCoder = (TEncBinCABAC*)m_rdSbacCoders[0][CI_CURR_BEST]->getEncBinIf();
-
-    rdSbacCoder->setBinCountingEnableFlag(false);
-    rdSbacCoder->setBinsCoded(0);
-
     if (bufferSbac)
     {
         // Load SBAC coder context from previous row.
@@ -81,7 +76,6 @@ void CTURow::processCU(TComDataCU *cu, TComSlice *slice, TEncSbac *bufferSbac, b
 
     m_entropyCoder.setEntropyCoder(&m_rdGoOnSbacCoder, slice);
     m_entropyCoder.setBitstream(&m_bitCounter);
-    ((TEncBinCABAC*)m_rdGoOnSbacCoder.getEncBinIf())->setBinCountingEnableFlag(true);
     m_cuCoder.setRDGoOnSbacCoder(&m_rdGoOnSbacCoder);
 
     m_cuCoder.compressCU(cu); // Does all the CU analysis
@@ -90,13 +84,9 @@ void CTURow::processCU(TComDataCU *cu, TComSlice *slice, TEncSbac *bufferSbac, b
     m_entropyCoder.setEntropyCoder(m_rdSbacCoders[0][CI_CURR_BEST], slice);
     m_entropyCoder.setBitstream(&m_bitCounter);
     m_cuCoder.setBitCounter(&m_bitCounter);
-    rdSbacCoder->setBinCountingEnableFlag(true);
     m_bitCounter.resetBits();
-    rdSbacCoder->setBinsCoded(0);
 
     m_cuCoder.encodeCU(cu);  // Count bits
-
-    rdSbacCoder->setBinCountingEnableFlag(false);
 
     if (bSaveSBac)
     {

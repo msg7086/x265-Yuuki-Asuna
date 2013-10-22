@@ -98,7 +98,6 @@ protected:
     TEncEntropy*    m_entropyCoder;
 
     // ME parameters
-    int             m_bipredSearchRange; // Search range for bi-prediction
     int             m_refLagPixels;
     int             m_adaptiveRange[2][33];
     MV              m_mvPredictors[3];
@@ -129,9 +128,6 @@ public:
 
 protected:
 
-    /// motion vector refinement used in fractional-pel accuracy
-    UInt xPatternRefinement(TComPattern* patternKey, Pel *fenc, int fracBits, MV& outFracMv, TComPicYuv* refPic, TComDataCU* cu, UInt partAddr);
-
     UInt xGetInterPredictionError(TComDataCU* cu, int partIdx);
 
 public:
@@ -146,7 +142,7 @@ public:
                               TComYuv* reconYuv, UInt precalcDistC);
 
     /// encoder estimation - inter prediction (non-skip)
-    void predInterSearch(TComDataCU* cu, TComYuv* fencYuv, TComYuv* predYuv, bool bUseMRG = false);
+    void predInterSearch(TComDataCU* cu, TComYuv* predYuv, bool bUseMRG = false, bool bLuma = true, bool bChroma = true);
 
     /// encode residual and compute rd-cost for inter mode
     void encodeResAndCalcRdInterCU(TComDataCU* cu, TComYuv* fencYuv, TComYuv* predYuv, TShortYUV* resiYuv, TShortYUV* bestResiYuv,
@@ -224,16 +220,7 @@ protected:
     // motion estimation
     // -------------------------------------------------------------------------------------------------------------------
 
-    void xMotionEstimation(TComDataCU* cu, TComYuv* fencYuv, int partIdx, RefPicList picList, MV* mvp,
-                           int refIdxPred, MV& outmv, UInt& outBits, UInt& outCost);
-
     void xSetSearchRange(TComDataCU* cu, MV mvp, int merange, MV& mvmin, MV& mvmax);
-
-    void xPatternSearch(TComPattern* patternKey, Pel *fenc, Pel* refY, int stride, MV* mvmin, MV* mvmax,
-                        MV& outmv, UInt& ruiSAD);
-
-    void xExtDIFUpSamplingH(TComPattern* pcPattern);
-    void xExtDIFUpSamplingQ(TComPattern* patternKey, MV halfPelRef);
 
     // -------------------------------------------------------------------------------------------------------------------
     // T & Q & Q-1 & T-1

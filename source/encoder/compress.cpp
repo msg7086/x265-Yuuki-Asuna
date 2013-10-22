@@ -79,11 +79,10 @@ void TEncCu::xEncodeIntraInInter(TComDataCU* cu, TComYuv* fencYuv, TComYuv* pred
     m_rdGoOnSbacCoder->store(m_rdSbacCoders[depth][CI_TEMP_BEST]);
 
     cu->m_totalBits = m_entropyCoder->getNumberOfWrittenBits();
-    cu->m_totalBins = ((TEncBinCABAC*)((TEncSbac*)m_entropyCoder->m_entropyCoderIf)->getEncBinIf())->getBinsCoded();
     cu->m_totalCost = m_rdCost->calcRdCost(cu->m_totalDistortion, cu->m_totalBits);
 }
 
-void TEncCu::xComputeCostIntraInInter(TComDataCU*& cu, PartSize partSize)
+void TEncCu::xComputeCostIntraInInter(TComDataCU* cu, PartSize partSize)
 {
     UInt depth = cu->getDepth(0);
 
@@ -94,153 +93,114 @@ void TEncCu::xComputeCostIntraInInter(TComDataCU*& cu, PartSize partSize)
 
     UInt initTrDepth = cu->getPartitionSize(0) == SIZE_2Nx2N ? 0 : 1;
     UInt width       = cu->getWidth(0) >> initTrDepth;
-    UInt widthBits   = cu->getIntraSizeIdx(0);
-    UInt64 CandCostList[FAST_UDI_MAX_RDMODE_NUM];
-    UInt CandNum;
-    UInt partOffset = 0;
+    UInt partOffset  = 0;
 
     //===== init pattern for luma prediction =====
     cu->getPattern()->initPattern(cu, initTrDepth, partOffset);
     // Reference sample smoothing
     cu->getPattern()->initAdiPattern(cu, partOffset, initTrDepth, m_search->getPredicBuf(),  m_search->getPredicBufWidth(),  m_search->getPredicBufHeight(), m_search->refAbove, m_search->refLeft, m_search->refAboveFlt, m_search->refLeftFlt);
 
-    //===== determine set of modes to be tested (using prediction signal only) =====
-    UInt numModesAvailable = 35; //total number of Intra modes
     Pel* fenc   = m_origYuv[depth]->getLumaAddr(0, width);
     Pel* pred   = m_modePredYuv[5][depth]->getLumaAddr(0, width);
     UInt stride = m_modePredYuv[5][depth]->getStride();
-    UInt rdModeList[FAST_UDI_MAX_RDMODE_NUM];
-    UInt numModesForFullRD = g_intraModeNumFast[widthBits];
-    int nLog2SizeMinus2 = g_convertToBit[width];
-    pixelcmp_t sa8d = primitives.sa8d[nLog2SizeMinus2];
 
+    Pel *pAbove0 = m_search->refAbove    + width - 1;
+    Pel *pAbove1 = m_search->refAboveFlt + width - 1;
+    Pel *pLeft0  = m_search->refLeft     + width - 1;
+    Pel *pLeft1  = m_search->refLeftFlt  + width - 1;
+    int sad;
+    UInt bits, mode, bmode;
+    UInt64 cost, bcost;
+
+    // 33 Angle modes once
+    ALIGN_VAR_32(Pel, tmp[33 * 32 * 32]);
+    ALIGN_VAR_32(Pel, buf_trans[32 * 32]);
+
+    if (width < 64)
     {
-        assert(numModesForFullRD < numModesAvailable);
+        int nLog2SizeMinus2 = g_convertToBit[width];
+        pixelcmp_t sa8d = primitives.sa8d[nLog2SizeMinus2];
 
-        for (UInt i = 0; i < numModesForFullRD; i++)
+        primitives.intra_pred_dc(pAbove0 + 1, pLeft0 + 1, pred, stride, width, (width <= 16));
+        sad = sa8d(fenc, stride, pred, stride);
+        bmode = mode = DC_IDX;
+        bits = m_search->xModeBitsIntra(cu, mode, partOffset, depth, initTrDepth);
+        bcost = m_rdCost->calcRdSADCost(sad, bits);
+
+        Pel *above = pAbove0;
+        Pel *left  = pLeft0;
+        if (width >= 8)
         {
-            CandCostList[i] = MAX_INT64;
+            above = pAbove1;
+            left  = pLeft1;
         }
+        primitives.intra_pred_planar(above + 1, left + 1, pred, stride, width);
+        sad = sa8d(fenc, stride, pred, stride);
+        mode = PLANAR_IDX;
+        bits = m_search->xModeBitsIntra(cu, mode, partOffset, depth, initTrDepth);
+        cost = m_rdCost->calcRdSADCost(sad, bits);
+        COPY2_IF_LT(bcost, cost, bmode, mode);
 
-        CandNum = 0;
-        UInt modeCosts[35];
-
-        // CHM: TODO - The code isn't copy from TEncSearch::estIntraPredQT by me, I sync it, please check its logic
-        Pel *pAbove0 = m_search->refAbove    + width - 1;
-        Pel *pAbove1 = m_search->refAboveFlt + width - 1;
-        Pel *pLeft0  = m_search->refLeft     + width - 1;
-        Pel *pLeft1  = m_search->refLeftFlt  + width - 1;
-
-        // 33 Angle modes once
-        ALIGN_VAR_32(Pel, buf_trans[32 * 32]);
-        ALIGN_VAR_32(Pel, tmp[33 * 32 * 32]);
-
-        if (width <= 32)
+        primitives.transpose[nLog2SizeMinus2](buf_trans, fenc, stride);
+        primitives.intra_pred_allangs[nLog2SizeMinus2](tmp, pAbove0, pLeft0, pAbove1, pLeft1, (width <= 16));
+        for (mode = 2; mode < 35; mode++)
         {
-            // 1
-            primitives.intra_pred_dc(pAbove0 + 1, pLeft0 + 1, pred, stride, width, (width <= 16));
-            modeCosts[DC_IDX] = sa8d(fenc, stride, pred, stride);
-
-            // 0
-            Pel *above = pAbove0;
-            Pel *left  = pLeft0;
-            if (width >= 8 && width <= 32)
-            {
-                above = pAbove1;
-                left  = pLeft1;
-            }
-            primitives.intra_pred_planar((pixel*)above + 1, (pixel*)left + 1, pred, stride, width);
-            modeCosts[PLANAR_IDX] = sa8d(fenc, stride, pred, stride);
-
-            // Transpose NxN
-            primitives.transpose[nLog2SizeMinus2](buf_trans, (pixel*)fenc, stride);
-
-            primitives.intra_pred_allangs[nLog2SizeMinus2](tmp, pAbove0, pLeft0, pAbove1, pLeft1, (width <= 16));
-
-            // TODO: We need SATD_x4 here
-            for (UInt mode = 2; mode < numModesAvailable; mode++)
-            {
-                bool modeHor = (mode < 18);
-                Pel *cmp = (modeHor ? buf_trans : fenc);
-                intptr_t srcStride = (modeHor ? width : stride);
-                modeCosts[mode] = sa8d(cmp, srcStride, &tmp[(mode - 2) * (width * width)], width);
-            }
+            bool modeHor = (mode < 18);
+            Pel *cmp = (modeHor ? buf_trans : fenc);
+            intptr_t srcStride = (modeHor ? width : stride);
+            sad = sa8d(cmp, srcStride, &tmp[(mode - 2) * (width * width)], width);
+            bits = m_search->xModeBitsIntra(cu, mode, partOffset, depth, initTrDepth);
+            cost = m_rdCost->calcRdSADCost(sad, bits);
+            COPY2_IF_LT(bcost, cost, bmode, mode);
         }
-        else
+    }
+    else
+    {
+        /* 64x64 intra doesn't really exist, so downscale to 32x32 and estimate */
+        ALIGN_VAR_32(Pel, buf_scale[32 * 32]);
+        pixelcmp_t sa8d = primitives.sa8d[BLOCK_32x32];
+        primitives.scale2D_64to32(buf_scale, fenc, stride);
+        width = 32;
+
+        // some versions of intra angs primitives may write into above
+        // and/or left buffers above the original pointer, so we must
+        // reserve space for it
+        Pel _above[4 * 32 + 1];
+        Pel _left[4 * 32 + 1];
+        Pel *const above = _above + 2 * 32;
+        Pel *const left = _left + 2 * 32;
+
+        above[0] = left[0] = pAbove0[0];
+        primitives.scale1D_128to64(above + 1, pAbove0 + 1, 0);
+        primitives.scale1D_128to64(left + 1, pLeft0 + 1, 0);
+
+        primitives.intra_pred_dc(above + 1, left + 1, tmp, width, width, false);
+        sad = 4 * sa8d(buf_scale, width, tmp, width);
+        bmode = mode = DC_IDX;
+        bits = m_search->xModeBitsIntra(cu, mode, partOffset, depth, initTrDepth);
+        bcost = m_rdCost->calcRdSADCost(sad, bits);
+
+        primitives.intra_pred_planar(above + 1, left + 1, tmp, width, width);
+        sad = 4 * sa8d(buf_scale, width, tmp, width);
+        mode = PLANAR_IDX;
+        bits = m_search->xModeBitsIntra(cu, mode, partOffset, depth, initTrDepth);
+        cost = m_rdCost->calcRdSADCost(sad, bits);
+        COPY2_IF_LT(bcost, cost, bmode, mode);
+
+        primitives.transpose[BLOCK_32x32](buf_trans, buf_scale, width);
+        primitives.intra_pred_allangs[BLOCK_32x32](tmp, above, left, above, left, false);
+        for (mode = 2; mode < 35; mode++)
         {
-            ALIGN_VAR_32(Pel, buf_scale[32 * 32]);
-            primitives.scale2D_64to32(buf_scale, fenc, stride);
-            primitives.transpose[3](buf_trans, buf_scale, 32);
-
-            // some versions of intra angs primitives may write into above
-            // and/or left buffers above the original pointer, so we must
-            // reserve space for it
-            Pel _above[4 * 32 + 1];
-            Pel _left[4 * 32 + 1];
-            Pel *const above = _above + 2 * 32;
-            Pel *const left = _left + 2 * 32;
-
-            above[0] = left[0] = pAbove0[0];
-            primitives.scale1D_128to64(above + 1, pAbove0 + 1, 0);
-            primitives.scale1D_128to64(left + 1, pLeft0 + 1, 0);
-
-            // 1
-            primitives.intra_pred_dc(above + 1, left + 1, tmp, 32, 32, false);
-            modeCosts[DC_IDX] = 4 * primitives.sa8d[3](buf_scale, 32, tmp, 32);
-
-            // 0
-            primitives.intra_pred_planar((pixel*)above + 1, (pixel*)left + 1, tmp, 32, 32);
-            modeCosts[PLANAR_IDX] = 4 * primitives.sa8d[3](buf_scale, 32, tmp, 32);
-
-            primitives.intra_pred_allangs[3](tmp, above, left, above, left, false);
-
-            // TODO: I use 4 of SATD32x32 to replace real 64x64
-            for (UInt mode = 2; mode < numModesAvailable; mode++)
-            {
-                bool modeHor = (mode < 18);
-                Pel *cmp_buf = (modeHor ? buf_trans : buf_scale);
-                modeCosts[mode] = 4 * primitives.sa8d[3]((pixel*)cmp_buf, 32, (pixel*)&tmp[(mode - 2) * (32 * 32)], 32);
-            }
-        }
-
-        // SJB: TODO - all this code looks redundant. You just want the least cost of the 35
-
-        // Find N least cost modes. N = numModesForFullRD
-        for (UInt mode = 0; mode < numModesAvailable; mode++)
-        {
-            UInt sad = modeCosts[mode];
-            UInt bits = m_search->xModeBitsIntra(cu, mode, partOffset, depth, initTrDepth);
-            UInt64 cost = m_rdCost->calcRdSADCost(sad, bits);
-            CandNum += m_search->xUpdateCandList(mode, cost, numModesForFullRD, rdModeList, CandCostList);
-        }
-
-        int preds[3] = { -1, -1, -1 };
-        int mode = -1;
-        int numCand = cu->getIntraDirLumaPredictor(partOffset, preds, &mode);
-        if (mode >= 0)
-        {
-            numCand = mode;
-        }
-
-        for (int j = 0; j < numCand; j++)
-        {
-            bool mostProbableModeIncluded = false;
-            UInt mostProbableMode = preds[j];
-
-            for (UInt i = 0; i < numModesForFullRD; i++)
-            {
-                mostProbableModeIncluded |= (mostProbableMode == rdModeList[i]);
-            }
-
-            if (!mostProbableModeIncluded)
-            {
-                rdModeList[numModesForFullRD++] = mostProbableMode;
-            }
+            Pel *cmp_buf = (mode < 18) ? buf_trans : buf_scale;
+            sad = 4 * sa8d(cmp_buf, width, tmp + (mode - 2) * (32 * 32), width);
+            bits = m_search->xModeBitsIntra(cu, mode, partOffset, depth, initTrDepth);
+            cost = m_rdCost->calcRdSADCost(sad, bits);
+            COPY2_IF_LT(bcost, cost, bmode, mode);
         }
     }
 
     // generate predYuv for the best mode
-    cu->setLumaIntraDirSubParts(rdModeList[0], partOffset, depth + initTrDepth);
+    cu->setLumaIntraDirSubParts(bmode, partOffset, depth + initTrDepth);
 
     // set context models
     m_rdGoOnSbacCoder->load(m_rdSbacCoders[depth][CI_CURR_BEST]);
@@ -261,7 +221,8 @@ void TEncCu::xComputeCostInter(TComDataCU* outTempCU, TComYuv* outPredYuv, PartS
     m_tmpRecoYuv[depth]->clear();
     m_tmpResiYuv[depth]->clear();
 
-    m_search->predInterSearch(outTempCU, m_origYuv[depth], outPredYuv, bUseMRG);
+    //do motion compensation only for Luma since luma cost alone is calculated
+    m_search->predInterSearch(outTempCU, outPredYuv, bUseMRG, true, false);
     int part = PartitionFromSizes(outTempCU->getWidth(0), outTempCU->getHeight(0));
     outTempCU->m_totalCost = primitives.sse_pp[part](m_origYuv[depth]->getLumaAddr(), m_origYuv[depth]->getStride(),
                                                      outPredYuv->getLumaAddr(), outPredYuv->getStride());
@@ -296,8 +257,8 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
         outTempCU->getCUMvField(REF_PIC_LIST_0)->setAllMvField(mvFieldNeighbours[0 + 2 * mergeCand], SIZE_2Nx2N, 0, 0); // interprets depth relative to rpcTempCU level
         outTempCU->getCUMvField(REF_PIC_LIST_1)->setAllMvField(mvFieldNeighbours[1 + 2 * mergeCand], SIZE_2Nx2N, 0, 0); // interprets depth relative to rpcTempCU level
 
-        // do MC
-        m_search->motionCompensation(outTempCU, m_tmpPredYuv[depth]);
+        // do MC only for Luma part
+        m_search->motionCompensation(outTempCU, m_tmpPredYuv[depth], REF_PIC_LIST_X, -1, true, false);
         int part = PartitionFromSizes(outTempCU->getWidth(0), outTempCU->getHeight(0));
 
         outTempCU->m_totalCost = primitives.sse_pp[part](m_origYuv[depth]->getLumaAddr(), m_origYuv[depth]->getStride(),
@@ -319,6 +280,12 @@ void TEncCu::xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTemp
         outTempCU->initEstData(depth, orgQP);
     }
 
+    //calculate the motion compensation for chroma for the best mode selected
+    int numPart = outBestCU->getNumPartInter();
+    for (int partIdx = 0; partIdx < numPart; partIdx++)
+    {
+        m_search->motionCompensation(outBestCU, bestPredYuv, REF_PIC_LIST_X, partIdx, false, true);
+    }
     m_search->encodeResAndCalcRdInterCU(outBestCU, m_origYuv[depth], bestPredYuv, m_tmpResiYuv[depth], m_bestResiYuv[depth], yuvReconBest, false);
     if (m_cfg->param.bEnableEarlySkip)
     {
@@ -374,7 +341,7 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
     UInt bpely = tpely + outTempCU->getHeight(0) - 1;
     TComDataCU* subTempPartCU, * subBestPartCU;
     int qp = outTempCU->getQP(0);
-    
+
     // If slice start or slice end is within this cu...
     TComSlice * slice = outTempCU->getPic()->getSlice();
     bool bSliceEnd = slice->getSliceCurEndCUAddr() > outTempCU->getSCUAddr() &&
@@ -467,6 +434,12 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
                 m_modePredYuv[2][depth] = m_bestPredYuv[depth];
                 m_bestPredYuv[depth] = tempYuv;
             }
+            //calculate the motion compensation for chroma for the best mode selected
+            int numPart = outBestCU->getNumPartInter();
+            for (int partIdx = 0; partIdx < numPart; partIdx++)
+            {
+                m_search->motionCompensation(outBestCU, m_bestPredYuv[depth], REF_PIC_LIST_X, partIdx, false, true);
+            }
 
             m_search->encodeResAndCalcRdInterCU(outBestCU, m_origYuv[depth], m_bestPredYuv[depth], m_tmpResiYuv[depth],
                                                 m_bestResiYuv[depth], m_bestRecoYuv[depth], false);
@@ -487,7 +460,7 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
             }
 
             /* Check for Intra in inter frames only if its a P-slice*/
-            if(outBestCU->getSlice()->getSliceType() == P_SLICE)
+            if (outBestCU->getSlice()->getSliceType() == P_SLICE)
             {
                 /*compute intra cost */
                 if (outBestCU->getCbf(0, TEXT_LUMA) != 0 ||
@@ -539,7 +512,6 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
         m_entropyCoder->resetBits();
         m_entropyCoder->encodeSplitFlag(outBestCU, 0, depth, true);
         outBestCU->m_totalBits += m_entropyCoder->getNumberOfWrittenBits(); // split bits
-        outBestCU->m_totalBins += ((TEncBinCABAC*)((TEncSbac*)m_entropyCoder->m_entropyCoderIf)->getEncBinIf())->getBinsCoded();
         outBestCU->m_totalCost  = m_rdCost->calcRdCost(outBestCU->m_totalDistortion, outBestCU->m_totalBits);
     }
     else if (!(bSliceEnd && bInsidePicture))
@@ -559,6 +531,7 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
     // further split
     if (bSubBranch && bTrySplitDQP && depth < g_maxCUDepth - g_addCUDepth)
     {
+#if 0 // turn ON this to enable early exit
         UInt64 nxnCost = 0;
         if (outBestCU != 0 && depth > 0)
         {
@@ -594,12 +567,13 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
                         nxnCost += subTempPartCU->m_totalCost;
                     }
                 }
+                subTempPartCU->copyToPic((UChar)nextDepth);
             }
 
             float lambda = 1.0f;
-            if(outBestCU->getSlice()->getSliceType() == P_SLICE)
+            if (outBestCU->getSlice()->getSliceType() == P_SLICE)
                 lambda = 0.9f;
-            else if(outBestCU->getSlice()->getSliceType() == B_SLICE)
+            else if (outBestCU->getSlice()->getSliceType() == B_SLICE)
                 lambda = 1.1f;
 
             if (outBestCU->m_totalCost < lambda * nxnCost)
@@ -607,7 +581,6 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
                 m_entropyCoder->resetBits();
                 m_entropyCoder->encodeSplitFlag(outBestCU, 0, depth, true);
                 outBestCU->m_totalBits += m_entropyCoder->getNumberOfWrittenBits();        // split bits
-                outBestCU->m_totalBins += ((TEncBinCABAC*)((TEncSbac*)m_entropyCoder->m_entropyCoderIf)->getEncBinIf())->getBinsCoded();
                 outBestCU->m_totalCost  = m_rdCost->calcRdCost(outBestCU->m_totalDistortion, outBestCU->m_totalBits);
                 /* Copy Best data to Picture for next partition prediction. */
                 outBestCU->copyToPic((UChar)depth);
@@ -617,6 +590,7 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
                 return;
             }
         }
+#endif // early exit
         outTempCU->initEstData(depth, qp);
         UChar nextDepth = (UChar)(depth + 1);
         subTempPartCU = m_tempCU[nextDepth];
@@ -656,7 +630,6 @@ void TEncCu::xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TC
             m_entropyCoder->encodeSplitFlag(outTempCU, 0, depth, true);
 
             outTempCU->m_totalBits += m_entropyCoder->getNumberOfWrittenBits(); // split bits
-            outTempCU->m_totalBins += ((TEncBinCABAC*)((TEncSbac*)m_entropyCoder->m_entropyCoderIf)->getEncBinIf())->getBinsCoded();
         }
 
         outTempCU->m_totalCost = m_rdCost->calcRdCost(outTempCU->m_totalDistortion, outTempCU->m_totalBits);

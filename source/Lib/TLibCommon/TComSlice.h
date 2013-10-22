@@ -40,13 +40,12 @@
 
 #include "CommonDef.h"
 #include "TComRom.h"
-#include "TComList.h"
 #include "x265.h"  // NAL type enums
 #include "reference.h"
+#include "piclist.h"
 
 #include <cstring>
-#include <map>
-#include <vector>
+#include <assert.h>
 
 //! \ingroup TLibCommon
 //! \{
@@ -93,7 +92,6 @@ public:
     bool m_interRPSPrediction;
     int  m_numberOfLongtermPictures;          // Zero when disabled
 
-
     TComReferencePictureSet();
     virtual ~TComReferencePictureSet();
     int   getPocLSBLT(int i)                       { return m_pocLSBLT[i]; }
@@ -111,7 +109,6 @@ public:
     void setUsed(int bufferNum, bool used);
     void setDeltaPOC(int bufferNum, int deltaPOC);
     void setPOC(int bufferNum, int deltaPOC);
-    void setNumberOfPictures(int numberOfPictures);
     void setCheckLTMSBPresent(int bufferNum, bool b);
     bool getCheckLTMSBPresent(int bufferNum);
 
@@ -120,35 +117,20 @@ public:
     int  getPOC(int bufferNum) const;
     int  getNumberOfPictures() const;
 
-    void setNumberOfNegativePictures(int number)  { m_numberOfNegativePictures = number; }
-
     int  getNumberOfNegativePictures() const      { return m_numberOfNegativePictures; }
-
-    void setNumberOfPositivePictures(int number)  { m_numberOfPositivePictures = number; }
 
     int  getNumberOfPositivePictures() const      { return m_numberOfPositivePictures; }
 
-    void setNumberOfLongtermPictures(int number)  { m_numberOfLongtermPictures = number; }
-
     int  getNumberOfLongtermPictures() const      { return m_numberOfLongtermPictures; }
-
-    void setInterRPSPrediction(bool flag)         { m_interRPSPrediction = flag; }
 
     bool getInterRPSPrediction() const            { return m_interRPSPrediction; }
 
-    void setDeltaRIdxMinus1(int x)                { m_deltaRIdxMinus1 = x; }
-
     int  getDeltaRIdxMinus1() const               { return m_deltaRIdxMinus1; }
-
-    void setDeltaRPS(int x)                       { m_deltaRPS = x; }
 
     int  getDeltaRPS() const                      { return m_deltaRPS; }
 
-    void setNumRefIdc(int x)                      { m_numRefIdc = x; }
-
     int  getNumRefIdc() const                     { return m_numRefIdc; }
 
-    void setRefIdc(int bufferNum, int refIdc);
     int  getRefIdc(int bufferNum) const;
 
     void sortDeltaPOC();
@@ -173,7 +155,6 @@ public:
 
     TComReferencePictureSet* getReferencePictureSet(int referencePictureSetNum);
     int getNumberOfReferencePictureSets() const;
-    void setNumberOfReferencePictureSets(int numberOfReferencePictureSets);
 };
 
 /// SCALING_LIST class
@@ -239,8 +220,6 @@ public:
 
     int getProfileSpace() const { return m_profileSpace; }
 
-    void setProfileSpace(int x) { m_profileSpace = x; }
-
     bool getTierFlag() const    { return m_tierFlag; }
 
     void setTierFlag(bool x)    { m_tierFlag = x; }
@@ -290,8 +269,6 @@ public:
 
     bool getSubLayerLevelPresentFlag(int i) const { return m_subLayerLevelPresentFlag[i]; }
 
-    void setSubLayerLevelPresentFlag(int i, bool x) { m_subLayerLevelPresentFlag[i] = x; }
-
     ProfileTierLevel* getGeneralPTL() { return &m_generalPTL; }
 
     ProfileTierLevel* getSubLayerPTL(int i) { return &m_subLayerPTL[i]; }
@@ -330,7 +307,6 @@ private:
     UInt m_initialCpbRemovalDelayLengthMinus1;
     UInt m_cpbRemovalDelayLengthMinus1;
     UInt m_dpbOutputDelayLengthMinus1;
-    UInt m_numDU;
     HrdSubLayerInfo m_HRD[MAX_TLAYER];
 
 public:
@@ -443,10 +419,6 @@ public:
     void setCbrFlag(int layer, int cpbcnt, int nalOrVcl, bool value) { m_HRD[layer].cbrFlag[cpbcnt][nalOrVcl] = value; }
 
     bool getCbrFlag(int layer, int cpbcnt, int nalOrVcl) { return m_HRD[layer].cbrFlag[cpbcnt][nalOrVcl]; }
-
-    void setNumDU(UInt value) { m_numDU = value; }
-
-    UInt getNumDU()           { return m_numDU; }
 
     bool getCpbDpbDelaysPresentFlag() { return getNalHrdParametersPresentFlag() || getVclHrdParametersPresentFlag(); }
 };
@@ -586,15 +558,13 @@ public:
 
 class Window
 {
-private:
+public:
 
     bool          m_enabledFlag;
     int           m_winLeftOffset;
     int           m_winRightOffset;
     int           m_winTopOffset;
     int           m_winBottomOffset;
-
-public:
 
     Window()
         : m_enabledFlag(false)
@@ -603,35 +573,6 @@ public:
         , m_winTopOffset(0)
         , m_winBottomOffset(0)
     {}
-
-    bool          getWindowEnabledFlag() const      { return m_enabledFlag; }
-
-    void          resetWindow()                     { m_enabledFlag = false; m_winLeftOffset = m_winRightOffset = m_winTopOffset = m_winBottomOffset = 0; }
-
-    int           getWindowLeftOffset() const       { return m_enabledFlag ? m_winLeftOffset : 0; }
-
-    void          setWindowLeftOffset(int val)      { m_winLeftOffset = val; m_enabledFlag = true; }
-
-    int           getWindowRightOffset() const      { return m_enabledFlag ? m_winRightOffset : 0; }
-
-    void          setWindowRightOffset(int val)     { m_winRightOffset = val; m_enabledFlag = true; }
-
-    int           getWindowTopOffset() const        { return m_enabledFlag ? m_winTopOffset : 0; }
-
-    void          setWindowTopOffset(int val)       { m_winTopOffset = val; m_enabledFlag = true; }
-
-    int           getWindowBottomOffset() const     { return m_enabledFlag ? m_winBottomOffset : 0; }
-
-    void          setWindowBottomOffset(int val)    { m_winBottomOffset = val; m_enabledFlag = true; }
-
-    void          setWindow(int offsetLeft, int offsetLRight, int offsetLTop, int offsetLBottom)
-    {
-        m_enabledFlag       = true;
-        m_winLeftOffset     = offsetLeft;
-        m_winRightOffset    = offsetLRight;
-        m_winTopOffset      = offsetLTop;
-        m_winBottomOffset   = offsetLBottom;
-    }
 };
 
 class TComVUI
@@ -1385,7 +1326,6 @@ private:
     bool        m_deblockingFilterOverrideFlag;    //< offsets for deblocking filter inherit from PPS
     int         m_deblockingFilterBetaOffsetDiv2;  //< beta offset for deblocking filter
     int         m_deblockingFilterTcOffsetDiv2;    //< tc offset for deblocking filter
-    int         m_list1IdxToList0Idx[MAX_NUM_REF];
     int         m_numRefIdx[2];     //  for multiple reference of current slice
 
     bool        m_bCheckLDC;
@@ -1437,6 +1377,10 @@ public:
 
     MotionReference * m_mref[2][MAX_NUM_REF + 1];
     wpScalingParam  m_weightPredTable[2][MAX_NUM_REF][3]; // [REF_PIC_LIST_0 or REF_PIC_LIST_1][refIdx][0:Y, 1:U, 2:V]
+
+    /* SSIM values per frame */
+    double          m_ssim;
+    int             m_ssimCnt;
 
     TComSlice();
     virtual ~TComSlice();
@@ -1532,8 +1476,6 @@ public:
 
     int       getNumRpsCurrTempList();
 
-    int       getList1IdxToList0Idx(int list1Idx) { return m_list1IdxToList0Idx[list1Idx]; }
-
     void      setReferenced(bool b)            { m_bReferenced = b; }
 
     bool      isReferenced()                   { return m_bReferenced; }
@@ -1545,8 +1487,11 @@ public:
     NalUnitType getNalUnitType() const         { return m_nalUnitType; }
 
     bool      getRapPicFlag();
-    bool      getIdrPicFlag()                  { return getNalUnitType() == NAL_UNIT_CODED_SLICE_IDR_W_RADL ||
-                                                        getNalUnitType() == NAL_UNIT_CODED_SLICE_IDR_N_LP; }
+    bool      getIdrPicFlag()
+    {
+        return getNalUnitType() == NAL_UNIT_CODED_SLICE_IDR_W_RADL ||
+               getNalUnitType() == NAL_UNIT_CODED_SLICE_IDR_N_LP;
+    }
 
     bool      isIRAP() const                   { return (getNalUnitType() >= 16) && (getNalUnitType() <= 23); }
 
@@ -1580,7 +1525,7 @@ public:
 
     void      setPic(TComPic* p)                  { m_pic = p; }
 
-    void      setRefPicList(TComList<TComPic*>& picList, bool checkNumPocTotalCurr = false);
+    void      setRefPicList(PicList& picList, bool checkNumPocTotalCurr = false);
 
     void      setRefPOCList();
 
@@ -1611,14 +1556,7 @@ public:
         m_bEqualRef[e][refIdx1][refIdx2] = m_bEqualRef[e][refIdx2][refIdx1] = b;
     }
 
-    static void sortPicList(TComList<TComPic*>& picList);
-
-    void setList1IdxToList0Idx();
-
     void setTLayerInfo(UInt tlayer);
-    void decodingMarking(TComList<TComPic*>& picList, int gopSize, int& maxRefPicNum);
-    int  checkThatAllRefPicsAreAvailable(TComList<TComPic*>& picList, TComReferencePictureSet *rps, bool printErrors, int pocRandomAccess = 0);
-    void createExplicitReferencePictureSetFromReference(TComList<TComPic*>& picList, TComReferencePictureSet *rps, bool isRAP);
 
     void setMaxNumMergeCand(UInt val)          { m_maxNumMergeCand = val; }
 
@@ -1690,119 +1628,10 @@ public:
 
 protected:
 
-    TComPic*  xGetRefPic(TComList<TComPic*>& picList, int poc);
+    TComPic*  xGetRefPic(PicList& picList, int poc);
 
-    TComPic*  xGetLongTermRefPic(TComList<TComPic*>& picList, int poc, bool pocHasMsb);
+    TComPic*  xGetLongTermRefPic(PicList& picList, int poc, bool pocHasMsb);
 }; // END CLASS DEFINITION TComSlice
-
-template<class T>
-class ParameterSetMap
-{
-public:
-
-    ParameterSetMap(int maxId)
-        : m_maxId(maxId)
-    {}
-
-    ~ParameterSetMap()
-    {
-        for (typename std::map<int, T *>::iterator i = m_paramsetMap.begin(); i != m_paramsetMap.end(); i++)
-        {
-            delete (*i).second;
-        }
-    }
-
-    void storePS(int psId, T *ps)
-    {
-        assert(psId < m_maxId);
-        if (m_paramsetMap.find(psId) != m_paramsetMap.end())
-        {
-            delete m_paramsetMap[psId];
-        }
-        m_paramsetMap[psId] = ps;
-    }
-
-    void mergePSList(ParameterSetMap<T> &rPsList)
-    {
-        for (typename std::map<int, T *>::iterator i = rPsList.m_paramsetMap.begin(); i != rPsList.m_paramsetMap.end(); i++)
-        {
-            storePS(i->first, i->second);
-        }
-
-        rPsList.m_paramsetMap.clear();
-    }
-
-    T* getPS(int psId)
-    {
-        return (m_paramsetMap.find(psId) == m_paramsetMap.end()) ? NULL : m_paramsetMap[psId];
-    }
-
-    T* getFirstPS()
-    {
-        return (m_paramsetMap.begin() == m_paramsetMap.end()) ? NULL : m_paramsetMap.begin()->second;
-    }
-
-private:
-
-    std::map<int, T *> m_paramsetMap;
-    int               m_maxId;
-};
-
-class ParameterSetManager
-{
-public:
-
-    ParameterSetManager();
-    virtual ~ParameterSetManager();
-
-    //! store sequence parameter set and take ownership of it
-    void storeVPS(TComVPS *vps) { m_vpsMap.storePS(vps->getVPSId(), vps); }
-
-    //! get pointer to existing video parameter set
-    TComVPS* getVPS(int vpsId)  { return m_vpsMap.getPS(vpsId); }
-
-    TComVPS* getFirstVPS()      { return m_vpsMap.getFirstPS(); }
-
-    //! store sequence parameter set and take ownership of it
-    void storeSPS(TComSPS *sps) { m_spsMap.storePS(sps->getSPSId(), sps); }
-
-    //! get pointer to existing sequence parameter set
-    TComSPS* getSPS(int spsId)  { return m_spsMap.getPS(spsId); }
-
-    TComSPS* getFirstSPS()      { return m_spsMap.getFirstPS(); }
-
-    //! store picture parameter set and take ownership of it
-    void storePPS(TComPPS *pps) { m_ppsMap.storePS(pps->getPPSId(), pps); }
-
-    //! get pointer to existing picture parameter set
-    TComPPS* getPPS(int ppsId)  { return m_ppsMap.getPS(ppsId); }
-
-    TComPPS* getFirstPPS()      { return m_ppsMap.getFirstPS(); }
-
-    //! activate a SPS from a active parameter sets SEI message
-    //! \returns true, if activation is successful
-    bool activateSPSWithSEI(int SPSId);
-
-    //! activate a PPS and depending on isIDR parameter also SPS and VPS
-    //! \returns true, if activation is successful
-    bool activatePPS(int ppsId, bool isIRAP);
-
-    TComVPS* getActiveVPS() { return m_vpsMap.getPS(m_activeVPSId); }
-
-    TComSPS* getActiveSPS() { return m_spsMap.getPS(m_activeSPSId); }
-
-    TComPPS* getActivePPS() { return m_ppsMap.getPS(m_activePPSId); }
-
-protected:
-
-    ParameterSetMap<TComVPS> m_vpsMap;
-    ParameterSetMap<TComSPS> m_spsMap;
-    ParameterSetMap<TComPPS> m_ppsMap;
-
-    int m_activeVPSId;
-    int m_activeSPSId;
-    int m_activePPSId;
-};
 }
 //! \}
 
