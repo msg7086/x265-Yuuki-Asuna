@@ -150,7 +150,7 @@ int Lookahead::getEstimatedPictureCost(TComPic *pic)
         break;
     case P_SLICE:
         d0 = poc - l0poc;
-        frames[0] = lastNonB;
+        frames[0] = &pic->getSlice()->getRefPic(REF_PIC_LIST_0, 0)->m_lowres;
         frames[d0] = &pic->m_lowres;
         p0 = 0;
         p1 = d0;
@@ -162,7 +162,7 @@ int Lookahead::getEstimatedPictureCost(TComPic *pic)
         {
             // L1 reference is truly in the future
             d1 = l1poc - poc;
-            frames[0] = lastNonB;
+            frames[0] = &pic->getSlice()->getRefPic(REF_PIC_LIST_0, 0)->m_lowres;
             frames[d0] = &pic->m_lowres;
             frames[d0 + d1] = &pic->getSlice()->getRefPic(REF_PIC_LIST_1, 0)->m_lowres;
             p0 = 0;
@@ -171,7 +171,7 @@ int Lookahead::getEstimatedPictureCost(TComPic *pic)
         }
         else
         {
-            frames[0] = lastNonB;
+            frames[0] = &pic->getSlice()->getRefPic(REF_PIC_LIST_0, 0)->m_lowres;
             frames[d0] = &pic->m_lowres;
             p0 = 0;
             p1 = d0;
