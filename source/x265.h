@@ -31,9 +31,9 @@
 extern "C" {
 #endif
 
-/* x265_t:
+/* x265_encoder:
  *      opaque handler for encoder */
-typedef struct x265_t x265_t;
+typedef struct x265_encoder x265_encoder;
 
 // TODO: Existing names used for the different NAL unit types can be altered to better reflect the names in the spec.
 //       However, the names in the spec are not yet stable at this point. Once the names are stable, a cleanup
@@ -113,8 +113,7 @@ typedef enum
     NAL_UNIT_UNSPECIFIED_62,
     NAL_UNIT_UNSPECIFIED_63,
     NAL_UNIT_INVALID,
-}
-NalUnitType;
+} NalUnitType;
 
 /* The data within the payload is already NAL-encapsulated; the type
  * is merely in the struct for easy access by the calling application.
@@ -123,13 +122,12 @@ NalUnitType;
  * before calling x265_encoder_encode again. */
 typedef struct
 {
-    int     i_type;      /* NalUnitType */
-    int     i_payload;   /* size in bytes */
+    int      i_type;      /* NalUnitType */
+    int      i_payload;   /* size in bytes */
     uint8_t *p_payload;
-}
-x265_nal_t;
+} x265_nal;
 
-typedef struct x265_picture_t
+typedef struct
 {
     void*   planes[3];
     int     stride[3];
@@ -138,8 +136,7 @@ typedef struct x265_picture_t
     int     poc;
     int64_t pts;
     void*   userData;
-}
-x265_picture_t;
+} x265_picture;
 
 typedef enum
 {
@@ -148,8 +145,7 @@ typedef enum
     X265_UMH_SEARCH,
     X265_STAR_SEARCH,
     X265_FULL_SEARCH
-}
-X265_ME_METHODS;
+} X265_ME_METHODS;
 
 /* CPU flags */
 
@@ -214,45 +210,47 @@ static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star
 #define IS_X265_TYPE_B(x) ((x) == X265_TYPE_B || (x) == X265_TYPE_BREF)
 
 /* rate tolerance method */
-typedef enum RcMethod
+typedef enum
 {
     X265_RC_ABR,
     X265_RC_CQP,
     X265_RC_CRF
-}
-X265_RC_METHODS;
+} X265_RC_METHODS;
 
 /*Level of Rate Distortion Optimization Allowed */
-typedef enum RDOLevel
+typedef enum
 {
     X265_NO_RDO_NO_RDOQ, /* Partial RDO during mode decision (only at each depth/mode), no RDO in quantization*/
     X265_NO_RDO,         /* Partial RDO during mode decision (only at each depth/mode), quantization RDO enabled */
     X265_FULL_RDO        /* Full RD-based mode decision */
-}
-X265_RDO_LEVEL;
+} X265_RDO_LEVEL;
 
 /* Output statistics from encoder */
-typedef struct x265_stats_t
+typedef struct x265_stats
 {
     double    globalPsnrY;
     double    globalPsnrU;
     double    globalPsnrV;
     double    globalPsnr;
     double    globalSsim;
-    double    accBits;
-    uint32_t  totalNumPics;
-}
-x265_stats_t;
+    double    accBits;              // total bits output thus far
+    uint32_t  encodedPictureCount;  // number of output pictures thus far
+    double    elapsedEncodeTime;    // wall time since encoder was opened
+    double    elapsedVideoTime;     // encoded picture count / frame rate
+    double    bitrate;              // accBits / elapsed video time
+} x265_stats;
 
 /* Input parameters to the encoder */
-typedef struct x265_param_t
+typedef struct
 {
     int       logLevel;
     int       bEnableWavefront;                ///< enable wavefront parallel processing
     int       poolNumThreads;                  ///< number of threads to allocate for thread pool
     int       frameNumThreads;                 ///< number of concurrently encoded frames
 
-    int       internalBitDepth;                ///< bit-depth the codec operates at
+    int       internalBitDepth;                ///< bit-depth at which the encoder operates
+
+    const char *csvfn;                         ///< csv log filename. logLevel >= 3 is frame logging, else one line per run
 
     // source specification
     int       frameRate;                       ///< source frame-rate in Hz
@@ -334,19 +332,17 @@ typedef struct x265_param_t
         int       aqMode;                      ///< Adaptive QP (AQ)
         double    aqStrength;
     } rc;
-}
-
-x265_param_t;
+} x265_param;
 
 /***
  * If not called, first encoder allocated will auto-detect the CPU and
  * initialize performance primitives, which are process global */
-void x265_setup_primitives(x265_param_t *param, int cpu);
+void x265_setup_primitives(x265_param *param, int cpu);
 
 /***
  * Initialize an x265_param_t structure to default values
  */
-void x265_param_default(x265_param_t *param);
+void x265_param_default(x265_param *param);
 
 /* x265_param_parse:
  *  set one parameter by name.
@@ -357,12 +353,12 @@ void x265_param_default(x265_param_t *param);
  *  value=NULL means "true" for boolean options, but is a BAD_VALUE for non-booleans. */
 #define X265_PARAM_BAD_NAME  (-1)
 #define X265_PARAM_BAD_VALUE (-2)
-int x265_param_parse(x265_param_t *p, const char *name, const char *value);
+int x265_param_parse(x265_param *p, const char *name, const char *value);
 
 /***
  * Initialize an x265_picture_t structure to default values
  */
-void x265_picture_init(x265_param_t *param, x265_picture_t *pic);
+void x265_picture_init(x265_param *param, x265_picture *pic);
 
 /* x265_param_apply_profile:
  *      Applies the restrictions of the given profile. (one of below) */
@@ -370,7 +366,7 @@ static const char * const x265_profile_names[] = { "main", "main10", "mainstillp
 
 /*      (can be NULL, in which case the function will do nothing)
  *      returns 0 on success, negative on failure (e.g. invalid profile name). */
-int x265_param_apply_profile(x265_param_t *, const char *profile);
+int x265_param_apply_profile(x265_param *, const char *profile);
 
 /* x265_max_bit_depth:
  *      Specifies the maximum number of bits per pixel that x265 can input. This
@@ -398,29 +394,35 @@ extern const char *x265_build_info_str;
 
 /* x265_encoder_open:
  *      create a new encoder handler, all parameters from x265_param_t are copied */
-x265_t* x265_encoder_open(x265_param_t *);
+x265_encoder* x265_encoder_open(x265_param *);
 
 /* x265_encoder_headers:
  *      return the SPS and PPS that will be used for the whole stream.
  *      *pi_nal is the number of NAL units outputted in pp_nal.
  *      returns negative on error.
  *      the payloads of all output NALs are guaranteed to be sequential in memory. */
-int x265_encoder_headers(x265_t *, x265_nal_t **pp_nal, int *pi_nal);
+int x265_encoder_headers(x265_encoder *, x265_nal **pp_nal, int *pi_nal);
 
 /* x265_encoder_encode:
  *      encode one picture.
  *      *pi_nal is the number of NAL units outputted in pp_nal.
  *      returns negative on error, zero if no NAL units returned.
  *      the payloads of all output NALs are guaranteed to be sequential in memory. */
-int x265_encoder_encode(x265_t *encoder, x265_nal_t **pp_nal, int *pi_nal, x265_picture_t *pic_in, x265_picture_t *pic_out);
+int x265_encoder_encode(x265_encoder *encoder, x265_nal **pp_nal, int *pi_nal, x265_picture *pic_in, x265_picture *pic_out);
 
-/* x265_encoder_stats:
-*       returns output stats from the encoder */
-void x265_encoder_get_stats(x265_t *encoder, x265_stats_t *);
+/* x265_encoder_get_stats:
+ *       returns encoder statistics */
+void x265_encoder_get_stats(x265_encoder *encoder, x265_stats *);
+
+/* x265_encoder_log:
+ *       write a line to the configured CSV file.  If a CSV filename was not
+ *       configured, or file open failed, or the log level indicated frame level
+ *       logging, this function will perform no write. */
+void x265_encoder_log(x265_encoder *encoder, int argc, char **argv);
 
 /* x265_encoder_close:
- *      close an encoder handler.  Optionally return the global PSNR value (6 * psnrY + psnrU + psnrV) / 8 */
-void x265_encoder_close(x265_t *, double *globalPsnr);
+ *      close an encoder handler */
+void x265_encoder_close(x265_encoder *);
 
 /***
  * Release library static allocations

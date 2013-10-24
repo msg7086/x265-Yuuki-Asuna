@@ -36,12 +36,6 @@
 #endif
 #include "PPA/ppa.h"
 
-#if _WIN32
-#include <sys/types.h>
-#include <sys/timeb.h>
-#else
-#include <sys/time.h>
-#endif
 #include <time.h>
 
 #include <signal.h>
@@ -62,19 +56,6 @@
 #define GetConsoleTitle(t, n)
 #define SetConsoleTitle(t)
 #endif
-
-static int64_t x265_mdate(void)
-{
-#if _WIN32
-    struct timeb tb;
-    ftime(&tb);
-    return ((int64_t)tb.time * 1000 + (int64_t)tb.millitm) * 1000;
-#else
-    struct timeval tv_date;
-    gettimeofday(&tv_date, NULL);
-    return (int64_t)tv_date.tv_sec * 1000000 + (int64_t)tv_date.tv_usec;
-#endif
-}
 
 using namespace x265;
 
@@ -173,15 +154,11 @@ struct CLIOptions
     Input*  input;
     Output* recon;
     std::fstream bitstreamFile;
-    FILE *csvfp;
     int bProgress;
-    int cli_log_level;
+    int totalbytes;
 
     uint32_t frameSkip;         // number of frames to skip from the beginning
     uint32_t framesToBeEncoded; // number of frames to encode
-
-    uint32_t essentialBytes;    // total essential NAL bytes written to bitstream
-    uint32_t totalBytes;        // total bytes written to bitstream
 
     int64_t startTime;
     int64_t prevUpdateTime;
@@ -193,24 +170,18 @@ struct CLIOptions
     {
         input = NULL;
         recon = NULL;
-        csvfp = NULL;
-        framesToBeEncoded = frameSkip = 0;
-        essentialBytes = 0;
-        totalBytes = 0;
+        framesToBeEncoded = frameSkip = totalbytes = 0;
         bProgress = true;
         startTime = x265_mdate();
         prevUpdateTime = 0;
-        cli_log_level = X265_LOG_INFO;
     }
 
     void destroy();
-    void rateStatsAccum(NalUnitType nalUnitType, uint32_t annexBsize);
-    void writeNALs(const x265_nal_t* nal, int nalcount);
-    void printStatus(int frameNum, x265_param_t *param);
-    void log(int level, const char *fmt, ...);
-    void print_version(x265_param_t *param);
-    void do_help(x265_param_t *param);
-    bool parse(int argc, char **argv, x265_param_t* param);
+    void writeNALs(const x265_nal* nal, int nalcount);
+    void printStatus(int frameNum, x265_param *param);
+    void printVersion(x265_param *param);
+    void showHelp(x265_param *param);
+    bool parse(int argc, char **argv, x265_param* param);
 };
 
 void CLIOptions::destroy()
@@ -221,55 +192,20 @@ void CLIOptions::destroy()
     if (recon)
         recon->release();
     recon = NULL;
-    if (csvfp)
-        fclose(csvfp);
-    csvfp = NULL;
 }
 
-void CLIOptions::rateStatsAccum(NalUnitType nalUnitType, uint32_t annexBsize)
-{
-    switch (nalUnitType)
-    {
-    case NAL_UNIT_CODED_SLICE_TRAIL_R:
-    case NAL_UNIT_CODED_SLICE_TRAIL_N:
-    case NAL_UNIT_CODED_SLICE_TLA_R:
-    case NAL_UNIT_CODED_SLICE_TSA_N:
-    case NAL_UNIT_CODED_SLICE_STSA_R:
-    case NAL_UNIT_CODED_SLICE_STSA_N:
-    case NAL_UNIT_CODED_SLICE_BLA_W_LP:
-    case NAL_UNIT_CODED_SLICE_BLA_W_RADL:
-    case NAL_UNIT_CODED_SLICE_BLA_N_LP:
-    case NAL_UNIT_CODED_SLICE_IDR_W_RADL:
-    case NAL_UNIT_CODED_SLICE_IDR_N_LP:
-    case NAL_UNIT_CODED_SLICE_CRA:
-    case NAL_UNIT_CODED_SLICE_RADL_N:
-    case NAL_UNIT_CODED_SLICE_RADL_R:
-    case NAL_UNIT_CODED_SLICE_RASL_N:
-    case NAL_UNIT_CODED_SLICE_RASL_R:
-    case NAL_UNIT_VPS:
-    case NAL_UNIT_SPS:
-    case NAL_UNIT_PPS:
-        essentialBytes += annexBsize;
-        break;
-    default:
-        break;
-    }
-
-    totalBytes += annexBsize;
-}
-
-void CLIOptions::writeNALs(const x265_nal_t* nal, int nalcount)
+void CLIOptions::writeNALs(const x265_nal* nal, int nalcount)
 {
     PPAScopeEvent(bitstream_write);
     for (int i = 0; i < nalcount; i++)
     {
         bitstreamFile.write((const char*)nal->p_payload, nal->i_payload);
-        rateStatsAccum((NalUnitType)nal->i_type, nal->i_payload);
+        totalbytes += nal->i_payload;
         nal++;
     }
 }
 
-void CLIOptions::printStatus(int i_frame, x265_param_t *param)
+void CLIOptions::printStatus(int i_frame, x265_param *param)
 {
     char buf[200];
     int64_t i_time = x265_mdate();
@@ -280,7 +216,7 @@ void CLIOptions::printStatus(int i_frame, x265_param_t *param)
     double fps = i_elapsed > 0 ? i_frame * 1000000. / i_elapsed : 0;
     if (framesToBeEncoded && i_frame)
     {
-        float bitrate = 0.008f * totalBytes / ((float)i_frame / param->frameRate);
+        float bitrate = 0.008f * totalbytes / ((float)i_frame / param->frameRate);
         int eta = (int)(i_elapsed * (framesToBeEncoded - i_frame) / ((int64_t)i_frame * 1000000));
         sprintf(buf, "x265 [%.1f%%] %d/%d frames, %.2f fps, %.2f kb/s, eta %d:%02d:%02d",
                 100. * i_frame / framesToBeEncoded, i_frame, framesToBeEncoded, fps, bitrate,
@@ -288,7 +224,7 @@ void CLIOptions::printStatus(int i_frame, x265_param_t *param)
     }
     else
     {
-        double bitrate = (double)totalBytes * 8 / ((double)1000 * param->frameRate);
+        double bitrate = (double)totalbytes * 8 / ((double)1000 * param->frameRate);
         sprintf(buf, "x265 %d frames: %.2f fps, %.2f kb/s", i_frame, fps, bitrate);
     }
     fprintf(stderr, "%s  \r", buf + 5);
@@ -297,48 +233,17 @@ void CLIOptions::printStatus(int i_frame, x265_param_t *param)
     prevUpdateTime = i_time;
 }
 
-void CLIOptions::log(int level, const char *fmt, ...)
-{
-    if (level > cli_log_level)
-        return;
-    const char *levelstr;
-    switch (level)
-    {
-    case X265_LOG_ERROR:
-        levelstr = "error";
-        break;
-    case X265_LOG_WARNING:
-        levelstr = "warning";
-        break;
-    case X265_LOG_INFO:
-        levelstr = "info";
-        break;
-    case X265_LOG_DEBUG:
-        levelstr = "debug";
-        break;
-    default:
-        levelstr = "unknown";
-        break;
-    }
-
-    fprintf(stderr, "x265 [%s]: ", levelstr);
-    va_list arg;
-    va_start(arg, fmt);
-    vfprintf(stderr, fmt, arg);
-    va_end(arg);
-}
-
-void CLIOptions::print_version(x265_param_t *param)
+void CLIOptions::printVersion(x265_param *param)
 {
     fprintf(stderr, "x265 [info]: HEVC encoder version %s\n", x265_version_str);
     fprintf(stderr, "x265 [info]: build info %s\n", x265_build_info_str);
     x265_setup_primitives(param, 0);
 }
 
-void CLIOptions::do_help(x265_param_t *param)
+void CLIOptions::showHelp(x265_param *param)
 {
     x265_param_default(param);
-    print_version(param);
+    printVersion(param);
     int inputBitDepth = 8, outputBitDepth = param->internalBitDepth;
 #define H0 printf
 #define OPT(value) (value ? "enabled" : "disabled")
@@ -352,7 +257,7 @@ void CLIOptions::do_help(x265_param_t *param)
     H0("   --threads                     Number of threads for thread pool (0: detect CPU core count, default)\n");
     H0("-F/--frame-threads               Number of concurrently encoded frames. Default %d\n", param->frameNumThreads);
     H0("   --log                         Logging level 0:ERROR 1:WARNING 2:INFO 3:DEBUG -1:NONE. Default %d\n", param->logLevel);
-    H0("   --csv                         Comma separated value log file, appends one line per run\n");
+    H0("   --csv                         Comma separated log file, log level >= 3 frame log, else one line per run\n");
     H0("   --no-progress                 Disable CLI progress reports\n");
     H0("-o/--output                      Bitstream output file name\n");
     H0("\nInput Options:\n");
@@ -417,7 +322,7 @@ void CLIOptions::do_help(x265_param_t *param)
     exit(0);
 }
 
-bool CLIOptions::parse(int argc, char **argv, x265_param_t* param)
+bool CLIOptions::parse(int argc, char **argv, x265_param* param)
 {
     int berror = 0;
     int help = 0;
@@ -427,7 +332,6 @@ bool CLIOptions::parse(int argc, char **argv, x265_param_t* param)
     const char *inputfn = NULL;
     const char *reconfn = NULL;
     const char *bitstreamfn = NULL;
-    const char *csvfn = NULL;
     const char *inputRes = NULL;
 
     x265_param_default(param);
@@ -444,11 +348,11 @@ bool CLIOptions::parse(int argc, char **argv, x265_param_t* param)
         switch (c)
         {
         case 'h':
-            do_help(param);
+            showHelp(param);
             break;
 
         case 'V':
-            print_version(param);
+            printVersion(param);
             exit(0);
 
         default:
@@ -467,13 +371,13 @@ bool CLIOptions::parse(int argc, char **argv, x265_param_t* param)
                 {
                     /* getopt_long might have already printed an error message */
                     if (c != 63)
-                        log(X265_LOG_WARNING, "internal error: short option '%c' has no long option\n", c);
+                        x265_log(NULL, X265_LOG_WARNING, "internal error: short option '%c' has no long option\n", c);
                     return true;
                 }
             }
             if (long_options_index < 0)
             {
-                log(X265_LOG_WARNING, "short option '%c' unrecognized\n", c);
+                x265_log(NULL, X265_LOG_WARNING, "short option '%c' unrecognized\n", c);
                 return true;
             }
 #define OPT(longname) \
@@ -484,7 +388,6 @@ bool CLIOptions::parse(int argc, char **argv, x265_param_t* param)
             OPT("frames") this->framesToBeEncoded = (uint32_t)atoi(optarg);
             OPT("no-progress") this->bProgress = false;
             OPT("frame-skip") this->frameSkip = (uint32_t)atoi(optarg);
-            OPT("csv") csvfn = optarg;
             OPT("output") bitstreamfn = optarg;
             OPT("input") inputfn = optarg;
             OPT("recon") reconfn = optarg;
@@ -497,36 +400,35 @@ bool CLIOptions::parse(int argc, char **argv, x265_param_t* param)
         if (berror)
         {
             const char *name = long_options_index > 0 ? long_options[long_options_index].name : argv[optind-2];
-            log(X265_LOG_ERROR, "invalid argument: %s = %s\n", name, optarg);
+            x265_log(NULL, X265_LOG_ERROR, "invalid argument: %s = %s\n", name, optarg);
             return true;
         }
 #undef OPT
         }
     }
 
-    cli_log_level = param->logLevel;
     if (optind < argc && !inputfn)
         inputfn = argv[optind++];
     if (optind < argc && !bitstreamfn)
         bitstreamfn = argv[optind++];
     if (optind < argc)
     {
-        log(X265_LOG_WARNING, "extra unused command arguments given <%s>\n", argv[optind]);
+        x265_log(param, X265_LOG_WARNING, "extra unused command arguments given <%s>\n", argv[optind]);
         return true;
     }
 
     if (argc <= 1 || help)
-        do_help(param);
+        showHelp(param);
 
     if (inputfn == NULL || bitstreamfn == NULL)
     {
-        log(X265_LOG_ERROR, "input or output file not specified, try -V for help\n");
+        x265_log(param, X265_LOG_ERROR, "input or output file not specified, try -V for help\n");
         return true;
     }
     this->input = Input::open(inputfn);
     if (!this->input || this->input->isFail())
     {
-        log(X265_LOG_ERROR, "unable to open input file <%s>\n", inputfn);
+        x265_log(param, X265_LOG_ERROR, "unable to open input file <%s>\n", inputfn);
         return true;
     }
     if (this->input->getWidth())
@@ -545,7 +447,7 @@ bool CLIOptions::parse(int argc, char **argv, x265_param_t* param)
     }
     else if (param->sourceHeight <= 0 || param->sourceWidth <= 0 || param->frameRate <= 0)
     {
-        log(X265_LOG_ERROR, "YUV input requires source width, height, and rate to be specified\n");
+        x265_log(param, X265_LOG_ERROR, "YUV input requires source width, height, and rate to be specified\n");
         return true;
     }
     else
@@ -567,7 +469,7 @@ bool CLIOptions::parse(int argc, char **argv, x265_param_t* param)
 
     this->framesToBeEncoded = this->framesToBeEncoded ? X265_MIN(this->framesToBeEncoded, numRemainingFrames) : numRemainingFrames;
 
-    if (this->cli_log_level >= X265_LOG_INFO)
+    if (param->logLevel >= X265_LOG_INFO)
     {
         fprintf(stderr, "%s  [info]: %dx%d %dHz, frames %u - %d of %d\n", input->getName(),
                 param->sourceWidth, param->sourceHeight, param->frameRate,
@@ -579,7 +481,7 @@ bool CLIOptions::parse(int argc, char **argv, x265_param_t* param)
         this->recon = Output::open(reconfn, param->sourceWidth, param->sourceHeight, outputBitDepth, param->frameRate);
         if (this->recon->isFail())
         {
-            log(X265_LOG_WARNING, "unable to write reconstruction file\n");
+            x265_log(param, X265_LOG_WARNING, "unable to write reconstruction file\n");
             this->recon->release();
             this->recon = 0;
         }
@@ -588,7 +490,7 @@ bool CLIOptions::parse(int argc, char **argv, x265_param_t* param)
 #if !HIGH_BIT_DEPTH
     if (inputBitDepth != 8 || outputBitDepth != 8 || param->internalBitDepth != 8)
     {
-        log(X265_LOG_ERROR, "not compiled for bit depths greater than 8\n");
+        x265_log(NULL, X265_LOG_ERROR, "not compiled for bit depths greater than 8\n");
         return true;
     }
 #endif
@@ -596,29 +498,10 @@ bool CLIOptions::parse(int argc, char **argv, x265_param_t* param)
     this->bitstreamFile.open(bitstreamfn, std::fstream::binary | std::fstream::out);
     if (!this->bitstreamFile)
     {
-        log(X265_LOG_ERROR, "failed to open bitstream file <%s> for writing\n", bitstreamfn);
+        x265_log(NULL, X265_LOG_ERROR, "failed to open bitstream file <%s> for writing\n", bitstreamfn);
         return true;
     }
 
-    if (csvfn)
-    {
-        csvfp = fopen(csvfn, "r");
-        if (csvfp)
-        {
-            // file already exists, re-open for append
-            fclose(csvfp);
-            csvfp = fopen(csvfn, "ab");
-        }
-        else
-        {
-            // new CSV file, write header
-            csvfp = fopen(csvfn, "wb");
-            if (csvfp)
-            {
-                fprintf(csvfp, "CLI arguments, date/time, elapsed time, fps, bitrate, global PSNR, version\n");
-            }
-        }
-    }
     x265_setup_primitives(param, cpuid);
 
     return false;
@@ -637,7 +520,7 @@ int main(int argc, char **argv)
     fp1 = fopen("LOG_CU_COST.txt", "w");
 #endif
 
-    x265_param_t param;
+    x265_param param;
     CLIOptions   cliopt;
 
     if (cliopt.parse(argc, argv, &param))
@@ -646,10 +529,10 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    x265_t *encoder = x265_encoder_open(&param);
+    x265_encoder *encoder = x265_encoder_open(&param);
     if (!encoder)
     {
-        cliopt.log(X265_LOG_ERROR, "failed to open encoder\n");
+        x265_log(&param, X265_LOG_ERROR, "failed to open encoder\n");
         cliopt.destroy();
         x265_cleanup();
         exit(1);
@@ -657,13 +540,13 @@ int main(int argc, char **argv)
 
     /* Control-C handler */
     if (signal(SIGINT, sigint_handler) == SIG_ERR)
-        cliopt.log(X265_LOG_ERROR, "Unable to register CTRL+C handler: %s\n", strerror(errno));
+        x265_log(&param, X265_LOG_ERROR, "Unable to register CTRL+C handler: %s\n", strerror(errno));
 
-    x265_picture_t pic_orig, pic_out;
-    x265_picture_t *pic_in = &pic_orig;
-    x265_picture_t *pic_recon = cliopt.recon ? &pic_out : NULL;
-    x265_nal_t *p_nal;
-    x265_stats_t stats;
+    x265_picture pic_orig, pic_out;
+    x265_picture *pic_in = &pic_orig;
+    x265_picture *pic_recon = cliopt.recon ? &pic_out : NULL;
+    x265_nal *p_nal;
+    x265_stats stats;
     int nal;
 
     if (!x265_encoder_headers(encoder, &p_nal, &nal))
@@ -724,17 +607,17 @@ int main(int argc, char **argv)
         fprintf(stderr, "                                                                               \r");
 
     x265_encoder_get_stats(encoder, &stats);
-    x265_encoder_close(encoder, NULL);
+    if (param.csvfn && !b_ctrl_c)
+        x265_encoder_log(encoder, argc, argv);
+    x265_encoder_close(encoder);
     cliopt.bitstreamFile.close();
 
     if (b_ctrl_c)
-        fprintf(stderr, "aborted at input frame %d, output frame %d\n", cliopt.frameSkip + inFrameCount, outFrameCount);
+        fprintf(stderr, "aborted at input frame %d, output frame %d\n", 
+                cliopt.frameSkip + inFrameCount, stats.encodedPictureCount);
 
-    double elapsed = (double)(x265_mdate() - cliopt.startTime) / 1000000;
-    double vidtime = (double)inFrameCount / param.frameRate;
-    double bitrate = (0.008f * cliopt.totalBytes) / vidtime;
-    printf("\nencoded %d frames in %.2fs (%.2f fps), %.2f kb/s, ",
-           outFrameCount, elapsed, outFrameCount / elapsed, bitrate);
+    printf("\nencoded %d frames in %.2fs (%.2f fps), %.2f kb/s, ", stats.encodedPictureCount,
+           stats.elapsedEncodeTime, stats.encodedPictureCount / stats.elapsedEncodeTime, stats.bitrate);
 
     if (param.bEnablePsnr)
         printf("Global PSNR: %.3f\n", stats.globalPsnr);
@@ -743,25 +626,6 @@ int main(int argc, char **argv)
         printf("Global SSIM: %.3f\n", stats.globalSsim);
 
     x265_cleanup(); /* Free library singletons */
-
-    if (cliopt.csvfp)
-    {
-        // CLI arguments, date/time, elapsed time, fps, bitrate, global PSNR
-        for (int i = 1; i < argc; i++)
-        {
-            if (i) fputc(' ', cliopt.csvfp);
-            fputs(argv[i], cliopt.csvfp);
-        }
-
-        time_t now;
-        struct tm* timeinfo;
-        time(&now);
-        timeinfo = localtime(&now);
-        char buffer[128];
-        strftime(buffer, 128, "%c", timeinfo);
-        fprintf(cliopt.csvfp, ", %s, %.2f, %.2f, %.2f, %.2f, %s\n",
-                buffer, elapsed, outFrameCount / elapsed, bitrate, stats.globalPsnr, x265_version_str);
-    }
 
     cliopt.destroy();
 

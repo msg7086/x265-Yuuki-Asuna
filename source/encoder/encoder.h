@@ -31,7 +31,7 @@
 
 #include "piclist.h"
 
-struct x265_t {};
+struct x265_encoder {};
 
 namespace x265 {
 // private namespace
@@ -43,11 +43,12 @@ struct RateControl;
 class ThreadPool;
 struct NALUnitEBSP;
 
-class Encoder : public TEncCfg, public x265_t
+class Encoder : public TEncCfg, public x265_encoder
 {
 private:
 
     int                m_pocLast;          ///< time index (POC)
+    int                m_outputCount;
     PicList            m_freeList;
 
     ThreadPool*        m_threadPool;
@@ -65,14 +66,16 @@ private:
     TEncAnalyze        m_analyzeP;
     TEncAnalyze        m_analyzeB;
     double             m_globalSsim;
+    FILE*              m_csvfpt;
+    int64_t            m_encodeStartTime;
 
     // quality control
     TComScalingList    m_scalingList;      ///< quantization matrix information
 
 public:
 
-    x265_nal_t *m_nals;
-    char *m_packetData;
+    x265_nal* m_nals;
+    char*       m_packetData;
 
     Encoder();
 
@@ -85,21 +88,23 @@ public:
     void initSPS(TComSPS *sps);
     void initPPS(TComPPS *pps);
 
-    int encode(bool bEos, const x265_picture_t* pic, x265_picture_t *pic_out, NALUnitEBSP **nalunits);
+    int encode(bool bEos, const x265_picture* pic, x265_picture *pic_out, NALUnitEBSP **nalunits);
 
     int getStreamHeaders(NALUnitEBSP **nalunits);
 
-    void fetchStats(x265_stats_t* stats);
+    void fetchStats(x265_stats* stats);
 
-    double printSummary();
+    void writeLog(int argc, char **argv);
+
+    void printSummary();
 
     TComScalingList* getScalingList() { return &m_scalingList; }
 
     void setThreadPool(ThreadPool* p) { m_threadPool = p; }
 
-    void configure(x265_param_t *param);
+    void configure(x265_param *param);
 
-    void determineLevelAndProfile(x265_param_t *param);
+    void determineLevelAndProfile(x265_param *param);
 
     int  extractNalData(NALUnitEBSP **nalunits);
 

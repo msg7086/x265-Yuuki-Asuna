@@ -32,6 +32,13 @@
 #include <string.h>
 #include <stdarg.h>
 
+#if _WIN32
+#include <sys/types.h>
+#include <sys/timeb.h>
+#else
+#include <sys/time.h>
+#endif
+
 using namespace x265;
 
 #define X265_ALIGNBYTES 32
@@ -42,6 +49,19 @@ using namespace x265;
 #define _aligned_free   __mingw_aligned_free
 #include "malloc.h"
 #endif
+
+int64_t x265_mdate(void)
+{
+#if _WIN32
+    struct timeb tb;
+    ftime(&tb);
+    return ((int64_t)tb.time * 1000 + (int64_t)tb.millitm) * 1000;
+#else
+    struct timeval tv_date;
+    gettimeofday(&tv_date, NULL);
+    return (int64_t)tv_date.tv_sec * 1000000 + (int64_t)tv_date.tv_usec;
+#endif
+}
 
 void *x265_malloc(size_t size)
 {
@@ -80,7 +100,8 @@ int x265_exp2fix8(double x)
     if (i > 1023) return 0xffff;
     return (x265_exp2_lut[i & 63] + 256) << (i >> 6) >> 8;
 }
-void x265_log(x265_param_t *param, int level, const char *fmt, ...)
+
+void x265_log(x265_param *param, int level, const char *fmt, ...)
 {
     if (param && level > param->logLevel)
         return;
@@ -112,9 +133,9 @@ void x265_log(x265_param_t *param, int level, const char *fmt, ...)
 }
 
 extern "C"
-void x265_param_default(x265_param_t *param)
+void x265_param_default(x265_param *param)
 {
-    memset(param, 0, sizeof(x265_param_t));
+    memset(param, 0, sizeof(x265_param));
 
     /* Applying non-zero default values to all elements in the param structure */
     param->logLevel = X265_LOG_INFO;
@@ -181,14 +202,14 @@ void x265_param_default(x265_param_t *param)
 }
 
 extern "C"
-void x265_picture_init(x265_param_t *param, x265_picture_t *pic)
+void x265_picture_init(x265_param *param, x265_picture *pic)
 {
-    memset(pic, 0, sizeof(x265_picture_t));
+    memset(pic, 0, sizeof(x265_picture));
     pic->bitDepth = param->internalBitDepth;
 }
 
 extern "C"
-int x265_param_apply_profile(x265_param_t *param, const char *profile)
+int x265_param_apply_profile(x265_param *param, const char *profile)
 {
     if (!profile)
         return 0;
@@ -217,7 +238,7 @@ int x265_param_apply_profile(x265_param_t *param, const char *profile)
     return 0;
 }
 
-static inline int _confirm(x265_param_t *param, bool bflag, const char* message)
+static inline int _confirm(x265_param *param, bool bflag, const char* message)
 {
     if (!bflag)
         return 0;
@@ -226,7 +247,7 @@ static inline int _confirm(x265_param_t *param, bool bflag, const char* message)
     return 1;
 }
 
-int x265_check_params(x265_param_t *param)
+int x265_check_params(x265_param *param)
 {
 #define CHECK(expr, msg) check_failed |= _confirm(param, expr, msg)
     int check_failed = 0; /* abort if there is a fatal configuration problem */
@@ -308,7 +329,7 @@ int x265_check_params(x265_param_t *param)
     return check_failed;
 }
 
-int x265_set_globals(x265_param_t *param)
+int x265_set_globals(x265_param *param)
 {
     uint32_t maxCUDepth = (uint32_t)g_convertToBit[param->maxCUSize];
     uint32_t tuQTMinLog2Size = 2; //log2(4)
@@ -357,7 +378,7 @@ int x265_set_globals(x265_param_t *param)
     return 0;
 }
 
-void x265_print_params(x265_param_t *param)
+void x265_print_params(x265_param *param)
 {
     if (param->logLevel < X265_LOG_INFO)
         return;
@@ -429,7 +450,7 @@ void x265_print_params(x265_param_t *param)
 }
 
 extern "C"
-int x265_param_parse(x265_param_t *p, const char *name, const char *value)
+int x265_param_parse(x265_param *p, const char *name, const char *value)
 {
     int berror = 0;
     int valuewasnull;
@@ -457,6 +478,8 @@ int x265_param_parse(x265_param_t *p, const char *name, const char *value)
     if (0) ;
     OPT("fps")
         p->frameRate = atoi(value);
+    OPT("csv")
+        p->csvfn = value;
     OPT("threads")
         p->poolNumThreads = atoi(value);
     OPT("frame-threads")
@@ -549,7 +572,7 @@ int x265_param_parse(x265_param_t *p, const char *name, const char *value)
     return berror ? X265_PARAM_BAD_VALUE : 0;
 }
 
-char *x265_param2string( x265_param_t *p)
+char *x265_param2string( x265_param *p)
 {
     char *buf, *s;
     buf = s = (char *)X265_MALLOC(char, 2000);

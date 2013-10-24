@@ -110,10 +110,12 @@
 #endif
 
 /* defined in common.cpp */
-void x265_log(x265_param_t *param, int level, const char *fmt, ...);
-int  x265_check_params(x265_param_t *param);
-void x265_print_params(x265_param_t *param);
-int x265_set_globals(x265_param_t *param);
-char *x265_param2string(x265_param_t *p);
+int64_t x265_mdate(void);
+void x265_log(x265_param *param, int level, const char *fmt, ...);
+int  x265_check_params(x265_param *param);
+void x265_print_params(x265_param *param);
+int x265_set_globals(x265_param *param);
 int x265_exp2fix8(double x);
+char *x265_param2string(x265_param *p);
+
 #endif // ifndef X265_COMMON_H
