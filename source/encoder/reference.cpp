@@ -46,18 +46,15 @@ int MotionReference::init(TComPicYuv* pic, wpScalingParam *w)
 
     if (w)
     {
-        isWeighted = true;
         if (!m_weightBuffer)
         {
-            int width = pic->getWidth();
-            int height = pic->getHeight();
-            size_t padwidth = width + pic->m_lumaMarginX * 2;
-            size_t padheight = height + pic->m_lumaMarginY * 2;
-            m_weightBuffer = (pixel*)X265_MALLOC(pixel,  padwidth * padheight);
+            size_t padheight = (pic->m_numCuInHeight * g_maxCUHeight) + pic->m_lumaMarginY * 2;
+            m_weightBuffer = (pixel*)X265_MALLOC(pixel, lumaStride * padheight);
             if (!m_weightBuffer)
                 return -1;
         }
 
+        isWeighted = true;
         weight = w->inputWeight;
         offset = w->inputOffset * (1 << (X265_DEPTH - 8));
         shift  = w->log2WeightDenom;
