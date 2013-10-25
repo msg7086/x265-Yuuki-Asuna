@@ -33,15 +33,21 @@ using namespace std;
 
 YUVInput::YUVInput(const char *filename)
 {
-    ifs = NULL;
+#if defined ENABLE_THREAD
+    for (int i = 0; i < QUEUE_SIZE; i++)
+        buf[i] = NULL;
+    head = 0;
+    tail = 0;
+#else
+    buf = NULL;
+#endif
+    width = height = 0;
+    depth = 8;
+    threadActive = false;
     if (!strcmp(filename, "-"))
         ifs = &cin;
     else
         ifs = new ifstream(filename, ios::binary | ios::in);
-
-    width = height = 0;
-    depth = 8;
-    threadActive = false;
     if (ifs && !ifs->fail())
         threadActive = true;
     else if (ifs && ifs != &cin)
@@ -49,10 +55,6 @@ YUVInput::YUVInput(const char *filename)
         delete ifs;
         ifs = NULL;
     }
-#if defined ENABLE_THREAD
-    head = 0;
-    tail = 0;
-#endif
 }
 
 YUVInput::~YUVInput()
