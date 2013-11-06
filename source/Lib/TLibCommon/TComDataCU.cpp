@@ -438,16 +438,6 @@ void TComDataCU::initEstData(uint32_t depth, int qp)
 
     m_cuMvField[0].clearMvField();
     m_cuMvField[1].clearMvField();
-
-    uint32_t tmp = width * height;
-    memset(m_trCoeffY,    0, tmp * sizeof(*m_trCoeffY));
-    memset(m_iPCMSampleY, 0, tmp * sizeof(*m_iPCMSampleY));
-
-    tmp = (width >> m_hChromaShift) * (height >> m_vChromaShift);
-    memset(m_trCoeffCb,    0, tmp * sizeof(*m_trCoeffCb));
-    memset(m_trCoeffCr,    0, tmp * sizeof(*m_trCoeffCr));
-    memset(m_iPCMSampleCb, 0, tmp * sizeof(*m_iPCMSampleCb));
-    memset(m_iPCMSampleCr, 0, tmp * sizeof(*m_iPCMSampleCr));
 }
 
 // initialize Sub partition
@@ -512,16 +502,6 @@ void TComDataCU::initSubCU(TComDataCU* cu, uint32_t partUnitIdx, uint32_t depth,
         m_mvpNum[0][i] = -1;
         m_mvpNum[1][i] = -1;
     }
-
-    uint32_t tmp = width * heigth;
-    memset(m_trCoeffY, 0, sizeof(TCoeff) * tmp);
-    memset(m_iPCMSampleY, 0, sizeof(Pel) * tmp);
-
-    tmp = (width >> m_hChromaShift) * (heigth >> m_vChromaShift);
-    memset(m_trCoeffCb, 0, sizeof(TCoeff) * tmp);
-    memset(m_trCoeffCr, 0, sizeof(TCoeff) * tmp);
-    memset(m_iPCMSampleCb, 0, sizeof(Pel) * tmp);
-    memset(m_iPCMSampleCr, 0, sizeof(Pel) * tmp);
 
     m_cuMvField[0].clearMvField();
     m_cuMvField[1].clearMvField();
@@ -1595,14 +1575,6 @@ void TComDataCU::setTransformSkipSubParts(uint32_t useTransformSkip, TextType tt
     uint32_t curPartNum = m_pic->getNumPartInCU() >> (depth << 1);
 
     memset(m_transformSkip[g_convertTxtTypeToIdx[ttype]] + absPartIdx, useTransformSkip, sizeof(UChar) * curPartNum);
-}
-
-void TComDataCU::setSizeSubParts(uint32_t width, uint32_t height, uint32_t absPartIdx, uint32_t depth)
-{
-    uint32_t curPartNum = m_pic->getNumPartInCU() >> (depth << 1);
-
-    memset(m_width  + absPartIdx, width,  sizeof(UChar) * curPartNum);
-    memset(m_height + absPartIdx, height, sizeof(UChar) * curPartNum);
 }
 
 UChar TComDataCU::getNumPartInter()
