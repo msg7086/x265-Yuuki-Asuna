@@ -52,6 +52,7 @@ struct LookaheadRow
     int widthInCU;
     int heightInCU;
     int merange;
+    Lowres *weightedRef;
 
     LookaheadRow()
     {
@@ -82,6 +83,8 @@ struct Lookahead : public WaveFront
     int              widthInCU;       // width of lowres frame in downscale CUs
     int              heightInCU;      // height of lowres frame in downscale CUs
 
+    Lowres weightedRef;
+
     PicList inputQueue;  // input pictures in order received
     PicList outputQueue; // pictures to be encoded, in encode order
 
@@ -110,6 +113,9 @@ struct Lookahead : public WaveFront
     int slicetypePathCost(char *path, int threshold);
 
     void processRow(int row);
+
+    void weightsAnalyse(int b, int p0);
+    uint32_t weightCostLuma(int b, pixel *src, wpScalingParam *w);
 };
 }
 

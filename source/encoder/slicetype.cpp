@@ -45,6 +45,14 @@
 
 using namespace x265;
 
+#define SET_WEIGHT(w, b, s, d, o) \
+    { \
+        (w).inputWeight = (s); \
+        (w).log2WeightDenom = (d); \
+        (w).inputOffset = (o); \
+        (w).bPresentFlag = b; \
+    }
+
 static inline int16_t median(int16_t a, int16_t b, int16_t c)
 {
     int16_t t = (a - b) & ((a - b) >> 31);
@@ -71,12 +79,15 @@ Lookahead::Lookahead(TEncCfg *_cfg, ThreadPool* pool) : WaveFront(pool)
     widthInCU = ((cfg->param.sourceWidth / 2) + X265_LOWRES_CU_SIZE - 1) >> X265_LOWRES_CU_BITS;
     heightInCU = ((cfg->param.sourceHeight / 2) + X265_LOWRES_CU_SIZE - 1) >> X265_LOWRES_CU_BITS;
 
+    weightedRef.buffer[0] = NULL;
+
     lhrows = new LookaheadRow[heightInCU];
     for (int i = 0; i < heightInCU; i++)
     {
         lhrows[i].widthInCU = widthInCU;
         lhrows[i].heightInCU = heightInCU;
         lhrows[i].frames = frames;
+        lhrows[i].weightedRef = &weightedRef;
     }
 }
 
@@ -119,7 +130,11 @@ void Lookahead::destroy()
 void Lookahead::addPicture(TComPic *pic, int sliceType)
 {
     pic->m_lowres.init(pic->getPicYuvOrg(), pic->getSlice()->getPOC(), sliceType, cfg->param.bframes);
-
+    if (!weightedRef.buffer[0])
+    {
+        // use first picture to allocate properly sized lowres weighted ref
+        weightedRef.create(pic, cfg->param.bframes, &cfg->param.rc.aqMode);
+    }
     inputQueue.pushBack(*pic);
     if (inputQueue.size() >= cfg->param.lookaheadDepth)
         slicetypeDecide();
@@ -190,16 +205,141 @@ int Lookahead::getEstimatedPictureCost(TComPic *pic)
     return pic->m_lowres.satdCost;
 }
 
+uint32_t Lookahead::weightCostLuma(int b, pixel *src, wpScalingParam *w)
+{
+    Lowres *fenc = frames[b];
+    uint32_t cost = 0;
+    int stride = fenc->lumaStride;
+    int lines = fenc->lines;
+    int width = fenc->width;
+    pixel *fenc_plane = fenc->lowresPlane[0];
+
+    ALIGN_VAR_16(pixel, buf[8 * 8]);
+    int pixoff = 0;
+    int mb = 0;
+
+    if (w)
+    {
+        int offset = w->inputOffset << (X265_DEPTH - 8);
+        int scale = w->inputWeight;
+        int denom = w->log2WeightDenom;
+        int correction = (IF_INTERNAL_PREC - X265_DEPTH);
+        int round, shift;
+        if (denom >= 1)
+        {
+            round = 1 << (denom + correction - 1);
+            shift = denom + correction;
+        }
+        else
+        {
+            round = (1 << correction) - 1;
+            shift = correction;
+        }
+
+        for (int y = 0; y < lines; y += 8, pixoff = y * stride)
+        {
+            for (int x = 0; x < width; x += 8, mb++, pixoff += 8)
+            {
+                // TODO: optimized 8x8 block primitive for weightp
+                primitives.weightpUniPixel(src + pixoff, buf, stride, 8, 8, 8, scale, round, shift, offset);
+                int satd = primitives.satd[LUMA_8x8](buf, 8, &fenc_plane[pixoff], stride);
+                cost += X265_MIN(satd, fenc->intraCost[mb]);
+            }
+        }
+    }
+    else
+    {
+        for (int y = 0; y < lines; y += 8, pixoff = y * stride)
+        {
+            for (int x = 0; x < width; x += 8, mb++, pixoff += 8)
+            {
+                int satd = primitives.satd[LUMA_8x8](&src[pixoff], stride, &fenc_plane[pixoff], stride);
+                cost += X265_MIN(satd, fenc->intraCost[mb]);
+            }
+        }
+    }
+
+    x265_emms();
+    return cost;
+}
+
+void Lookahead::weightsAnalyse(int b, int p0)
+{
+    wpScalingParam w;
+
+    Lowres *fenc, *ref;
+    fenc = frames[b];
+    ref  = frames[p0];
+
+    /* epsilon is chosen to require at least a numerator of 127 (with denominator = 128) */
+    const float epsilon = 1.f / 128.f;
+    float guessScale, fencMean, refMean;
+    guessScale = sqrtf((float)fenc->wp_ssd[0] / ref->wp_ssd[0]);
+    fencMean = (float)fenc->wp_sum[0] / (fenc->lines * fenc->width) / (1 << (X265_DEPTH - 8));
+    refMean  = (float)ref->wp_sum[0] / (fenc->lines * fenc->width) / (1 << (X265_DEPTH - 8));
+
+    /* Don't check chroma in lookahead, or if there wasn't a luma weight. */
+    int minoff = 0, minscale, mindenom;
+    unsigned int minscore = 0, origscore = 1;
+    int found = 0;
+
+    /* Early termination */
+    if (fabsf(refMean - fencMean) < 0.5f && fabsf(1.f - guessScale) < epsilon)
+        return;
+
+    w.setFromWeightAndOffset((int)(guessScale * 128 + 0.5), 0);
+    mindenom = w.log2WeightDenom;
+    minscale = w.inputWeight;
+
+    pixel *mcbuf = NULL;
+    if (!fenc->bIntraCalculated)
+    {
+        estimateFrameCost(b, b, b, 0);
+    }
+    mcbuf = frames[p0]->lowresPlane[0];
+    origscore = minscore = weightCostLuma(b, mcbuf, NULL);
+
+    if (!minscore)
+        return;
+
+    unsigned int s = 0;
+    int curScale = minscale;
+    int curOffset = (int)(fencMean - refMean * curScale / (1 << mindenom) + 0.5f);
+    if (curOffset < -128 || curOffset > 127)
+    {
+        /* Rescale considering the constraints on curOffset. We do it in this order
+            * because scale has a much wider range than offset (because of denom), so
+            * it should almost never need to be clamped. */
+        curOffset = Clip3(-128, 127, curOffset);
+        curScale = (int)((1 << mindenom) * (fencMean - curOffset) / refMean + 0.5f);
+        curScale = Clip3(0, 127, curScale);
+    }
+    SET_WEIGHT(w, 1, curScale, mindenom, curOffset);
+    s = weightCostLuma(b, mcbuf, &w);
+    COPY4_IF_LT(minscore, s, minscale, curScale, minoff, curOffset, found, 1);
+
+    /* Use a smaller denominator if possible */
+    while (mindenom > 0 && !(minscale & 1))
+    {
+        mindenom--;
+        minscale >>= 1;
+    }
+
+    if (!found || (minscale == 1 << mindenom && minoff == 0) || (float)minscore / origscore > 0.998f)
+        return;
+    else
+    {
+        SET_WEIGHT(w, 1, minscale, mindenom, minoff);
+        weightedRef.initWeighted(frames[p0], &w);
+    }
+}
+
 #define NUM_CUS (widthInCU > 2 && heightInCU > 2 ? (widthInCU - 2) * (heightInCU - 2) : widthInCU * heightInCU)
 
 int Lookahead::estimateFrameCost(int p0, int p1, int b, bool bIntraPenalty)
 {
     int score = 0;
     Lowres *fenc = frames[b];
-
-    curb = b;
-    curp0 = p0;
-    curp1 = p1;
 
     if (fenc->costEst[b - p0][p1 - b] >= 0 && fenc->rowSatds[b - p0][p1 - b][0] != -1)
         score = fenc->costEst[b - p0][p1 - b];
@@ -208,10 +348,19 @@ int Lookahead::estimateFrameCost(int p0, int p1, int b, bool bIntraPenalty)
         /* For each list, check to see whether we have lowres motion-searched this reference */
         bDoSearch[0] = b != p0 && fenc->lowresMvs[0][b - p0 - 1][0].x == 0x7FFF;
         bDoSearch[1] = b != p1 && fenc->lowresMvs[1][p1 - b - 1][0].x == 0x7FFF;
+        weightedRef.isWeighted = false;
 
-        if (bDoSearch[0]) fenc->lowresMvs[0][b - p0 - 1][0].x = 0;
+        if (bDoSearch[0])
+        {
+            if (cfg->param.bEnableWeightedPred && b == p1)
+                weightsAnalyse(b, p0);
+            fenc->lowresMvs[0][b - p0 - 1][0].x = 0;
+        }
         if (bDoSearch[1]) fenc->lowresMvs[1][p1 - b - 1][0].x = 0;
 
+        curb = b;
+        curp0 = p0;
+        curp1 = p1;
         fenc->costEst[b - p0][p1 - b] = 0;
         fenc->costEstAq[b - p0][p1 - b] = 0;
         // TODO: use lowres MVs as motion candidates in full-res search
@@ -288,7 +437,7 @@ void LookaheadRow::init()
 
 void LookaheadRow::estimateCUCost(int cux, int cuy, int p0, int p1, int b, bool bDoSearch[2])
 {
-    Lowres *fref0 = frames[p0];
+    Lowres *fref0 = weightedRef->isWeighted ? weightedRef : frames[p0];
     Lowres *fref1 = frames[p1];
     Lowres *fenc  = frames[b];
 
@@ -612,14 +761,6 @@ void Lookahead::slicetypeDecide()
                 }
             } */
         }
-
-        /* Analyse for weighted P frames
-        if (!h->param.rc.b_stat_read && h->lookahead->next.list[bframes]->i_type == X264_TYPE_P
-            && h->param.analyse.i_weighted_pred >= X264_WEIGHTP_SIMPLE)
-        {
-            x265_emms();
-            x264_weights_analyse(h, h->lookahead->next.list[bframes], h->lookahead->last_nonb, 0);
-        }*/
 
         /* dequeue all frames from inputQueue that are about to be enqueued
          * in the output queue.  The order is important because TComPic can
