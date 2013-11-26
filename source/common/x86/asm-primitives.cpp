@@ -33,6 +33,7 @@ extern "C" {
 #include "ipfilter8.h"
 #include "blockcopy8.h"
 #include "intrapred.h"
+#include "dct8.h"
 }
 
 #define INIT2_NAME(name1, name2, cpu) \
@@ -435,19 +436,11 @@ extern "C" {
     SETUP_LUMA_BLOCKCOPY_FUNC_DEF(16, 64, cpu);
 
 #define SETUP_PIXEL_VAR_DEF(W, H, cpu) \
-    p.var[LUMA_ ## W ## x ## H] = x265_pixel_var_ ## W ## x ## H ## cpu;
+    p.var[BLOCK_ ## W ## x ## H] = x265_pixel_var_ ## W ## x ## H ## cpu;
 
 #define LUMA_VAR(cpu) \
-    SETUP_PIXEL_VAR_DEF(8,   4, cpu); \
     SETUP_PIXEL_VAR_DEF(8,   8, cpu); \
-    SETUP_PIXEL_VAR_DEF(8,  16, cpu); \
-    SETUP_PIXEL_VAR_DEF(8,  32, cpu); \
-    SETUP_PIXEL_VAR_DEF(16,  4, cpu); \
-    SETUP_PIXEL_VAR_DEF(16,  8, cpu); \
-    SETUP_PIXEL_VAR_DEF(16, 12, cpu); \
-    SETUP_PIXEL_VAR_DEF(16, 16, cpu); \
-    SETUP_PIXEL_VAR_DEF(16, 32, cpu); \
-    SETUP_PIXEL_VAR_DEF(16, 64, cpu);
+    SETUP_PIXEL_VAR_DEF(16, 16, cpu);
 
 namespace x265 {
 // private x265 namespace
@@ -568,6 +561,9 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.transpose[BLOCK_16x16] = x265_transpose16_sse2;
         p.transpose[BLOCK_32x32] = x265_transpose32_sse2;
         p.transpose[BLOCK_64x64] = x265_transpose64_sse2;
+        p.ssim_4x4x2_core = x265_pixel_ssim_4x4x2_core_sse2;
+        p.ssim_end_4 = x265_pixel_ssim_end4_sse2;
+        p.dct[DCT_4x4] = x265_dct4_sse2;
     }
     if (cpuMask & X265_CPU_SSSE3)
     {
@@ -643,6 +639,13 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.sse_pp[LUMA_64x48] = x265_pixel_ssd_64x48_sse4;
         p.sse_pp[LUMA_64x64] = x265_pixel_ssd_64x64_sse4;
 
+        p.sse_sp[LUMA_16x4] = x265_pixel_ssd_sp_16x4_sse4;
+        p.sse_sp[LUMA_16x8] = x265_pixel_ssd_sp_16x8_sse4;
+        p.sse_sp[LUMA_16x12] = x265_pixel_ssd_sp_16x12_sse4;
+        p.sse_sp[LUMA_16x16] = x265_pixel_ssd_sp_16x16_sse4;
+        p.sse_sp[LUMA_16x32] = x265_pixel_ssd_sp_16x32_sse4;
+        p.sse_sp[LUMA_16x64] = x265_pixel_ssd_sp_16x64_sse4;
+
         CHROMA_PIXELSUB_PS(_sse4);
 
         CHROMA_FILTERS(_sse4);
@@ -670,6 +673,7 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.weight_pp = x265_weight_pp_sse4;
         p.weight_sp = x265_weight_sp_sse4;
         p.intra_pred_planar[BLOCK_4x4] = x265_intra_pred_planar4_sse4;
+        p.intra_pred_planar[BLOCK_8x8] = x265_intra_pred_planar8_sse4;
     }
     if (cpuMask & X265_CPU_AVX)
     {
@@ -717,6 +721,8 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.sad_x4[LUMA_64x32] = x265_pixel_sad_x4_64x32_avx;
         p.sad_x4[LUMA_64x48] = x265_pixel_sad_x4_64x48_avx;
         p.sad_x4[LUMA_64x64] = x265_pixel_sad_x4_64x64_avx;
+        p.ssim_4x4x2_core = x265_pixel_ssim_4x4x2_core_avx;
+        p.ssim_end_4 = x265_pixel_ssim_end4_avx;
     }
     if (cpuMask & X265_CPU_XOP)
     {

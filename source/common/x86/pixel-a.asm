@@ -1213,6 +1213,206 @@ cglobal pixel_ssd_64x64, 4, 7, 8, src1, stride1, src2, stride2
     RET
 
 ;-----------------------------------------------------------------------------
+; int pixel_ssd_sp ( int16_t *, intptr_t, uint8_t *, intptr_t )
+;-----------------------------------------------------------------------------
+
+%macro PIXEL_SSD_SP_16x4 0
+    movu         m0,    [r0]
+    movu         m1,    [r0 + 16]
+    movu         m3,    [r2]
+    pmovzxbw     m2,    m3
+    punpckhbw    m3,    m6
+
+    psubw        m0,    m2
+    psubw        m1,    m3
+
+    movu         m4,    [r0 + r1]
+    movu         m5,    [r0 + r1 +16]
+    movu         m3,    [r2 + r3]
+    pmovzxbw     m2,    m3
+    punpckhbw    m3,    m6
+
+    psubw        m4,    m2
+    psubw        m5,    m3
+
+    pmaddwd      m0,    m0
+    pmaddwd      m1,    m1
+    pmaddwd      m4,    m4
+    pmaddwd      m5,    m5
+
+    paddd        m0,    m1
+    paddd        m4,    m5
+    paddd        m4,    m0
+    paddd        m7,    m4
+
+    movu         m0,    [r0 + 2 * r1]
+    movu         m1,    [r0 + 2 * r1 + 16]
+    movu         m3,    [r2 + 2 * r3]
+    pmovzxbw     m2,    m3
+    punpckhbw    m3,    m6
+
+    psubw        m0,    m2
+    psubw        m1,    m3
+
+    lea          r0,    [r0 + 2 * r1]
+    lea          r2,    [r2 + 2 * r3]
+    movu         m4,    [r0 + r1]
+    movu         m5,    [r0 + r1 + 16]
+    movu         m3,    [r2 + r3]
+    pmovzxbw     m2,    m3
+    punpckhbw    m3,    m6
+
+    psubw        m4,    m2
+    psubw        m5,    m3
+
+    pmaddwd      m0,    m0
+    pmaddwd      m1,    m1
+    pmaddwd      m4,    m4
+    pmaddwd      m5,    m5
+
+    paddd        m0,    m1
+    paddd        m4,    m5
+    paddd        m4,    m0
+    paddd        m7,    m4
+%endmacro
+
+;-----------------------------------------------------------------------------
+; int pixel_ssd_sp_16x4( int16_t *, intptr_t, uint8_t *, intptr_t )
+;-----------------------------------------------------------------------------
+INIT_XMM sse4
+cglobal pixel_ssd_sp_16x4, 4, 6, 8, src1, stride1, src2, stride2
+
+    pxor        m6,     m6
+    pxor        m7,     m7
+    add         r1,     r1
+    PIXEL_SSD_SP_16x4
+    HADDD   m7, m1
+    movd   eax, m7
+
+    RET
+
+;-----------------------------------------------------------------------------
+; int pixel_ssd_sp_16x8( int16_t *, intptr_t, uint8_t *, intptr_t )
+;-----------------------------------------------------------------------------
+INIT_XMM sse4
+cglobal pixel_ssd_sp_16x8, 4, 4, 8, src1, stride1, src2, stride2
+
+    pxor    m6,     m6
+    pxor    m7,     m7
+    add     r1,     r1
+    PIXEL_SSD_SP_16x4
+    lea     r0,    [r0 + 2 * r1]
+    lea     r2,    [r2 + 2 * r3]
+    PIXEL_SSD_SP_16x4
+    HADDD   m7,     m1
+    movd    eax,    m7
+    RET
+
+;-----------------------------------------------------------------------------
+; int pixel_ssd_sp_16x12( int16_t *, intptr_t, uint8_t *, intptr_t )
+;-----------------------------------------------------------------------------
+INIT_XMM sse4
+cglobal pixel_ssd_sp_16x12, 4, 6, 8, src1, stride1, src2, stride2
+
+    pxor    m6,     m6
+    pxor    m7,     m7
+    add     r1,     r1
+    lea     r4,     [r1 * 2]
+    lea     r5,     [r3 * 2]
+    PIXEL_SSD_SP_16x4
+    lea     r0,     [r0 + r4]
+    lea     r2,     [r2 + r5]
+    PIXEL_SSD_SP_16x4
+    lea     r0,     [r0 + r4]
+    lea     r2,     [r2 + r5]
+    PIXEL_SSD_SP_16x4
+    HADDD   m7,     m1
+    movd    eax,    m7
+    RET
+
+;-----------------------------------------------------------------------------
+; int pixel_ssd_sp_16x16( int16_t *, intptr_t, uint8_t *, intptr_t )
+;-----------------------------------------------------------------------------
+INIT_XMM sse4
+cglobal pixel_ssd_sp_16x16, 4, 6, 8, src1, stride1, src2, stride2
+
+    pxor    m6,     m6
+    pxor    m7,     m7
+    add     r1,     r1
+    lea     r4,     [r1 * 2]
+    lea     r5,     [r3 * 2]
+    PIXEL_SSD_SP_16x4
+    lea     r0,     [r0 + r4]
+    lea     r2,     [r2 + r5]
+    PIXEL_SSD_SP_16x4
+    lea     r0,     [r0 + r4]
+    lea     r2,     [r2 + r5]
+    PIXEL_SSD_SP_16x4
+    lea     r0,     [r0 + r4]
+    lea     r2,     [r2 + r5]
+    PIXEL_SSD_SP_16x4
+    HADDD   m7,     m1
+    movd    eax,    m7
+    RET
+
+cglobal pixel_ssd_sp_16x16_internal
+    PIXEL_SSD_SP_16x4
+    lea     r0,    [r0 + r4]
+    lea     r2,    [r2 + 2 * r3]
+    PIXEL_SSD_SP_16x4
+    lea     r0,    [r0 + r4]
+    lea     r2,    [r2 + 2 * r3]
+    PIXEL_SSD_SP_16x4
+    lea     r0,    [r0 + r4]
+    lea     r2,    [r2 + 2 * r3]
+    PIXEL_SSD_SP_16x4
+    ret
+
+;-----------------------------------------------------------------------------
+; int pixel_ssd_sp_16x32( int16_t *, intptr_t, uint8_t *, intptr_t )
+;-----------------------------------------------------------------------------
+INIT_XMM sse4
+cglobal pixel_ssd_sp_16x32, 4, 5, 8, src1, stride1, src2, stride2
+
+    pxor     m6,     m6
+    pxor     m7,     m7
+    add      r1,     r1
+    lea      r4,     [r1 * 2]
+    call     pixel_ssd_sp_16x16_internal
+    lea      r0,     [r0 + r4]
+    lea      r2,     [r2 + 2 * r3]
+    call     pixel_ssd_sp_16x16_internal
+    HADDD    m7,     m1
+    movd     eax,    m7
+    RET
+
+;-----------------------------------------------------------------------------
+; int pixel_ssd_sp_16x64( int16_t *, intptr_t, uint8_t *, intptr_t )
+;-----------------------------------------------------------------------------
+INIT_XMM sse4
+cglobal pixel_ssd_sp_16x64, 4, 6, 8, src1, stride1, src2, stride2
+
+    pxor     m6,     m6
+    pxor     m7,     m7
+    add      r1,     r1
+    lea      r4,     [r1 * 2]
+    lea      r5,     [r3 * 2]
+    call     pixel_ssd_sp_16x16_internal
+    lea      r0,     [r0 + r4]
+    lea      r2,     [r2 + r5]
+    call     pixel_ssd_sp_16x16_internal
+    lea      r0,     [r0 + r4]
+    lea      r2,     [r2 + r5]
+    call     pixel_ssd_sp_16x16_internal
+    lea      r0,     [r0 + r4]
+    lea      r2,     [r2 + r5]
+    call     pixel_ssd_sp_16x16_internal
+
+    HADDD    m7,     m1
+    movd     eax,    m7
+    RET
+
+;-----------------------------------------------------------------------------
 ; void pixel_ssd_nv12_core( uint16_t *pixuv1, intptr_t stride1, uint16_t *pixuv2, intptr_t stride2,
 ;                           int width, int height, uint64_t *ssd_u, uint64_t *ssd_v )
 ;
@@ -1479,12 +1679,6 @@ cglobal pixel_var_16x16, 2,3
     VAR_2ROW 8*SIZEOF_PIXEL, 16
     VAR_END 16, 16
 
-cglobal pixel_var_8x16, 2,3
-    FIX_STRIDES r1
-    VAR_START 0
-    VAR_2ROW r1, 8
-    VAR_END 8, 16
-
 cglobal pixel_var_8x8, 2,3
     FIX_STRIDES r1
     VAR_START 0
@@ -1526,18 +1720,6 @@ VAR
 
 %if HIGH_BIT_DEPTH == 0
 %macro VAR 0
-cglobal pixel_var_8x4, 2,3,8
-    VAR_START 1
-    lea       r2,    [r1 * 3]
-    movh      m0,    [r0]
-    movh      m3,    [r0 + r1]
-    movhps    m0,    [r0 + r1 * 2]
-    movhps    m3,    [r0 + r2]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    VAR_END 8, 4
-
 cglobal pixel_var_8x8, 2,3,8
     VAR_START 1
     lea       r2,    [r1 * 3]
@@ -1555,142 +1737,6 @@ cglobal pixel_var_8x8, 2,3,8
     DEINTB    1, 0, 4, 3, 7
     VAR_CORE
     VAR_END 8, 8
-
-
-cglobal pixel_var_8x16, 2,4,8
-    VAR_START 1
-    lea       r2,    [r1 * 3]
-    movh      m0,    [r0]
-    movh      m3,    [r0 + r1]
-    movhps    m0,    [r0 + r1 * 2]
-    movhps    m3,    [r0 + r2]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    movh      m0,    [r0]
-    movh      m3,    [r0 + r1]
-    movhps    m0,    [r0 + r1 * 2]
-    movhps    m3,    [r0 + r2]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    movh      m0,    [r0]
-    movh      m3,    [r0 + r1]
-    movhps    m0,    [r0 + r1 * 2]
-    movhps    m3,    [r0 + r2]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    movh      m0,    [r0]
-    movh      m3,    [r0 + r1]
-    movhps    m0,    [r0 + r1 * 2]
-    movhps    m3,    [r0 + r2]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    VAR_END 8, 16
-
-cglobal pixel_var_8x32, 2,4,8
-    VAR_START 1
-    mov       r2d,   2
-    lea       r3,    [r1 * 3]
-.loop:
-    movh      m0,    [r0]
-    movh      m3,    [r0 + r1]
-    movhps    m0,    [r0 + r1 * 2]
-    movhps    m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    movh      m0,    [r0]
-    movh      m3,    [r0 + r1]
-    movhps    m0,    [r0 + r1 * 2]
-    movhps    m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    movh      m0,    [r0]
-    movh      m3,    [r0 + r1]
-    movhps    m0,    [r0 + r1 * 2]
-    movhps    m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    movh      m0,    [r0]
-    movh      m3,    [r0 + r1]
-    movhps    m0,    [r0 + r1 * 2]
-    movhps    m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    dec    r2d
-    jnz    .loop
-    VAR_END 8, 32
-
-cglobal pixel_var_16x4, 2,3,8
-    VAR_START 1
-    lea       r2,    [r1 * 3]
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r2]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    VAR_END 16, 4
-
-cglobal pixel_var_16x8, 2,3,8
-    VAR_START 1
-    lea       r2,    [r1 * 3]
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r2]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r2]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    VAR_END 16, 8
-
-cglobal pixel_var_16x12, 2,3,8
-    VAR_START 1
-    lea       r2,    [r1 * 3]
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r2]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r2]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r2]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    VAR_END 16, 12
 
 cglobal pixel_var_16x16, 2,3,8
     VAR_START 1
@@ -1731,96 +1777,6 @@ cglobal pixel_var_16x16, 2,3,8
     DEINTB    1, 0, 4, 3, 7
     VAR_CORE
     VAR_END 16, 16
-
-cglobal pixel_var_16x32, 2,4,8
-    VAR_START 1
-    mov       r2d,   2
-    lea       r3,    [r1 * 3]
-.loop:
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    dec    r2d
-    jg    .loop
-    VAR_END 16, 32
-
-cglobal pixel_var_16x64, 2,4,8
-    VAR_START 1
-    mov       r2d,   4
-    lea       r3,    [r1 * 3]
-.loop:
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    mova      m0,    [r0]
-    mova      m3,    [r0 + r1]
-    DEINTB    1, 0, 4, 3, 7
-    VAR_CORE
-    mova      m0,    [r0 + 2 * r1]
-    mova      m3,    [r0 + r3]
-    DEINTB    1, 0, 4, 3, 7
-    lea       r0,    [r0 + r1 * 4]
-    VAR_CORE
-    dec    r2d
-    jg    .loop
-    VAR_END 16, 64
 %endmacro ; VAR
 
 INIT_XMM sse2

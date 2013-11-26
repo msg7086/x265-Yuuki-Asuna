@@ -618,17 +618,17 @@ void frame_init_lowres_core(pixel *src0, pixel *dst0, pixel *dsth, pixel *dstv, 
 }
 
 /* structural similarity metric */
-void ssim_4x4x2_core(const pixel *pix1, intptr_t stride1, const pixel *pix2, intptr_t stride2, ssim_t sums[2][4])
+void ssim_4x4x2_core(const pixel *pix1, intptr_t stride1, const pixel *pix2, intptr_t stride2, int sums[2][4])
 {
     for (int z = 0; z < 2; z++)
     {
-        ssim_t s1 = 0, s2 = 0, ss = 0, s12 = 0;
+        uint32_t s1 = 0, s2 = 0, ss = 0, s12 = 0;
         for (int y = 0; y < 4; y++)
         {
             for (int x = 0; x < 4; x++)
             {
-                ssim_t a = pix1[x + y * stride1];
-                ssim_t b = pix2[x + y * stride2];
+                int a = pix1[x + y * stride1];
+                int b = pix2[x + y * stride2];
                 s1 += a;
                 s2 += b;
                 ss += a * a;
@@ -646,19 +646,34 @@ void ssim_4x4x2_core(const pixel *pix1, intptr_t stride1, const pixel *pix2, int
     }
 }
 
-float ssim_end_1(ssim_t s1, ssim_t s2, ssim_t ss, ssim_t s12)
+float ssim_end_1(int s1, int s2, int ss, int s12)
 {
-    static const uint32_t pixelMax = (1 << X265_DEPTH) - 1;
-    static const ssim_t ssim_c1 = (ssim_t)(.01 * .01 * pixelMax * pixelMax * 64 + .5);
-    static const ssim_t ssim_c2 = (ssim_t)(.03 * .03 * pixelMax * pixelMax * 64 * 63 + .5);
-    ssim_t vars = ss * 64 - s1 * s1 - s2 * s2;
-    ssim_t covar = s12 * 64 - s1 * s2;
-
-    return (float)(2 * s1 * s2 + ssim_c1) * (float)(2 * covar + ssim_c2)
-           / ((float)(s1 * s1 + s2 * s2 + ssim_c1) * (float)(vars + ssim_c2));
+/* Maximum value for 10-bit is: ss*64 = (2^10-1)^2*16*4*64 = 4286582784, which will overflow in some cases.
+ * s1*s1, s2*s2, and s1*s2 also obtain this value for edge cases: ((2^10-1)*16*4)^2 = 4286582784.
+ * Maximum value for 9-bit is: ss*64 = (2^9-1)^2*16*4*64 = 1069551616, which will not overflow. */
+#define PIXEL_MAX ((1 << X265_DEPTH) - 1)
+#if HIGH_BIT_DEPTH
+#define type float
+    static const float ssim_c1 = (float)(.01*.01*PIXEL_MAX*PIXEL_MAX*64);
+    static const float ssim_c2 = (float)(.03*.03*PIXEL_MAX*PIXEL_MAX*64*63);
+#else
+#define type int
+    static const int ssim_c1 = (int)(.01*.01*PIXEL_MAX*PIXEL_MAX*64 + .5);
+    static const int ssim_c2 = (int)(.03*.03*PIXEL_MAX*PIXEL_MAX*64*63 + .5);
+#endif
+    type fs1 = s1;
+    type fs2 = s2;
+    type fss = ss;
+    type fs12 = s12;
+    type vars = fss*64 - fs1*fs1 - fs2*fs2;
+    type covar = fs12*64 - fs1*fs2;
+    return (float)(2*fs1*fs2 + ssim_c1) * (float)(2*covar + ssim_c2)
+         / ((float)(fs1*fs1 + fs2*fs2 + ssim_c1) * (float)(vars + ssim_c2));
+#undef type
+#undef PIXEL_MAX
 }
 
-float ssim_end_4(ssim_t sum0[5][4], ssim_t sum1[5][4], int width)
+float ssim_end_4(int sum0[5][4], int sum1[5][4], int width)
 {
     float ssim = 0.0;
 
@@ -673,14 +688,14 @@ float ssim_end_4(ssim_t sum0[5][4], ssim_t sum1[5][4], int width)
     return ssim;
 }
 
-template<int w, int h>
+template<int size>
 uint64_t pixel_var(pixel *pix, intptr_t i_stride)
 {
     uint32_t sum = 0, sqr = 0;
 
-    for (int y = 0; y < h; y++)
+    for (int y = 0; y < size; y++)
     {
-        for (int x = 0; x < w; x++)
+        for (int x = 0; x < size; x++)
         {
             sum += pix[x];
             sqr += pix[x] * pix[x];
@@ -968,17 +983,8 @@ void Setup_C_PixelPrimitives(EncoderPrimitives &p)
     p.ssim_4x4x2_core = ssim_4x4x2_core;
     p.ssim_end_4 = ssim_end_4;
 
-    p.var[LUMA_8x4] = pixel_var<8, 4>;
-    p.var[LUMA_8x8] = pixel_var<8, 8>;
-    p.var[LUMA_8x16] = pixel_var<8, 16>;
-    p.var[LUMA_8x32] = pixel_var<8, 32>;
-    p.var[LUMA_16x4] = pixel_var<16, 4>;
-    p.var[LUMA_16x8] = pixel_var<16, 8>;
-    p.var[LUMA_16x12] = pixel_var<16, 12>;
-    p.var[LUMA_16x16] = pixel_var<16, 16>;
-    p.var[LUMA_16x32] = pixel_var<16, 32>;
-    p.var[LUMA_16x64] = pixel_var<16, 64>;
-
+    p.var[BLOCK_8x8] = pixel_var<8>;
+    p.var[BLOCK_16x16] = pixel_var<16>;
     p.plane_copy_deinterleave_c = plane_copy_deinterleave_chroma;
 }
 }
