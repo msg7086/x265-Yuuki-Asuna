@@ -26,88 +26,119 @@
 #include "common.h"
 #include <stdio.h>
 #include <string.h>
+#include <iostream>
+
+#if _WIN32
+#include <io.h>
+#include <fcntl.h>
+#if defined(_MSC_VER)
+#pragma warning(disable: 4996) // POSIX setmode and fileno deprecated
+#endif
+#endif
 
 using namespace x265;
 using namespace std;
 
-Y4MInput::Y4MInput(const char *filename)
+Y4MInput::Y4MInput(const char *filename, uint32_t /*inputBitDepth*/)
 {
+    for (uint32_t i = 0; i < QUEUE_SIZE; i++)
+    {
+        plane[i][2] = plane[i][1] = plane[i][0] = NULL;
+    }
+    head = tail = 0;
 
-#if defined ENABLE_THREAD
-    for (int i = 0; i < QUEUE_SIZE; i++)
-        buf[i] = NULL;
-#else
-    buf = NULL;
+    ifs = NULL;
+    if (!strcmp(filename, "-"))
+    {
+        ifs = &cin;
+#if _WIN32
+        setmode(fileno(stdin), O_BINARY);
 #endif
+    }
+    else
+        ifs = new ifstream(filename, ios::binary | ios::in);
 
-    ifs.open(filename, ios::binary | ios::in);
     threadActive = false;
-    if (!ifs.fail())
+    if (ifs && !ifs->fail())
     {
         if (parseHeader())
         {
             threadActive = true;
-#if defined(ENABLE_THREAD)
-            head = 0;
-            tail = 0;
-            for (int i = 0; i < QUEUE_SIZE; i++)
+            for (uint32_t i = 0; i < QUEUE_SIZE; i++)
             {
-                buf[i] = new char[3 * width * height / 2];
-                if (buf[i] == NULL)
-                {
-                    x265_log(NULL, X265_LOG_ERROR, "y4m: buffer allocation failure, aborting\n");
-                    threadActive = false;
-                }
+                pictureAlloc(i);
             }
-#else // if defined(ENABLE_THREAD)
-            buf = new char[3 * width * height / 2];
-#endif // if defined(ENABLE_THREAD)
         }
     }
-    if (!threadActive)
-        ifs.close();
+    if (!threadActive && ifs && ifs != &cin)
+    {
+        delete ifs;
+        ifs = NULL;
+    }
 }
 
 Y4MInput::~Y4MInput()
 {
-    ifs.close();
-#if defined(ENABLE_THREAD)
-    for (int i = 0; i < QUEUE_SIZE; i++)
-    {
-        delete[] buf[i];
-    }
+    if (ifs && ifs != &cin)
+        delete ifs;
 
-#else
-    delete[] buf;
-#endif
+    for (uint32_t i = 0; i < QUEUE_SIZE; i++)
+    {
+        for (int j = 0; j < x265_cli_csps[colorSpace].planes; j++)
+        {
+            delete[] plane[i][j];
+        }
+    }
+}
+
+void Y4MInput::pictureAlloc(int queueindex)
+{
+    for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
+    {
+        plane_size[i] = (uint32_t)((width >> x265_cli_csps[colorSpace].width[i]) * (height >> x265_cli_csps[colorSpace].height[i]));
+        plane[queueindex][i] = new char[plane_size[i]];
+        plane_stride[i] = (uint32_t)(width >> x265_cli_csps[colorSpace].width[i]);
+
+        if (plane[queueindex][i] == NULL)
+        {
+            x265_log(NULL, X265_LOG_ERROR, "y4m: buffer allocation failure, aborting");
+            threadActive = false;
+            return;
+        }
+    }
 }
 
 bool Y4MInput::parseHeader()
 {
+    if (!ifs)
+        return false;
+
     width = 0;
     height = 0;
     rateNum = 0;
     rateDenom = 0;
+    colorSpace = X265_CSP_I420;
+    int csp = 0;
 
-    while (ifs)
+    while (!ifs->eof())
     {
         // Skip Y4MPEG string
-        int c = ifs.get();
-        while (!ifs.eof() && (c != ' ') && (c != '\n'))
+        int c = ifs->get();
+        while (!ifs->eof() && (c != ' ') && (c != '\n'))
         {
-            c = ifs.get();
+            c = ifs->get();
         }
 
-        while (c == ' ' && ifs)
+        while (c == ' ' && !ifs->eof())
         {
             // read parameter identifier
-            switch (ifs.get())
+            switch (ifs->get())
             {
             case 'W':
                 width = 0;
-                while (ifs)
+                while (!ifs->eof())
                 {
-                    c = ifs.get();
+                    c = ifs->get();
 
                     if (c == ' ' || c == '\n')
                     {
@@ -123,9 +154,9 @@ bool Y4MInput::parseHeader()
 
             case 'H':
                 height = 0;
-                while (ifs)
+                while (!ifs->eof())
                 {
-                    c = ifs.get();
+                    c = ifs->get();
                     if (c == ' ' || c == '\n')
                     {
                         break;
@@ -141,15 +172,15 @@ bool Y4MInput::parseHeader()
             case 'F':
                 rateNum = 0;
                 rateDenom = 0;
-                while (ifs)
+                while (!ifs->eof())
                 {
-                    c = ifs.get();
+                    c = ifs->get();
                     if (c == '.')
                     {
                         rateDenom = 1;
-                        while (ifs)
+                        while (!ifs->eof())
                         {
-                            c = ifs.get();
+                            c = ifs->get();
                             if (c == ' ' || c == '\n')
                             {
                                 break;
@@ -165,9 +196,9 @@ bool Y4MInput::parseHeader()
                     }
                     else if (c == ':')
                     {
-                        while (ifs)
+                        while (!ifs->eof())
                         {
-                            c = ifs.get();
+                            c = ifs->get();
                             if (c == ' ' || c == '\n')
                             {
                                 break;
@@ -186,11 +217,29 @@ bool Y4MInput::parseHeader()
 
                 break;
 
+            case 'C':
+                while (!ifs->eof())
+                {
+                    c = ifs->get();
+
+                    if (c == ' ' || c == '\n')
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        csp = csp * 10 + (c - '0');
+                    }
+                }
+
+                colorSpace = (csp == 444) ? X265_CSP_I444 : (csp == 422) ? X265_CSP_I422 : X265_CSP_I420;
+                break;
+
             default:
-                while (ifs)
+                while (!ifs->eof())
                 {
                     // consume this unsupported configuration word
-                    c = ifs.get();
+                    c = ifs->get();
                     if (c == ' ' || c == '\n')
                         break;
                 }
@@ -207,7 +256,8 @@ bool Y4MInput::parseHeader()
 
     if (width < MIN_FRAME_WIDTH || width > MAX_FRAME_WIDTH ||
         height < MIN_FRAME_HEIGHT || width > MAX_FRAME_HEIGHT ||
-        (rateNum / rateDenom) < 1 || (rateNum / rateDenom) > MAX_FRAME_RATE)
+        (rateNum / rateDenom) < 1 || (rateNum / rateDenom) > MAX_FRAME_RATE ||
+        colorSpace <= X265_CSP_I400 || colorSpace >= X265_CSP_COUNT)
         return false;
 
     return true;
@@ -217,54 +267,61 @@ static const char header[] = "FRAME";
 
 int Y4MInput::guessFrameCount()
 {
-    istream::pos_type cur = ifs.tellg();
+    if (!ifs || ifs == &cin)
+        return -1;
+    istream::pos_type cur = ifs->tellg();
     if (cur < 0)
         return -1;
 
-    ifs.seekg(0, ios::end);
-    istream::pos_type size = ifs.tellg();
+    ifs->seekg(0, ios::end);
+    istream::pos_type size = ifs->tellg();
+    ifs->seekg(cur, ios::beg);
     if (size < 0)
         return -1;
-    ifs.seekg(cur, ios::beg);
 
-    return (int)((size - cur) / ((width * height * 3 / 2) + strlen(header) + 1));
+    int frameSize = 0;
+    for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
+    {
+        frameSize += (uint32_t)((width >> x265_cli_csps[colorSpace].width[i]) * (height >> x265_cli_csps[colorSpace].height[i]));
+    }
+
+    return (int)((size - cur) / (frameSize + strlen(header) + 1));
 }
 
-void Y4MInput::skipFrames(int numFrames)
+void Y4MInput::skipFrames(uint32_t numFrames)
 {
-    x265_picture pic;
+    int frameSize = 0;
 
-    for (int i = 0; i < numFrames; i++)
+    for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
     {
-        readPicture(pic);
+        frameSize += (uint32_t)((width >> x265_cli_csps[colorSpace].width[i]) * (height >> x265_cli_csps[colorSpace].height[i]));
+    }
+
+    if (ifs && numFrames)
+    {
+        ifs->ignore((frameSize + strlen(header) + 1) * numFrames);
     }
 }
 
-#if defined(ENABLE_THREAD)
 bool Y4MInput::readPicture(x265_picture& pic)
 {
     PPAStartCpuEventFunc(read_yuv);
-    if (!threadActive)
-        return false;
     while (head == tail)
     {
         notEmpty.wait();
+        if (!threadActive)
+            return false;
     }
 
     if (!frameStat[head])
         return false;
 
-    pic.planes[0] = buf[head];
+    for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
+    {
+        pic.planes[i] = plane[head][i];
+        pic.stride[i] = plane_stride[i];
+    }
 
-    pic.planes[1] = buf[head] + width * height;
-
-    pic.planes[2] = buf[head] + width * height + ((width * height) >> 2);
-
-    pic.bitDepth = 8;
-
-    pic.stride[0] = width;
-
-    pic.stride[1] = pic.stride[2] = pic.stride[0] >> 1;
     head = (head + 1) % QUEUE_SIZE;
     notFull.trigger();
 
@@ -274,10 +331,8 @@ bool Y4MInput::readPicture(x265_picture& pic)
 
 void Y4MInput::startReader()
 {
-#if defined(ENABLE_THREAD)
     if (threadActive)
         start();
-#endif
 }
 
 void Y4MInput::threadMain()
@@ -288,6 +343,9 @@ void Y4MInput::threadMain()
             break;
     }
     while (threadActive);
+
+    threadActive = false;
+    notEmpty.trigger();
 }
 
 bool Y4MInput::populateFrameQueue()
@@ -295,91 +353,45 @@ bool Y4MInput::populateFrameQueue()
     /* strip off the FRAME header */
     char hbuf[sizeof(header)];
 
-    ifs.read(hbuf, strlen(header));
+    if (!ifs)
+        return false;
+
+    ifs->read(hbuf, strlen(header));
     if (!ifs || memcmp(hbuf, header, strlen(header)))
     {
         if (ifs)
             x265_log(NULL, X265_LOG_ERROR, "y4m: frame header missing\n");
-        threadActive = false;
         return false;
     }
     /* consume bytes up to line feed */
-    int c = ifs.get();
+    int c = ifs->get();
     while (c != '\n' && !ifs)
     {
-        c = ifs.get();
+        c = ifs->get();
     }
 
-    const size_t count = width * height * 3 / 2;
     while ((tail + 1) % QUEUE_SIZE == head)
     {
         notFull.wait();
         if (!threadActive)
-            break;
+            return false;
     }
 
-    ifs.read(buf[tail], count);
-    frameStat[tail] = ifs.good();
-
-    if (!frameStat[tail])
+    for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
     {
-        x265_log(NULL, X265_LOG_ERROR, "y4m: error in frame reading from file\n");
-        threadActive = false;
-        return false;
+        ifs->read(plane[tail][i], plane_size[i]);
     }
+
+    frameStat[tail] = !ifs->fail();
     tail = (tail + 1) % QUEUE_SIZE;
     notEmpty.trigger();
-    return true;
+    return !ifs->fail();
 }
 
-#else // if defined(ENABLE_THREAD)
-bool Y4MInput::readPicture(x265_picture& pic)
-{
-    PPAStartCpuEventFunc(read_yuv);
-
-    /* strip off the FRAME header */
-    char hbuf[sizeof(header)];
-    ifs.read(hbuf, strlen(header));
-    if (!ifs || memcmp(hbuf, header, strlen(header)))
-    {
-        x265_log(NULL, X265_LOG_ERROR, "y4m: frame header missing\n");
-        return false;
-    }
-
-    /* consume bytes up to line feed */
-    int c = ifs.get();
-    while (c != '\n' && !ifs)
-    {
-        c = ifs.get();
-    }
-
-    const size_t count = width * height * 3 / 2;
-
-    pic.planes[0] = buf;
-
-    pic.planes[1] = buf + width * height;
-
-    pic.planes[2] = buf + width * height + ((width * height) >> 2);
-
-    pic.bitDepth = 8;
-
-    pic.stride[0] = width;
-
-    pic.stride[1] = pic.stride[2] = pic.stride[0] >> 1;
-
-    ifs.read(buf, count);
-    PPAStopCpuEventFunc(read_yuv);
-
-    return ifs.good();
-}
-
-#endif // if defined(ENABLE_THREAD)
 void Y4MInput::release()
 {
-#if defined(ENABLE_THREAD)
     threadActive = false;
     notFull.trigger();
     stop();
-#endif
     delete this;
 }

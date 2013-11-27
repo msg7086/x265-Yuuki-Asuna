@@ -38,6 +38,11 @@
 #ifndef X265_TENCCU_H
 #define X265_TENCCU_H
 
+#define ANGULAR_MODE_ID 2
+#define AMP_ID 3
+#define INTER_MODES 4
+#define INTRA_MODES 3
+
 #include "TLibCommon/CommonDef.h"
 #include "TLibCommon/TComYuv.h"
 #include "TLibCommon/TComPrediction.h"
@@ -51,6 +56,22 @@
 
 //! \ingroup TLibEncoder
 //! \{
+struct StatisticLog
+{
+    uint64_t cntInter[4];
+    uint64_t cntIntra[4];
+    uint64_t cntSplit[4];
+    uint64_t cuInterDistribution[4][INTER_MODES];
+    uint64_t cuIntraDistribution[4][INTRA_MODES];
+    uint64_t cntIntraNxN;
+    uint64_t cntSkipCu[4];
+    uint64_t cntTotalCu[4];
+
+    StatisticLog()
+    {
+         memset(this, 0, sizeof(StatisticLog));
+    }
+};
 
 namespace x265 {
 // private namespace
@@ -76,14 +97,12 @@ private:
     TComDataCU** m_intraInInterCU;
     TComDataCU** m_mergeCU;
     TComDataCU** m_bestMergeCU;
-    TComDataCU** m_interCU_NxN[4];
     TComDataCU** m_bestCU;      ///< Best CUs at each depth
     TComDataCU** m_tempCU;      ///< Temporary CUs at each depth
 
     TComYuv**    m_bestPredYuv; ///< Best Prediction Yuv for each depth
     TShortYUV**  m_bestResiYuv; ///< Best Residual Yuv for each depth
     TComYuv**    m_bestRecoYuv; ///< Best Reconstruction Yuv for each depth
-    TComYuv**    m_bestPredYuvNxN[4];
 
     TComYuv**    m_tmpPredYuv;  ///< Temporary Prediction Yuv for each depth
     TShortYUV**  m_tmpResiYuv;  ///< Temporary Residual Yuv for each depth
@@ -103,7 +122,7 @@ private:
     TEncSbac***  m_rdSbacCoders;
     TEncSbac*    m_rdGoOnSbacCoder;
 
-    UInt         m_LCUPredictionSAD;
+    uint32_t     m_LCUPredictionSAD;
     int          m_addSADDepth;
     int          m_temporalSAD;
     UChar        m_totalDepth;
@@ -113,10 +132,12 @@ private:
 
 public:
 
+    StatisticLog  m_sliceTypeLog[3];
+    StatisticLog* m_log;
     TEncCu();
 
     void init(Encoder* top);
-    void create(UChar totalDepth, UInt maxWidth);
+    void create(UChar totalDepth, uint32_t maxWidth);
     void destroy();
     void compressCU(TComDataCU* cu);
     void encodeCU(TComDataCU* cu);
@@ -135,17 +156,15 @@ public:
 
     void setBitCounter(TComBitCounter* pcBitCounter) { m_bitCounter = pcBitCounter; }
 
-    UInt getLCUPredictionSAD() { return m_LCUPredictionSAD; }
-
 protected:
 
-    void finishCU(TComDataCU* cu, UInt absPartIdx, UInt depth);
-    void xCompressCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, UInt depth, PartSize parentSize = SIZE_NONE);
-    void xCompressIntraCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, UInt depth);
-    void xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TComDataCU*& cu, UInt depth, UInt partitionIndex);
-    void xEncodeCU(TComDataCU* cu, UInt absPartIdx, UInt depth);
+    void finishCU(TComDataCU* cu, uint32_t absPartIdx, uint32_t depth);
+    void xCompressCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, uint32_t depth, PartSize parentSize = SIZE_NONE);
+    void xCompressIntraCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, uint32_t depth);
+    void xCompressInterCU(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TComDataCU*& cu, uint32_t depth, uint32_t partitionIndex, UChar minDepth);
+    void xEncodeCU(TComDataCU* cu, uint32_t absPartIdx, uint32_t depth);
     int  xComputeQP(TComDataCU* cu);
-    void xCheckBestMode(TComDataCU*& outBestCU, TComDataCU*& outTempCU, UInt depth);
+    void xCheckBestMode(TComDataCU*& outBestCU, TComDataCU*& outTempCU, uint32_t depth);
 
     void xCheckRDCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTempCU, bool *earlyDetectionSkipMode,
                                 TComYuv*& outBestPredYuv, TComYuv*& rpcYuvReconBest);
@@ -160,10 +179,9 @@ protected:
 
     void xCheckIntraPCM(TComDataCU*& outBestCU, TComDataCU*& outTempCU);
     void xCopyAMVPInfo(AMVPInfo* src, AMVPInfo* dst);
-    void xCopyYuv2Pic(TComPic* outPic, UInt cuAddr, UInt absPartIdx, UInt depth, UInt uiSrcDepth, TComDataCU* cu,
-                      UInt lpelx, UInt tpely);
-    void xCopyYuv2Tmp(UInt uhPartUnitIdx, UInt depth);
-    void xCopyYuv2Best(UInt partUnitIdx, UInt uiNextDepth);
+    void xCopyYuv2Pic(TComPic* outPic, uint32_t cuAddr, uint32_t absPartIdx, uint32_t depth, uint32_t uiSrcDepth, TComDataCU* cu,
+                      uint32_t lpelx, uint32_t tpely);
+    void xCopyYuv2Tmp(uint32_t uhPartUnitIdx, uint32_t depth);
 
     bool getdQPFlag()        { return m_bEncodeDQP; }
 

@@ -8,7 +8,6 @@ endif(ENABLE_PRIMITIVES_ASM)
 
 set(LIBCOMMON_HDR
     ../Lib/TLibCommon/CommonDef.h
-    ../Lib/TLibCommon/ContextModel.h
     ../Lib/TLibCommon/ContextTables.h
     ../Lib/TLibCommon/NAL.h
     ../Lib/TLibCommon/SEI.h
@@ -31,7 +30,6 @@ set(LIBCOMMON_HDR
     ../Lib/TLibCommon/TComYuv.h
     ../Lib/TLibCommon/TypeDef.h)
 set(LIBCOMMON_SRC
-    ../Lib/TLibCommon/ContextModel.cpp
     ../Lib/TLibCommon/TComBitStream.cpp
     ../Lib/TLibCommon/TComDataCU.cpp
     ../Lib/TLibCommon/TComLoopFilter.cpp
@@ -71,42 +69,30 @@ if(MSVC)
 endif(MSVC)
 
 if(ENABLE_PRIMITIVES_VEC)
-    include_directories(../VectorClass)
+    if(HIGH_BIT_DEPTH)
+        include_directories(../VectorClass)
+    endif()
+    set(SSE3  vec/dct-sse3.cpp  vec/blockcopy-sse3.cpp)
+    set(SSSE3 vec/pixel-ssse3.cpp vec/dct-ssse3.cpp vec/ipfilter-ssse3.cpp vec/intra-ssse3.cpp)
+    set(SSE41 vec/pixel-sse41.cpp vec/dct-sse41.cpp vec/ipfilter-sse41.cpp vec/intra-sse41.cpp vec/pixel16-sse41.cpp)
+
     if (MSVC)
         add_definitions(/wd4127) # conditional expression is constant
         add_definitions(/wd4244) # 'argument' : conversion from 'int' to 'char', possible loss of data
+        set(PRIMITIVES ${SSE3} ${SSSE3} ${SSE41})
         if (INTEL_CXX)
-            add_definitions(/Qwd111)    # statement is unreachable
-            add_definitions(/Qwd128)    # loop is unreachable
-            add_definitions(/Qwd177)    # declared function is unused
-            add_definitions(/Qwd185)    # dynamic initialization in unreachable code
-            add_definitions(/Qwd280)    # conditional expression is constant
-            add_definitions(/Qwd13200)  # function using MMX does not call EMMS
+            add_definitions(/Qwd111) # statement is unreachable
+            add_definitions(/Qwd128) # loop is unreachable
+            add_definitions(/Qwd177) # declared function is unused
+            add_definitions(/Qwd185) # dynamic initialization in unreachable code
+            add_definitions(/Qwd280) # conditional expression is constant
         endif()
-        set(PRIMITIVES vec/blockcopy-sse3.cpp
-            vec/pixel-sse3.cpp vec/pixel-ssse3.cpp vec/pixel-sse41.cpp
-            vec/dct-sse3.cpp vec/dct-ssse3.cpp vec/dct-sse41.cpp
-            vec/ipfilter-ssse3.cpp vec/ipfilter-sse41.cpp
-            vec/pixel16-sse41.cpp vec/intra-sse3.cpp vec/intra-sse41.cpp)
         if (NOT X64)
             # x64 implies SSE4, so this flag would have no effect (and it issues a warning)
-            set_source_files_properties(vec/blockcopy-sse3.cpp
-                vec/pixel-sse3.cpp vec/pixel-ssse3.cpp vec/pixel-sse41.cpp
-                vec/dct-sse3.cpp vec/dct-ssse3.cpp vec/dct-sse41.cpp
-                vec/ipfilter-ssse3.cpp vec/ipfilter-sse41.cpp
-                vec/intra-sse3.cpp vec/intra-sse41.cpp vec/pixel16-sse41.cpp
-                PROPERTIES COMPILE_FLAGS /arch:SSE2)
-        endif()
-        if (NOT (MSVC_VERSION LESS 1700) OR INTEL_CXX)
-            set(PRIMITIVES ${PRIMITIVES} vec/blockcopy-avx2.cpp vec/pixel-avx2.cpp)
-            set_source_files_properties(vec/blockcopy-avx2.cpp vec/pixel-avx2.cpp
-                PROPERTIES COMPILE_FLAGS /arch:AVX)
+            set_source_files_properties(${SSE3} ${SSSE3} ${SSE41} PROPERTIES COMPILE_FLAGS /arch:SSE2)
         endif()
     endif()
     if(GCC)
-        if(INTEL_CXX)
-            add_definitions(-wd13200)  # function using MMX does not call EMMS
-        endif()
         if(CLANG)
             # llvm intrinsic headers trigger this warning
             add_definitions(-Wno-shadow)
@@ -114,28 +100,10 @@ if(ENABLE_PRIMITIVES_VEC)
             add_definitions(-Wno-shift-overflow -Wno-uninitialized)
         endif()
         if(INTEL_CXX OR CLANG OR (NOT GCC_VERSION VERSION_LESS 4.3))
-            set(PRIMITIVES vec/blockcopy-sse3.cpp
-                vec/pixel-sse3.cpp vec/pixel-ssse3.cpp vec/pixel-sse41.cpp
-                vec/ipfilter-ssse3.cpp vec/ipfilter-sse41.cpp
-                vec/dct-sse3.cpp vec/dct-ssse3.cpp vec/dct-sse41.cpp
-                vec/pixel16-sse41.cpp vec/intra-sse3.cpp vec/intra-sse41.cpp)
-            set_source_files_properties(
-                vec/blockcopy-sse3.cpp vec/pixel-sse3.cpp vec/dct-sse3.cpp vec/intra-sse3.cpp
-                PROPERTIES COMPILE_FLAGS "-msse3")
-            set_source_files_properties(
-                vec/ipfilter-ssse3.cpp vec/pixel-ssse3.cpp vec/dct-ssse3.cpp
-                PROPERTIES COMPILE_FLAGS "-mssse3")
-            set_source_files_properties(
-                vec/pixel-sse41.cpp vec/ipfilter-sse41.cpp vec/dct-sse41.cpp vec/intra-sse41.cpp
-                vec/pixel16-sse41.cpp
-                PROPERTIES COMPILE_FLAGS "-msse4.1")
-        endif()
-        if(INTEL_CXX OR CLANG OR (NOT GCC_VERSION VERSION_LESS 4.7))
-            set(PRIMITIVES ${PRIMITIVES}
-                vec/blockcopy-avx2.cpp vec/pixel-avx2.cpp)
-            set_source_files_properties(
-                vec/blockcopy-avx2.cpp vec/pixel-avx2.cpp
-                PROPERTIES COMPILE_FLAGS "-march=core-avx2")
+            set(PRIMITIVES ${SSE3} ${SSSE3} ${SSE41})
+            set_source_files_properties(${SSE3}  PROPERTIES COMPILE_FLAGS "-msse3")
+            set_source_files_properties(${SSSE3} PROPERTIES COMPILE_FLAGS "-mssse3")
+            set_source_files_properties(${SSE41} PROPERTIES COMPILE_FLAGS "-msse4.1")
         endif()
     endif(GCC)
 
@@ -144,69 +112,24 @@ if(ENABLE_PRIMITIVES_VEC)
 endif(ENABLE_PRIMITIVES_VEC)
 
 if(ENABLE_PRIMITIVES_ASM)
-    if (GCC)
-        add_definitions(-DHAVE_ALIGNED_STACK=1)
-        add_definitions(-Wno-error=unused-parameter)
-    else()
-        add_definitions(-DHAVE_ALIGNED_STACK=0)
+    set(C_SRCS asm-primitives.cpp pixel.h mc.h ipfilter8.h blockcopy8.h dct8.h)
+    set(A_SRCS pixel-a.asm const-a.asm cpu-a.asm sad-a.asm mc-a.asm mc-a2.asm ipfilter8.asm pixel-util.asm
+               blockcopy8.asm intrapred.asm pixeladd8.asm dct8.asm)
+    if (NOT X64)
+        set(A_SRCS ${A_SRCS} pixel-32.asm)
     endif()
 
-    set(ASMS pixel-a.asm const-a.asm cpu-a.asm sad-a.asm mc-a.asm mc-a2.asm ipfilter8.asm pixel-util.asm)
-    if (X64)
-        add_definitions(-DARCH_X86_64=1)
-    else()
-        add_definitions(-DARCH_X86_64=0)
-        set(ASMS ${ASMS} pixel-32.asm)
-    endif()
-    foreach(ASM ${ASMS})
-        set(FULLPATHASM ${FULLPATHASM} x86/${ASM})
-    endforeach()
-
-    if(XCODE)
-        if (X64)
-            set(FLAGS -f macho64 -m amd64 -DPREFIX -DPIC -DARCH_X86_64=1 -DHAVE_ALIGNED_STACK=1)
-        else()
-            set(FLAGS -f macho -DPREFIX -DPIC -DARCH_X86_64=0 -DHAVE_ALIGNED_STACK=1)
-        endif()
-        if (HIGH_BIT_DEPTH)
-            set(FLAGS ${FLAGS} -DHIGH_BIT_DEPTH=1 -DBIT_DEPTH=10)
-        else()
-            set(FLAGS ${FLAGS} -DHIGH_BIT_DEPTH=0 -DBIT_DEPTH=8)
-        endif()
-        foreach(ASM ${ASMS})
-            set(OBJS ${OBJS} ${ASM}.o)
-            add_custom_command(
-                OUTPUT ${ASM}.o
-                COMMAND ${YASM_EXECUTABLE} ARGS ${FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/x86/${ASM} -o ${ASM}.o
-                DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/x86/${ASM})
-        endforeach()
-        add_library(assembly STATIC x86/asm-primitives.cpp x86/pixel.h x86/mc.h x86/ipfilter8.h ${OBJS})
-    elseif(MSVC_IDE)
-        # this is horrible. ugly, and hacky, and it reproduces logic found
-        # in the yasm CMake modules, but this is required because of this cmake bug
-        # http://www.cmake.org/Bug/print_bug_page.php?bug_id=8170
-        if (X64)
-            set(FLAGS -f win64 -m amd64 -DARCH_X86_64=1 -DHAVE_ALIGNED_STACK=0)
-        else()
-            set(FLAGS -f win32 -DARCH_X86_64=0 -DHAVE_ALIGNED_STACK=0 -DPREFIX)
-        endif()
-        if (HIGH_BIT_DEPTH)
-            set(FLAGS ${FLAGS} -DHIGH_BIT_DEPTH=1 -DBIT_DEPTH=10)
-        else()
-            set(FLAGS ${FLAGS} -DHIGH_BIT_DEPTH=0 -DBIT_DEPTH=8)
-        endif()
-        foreach(ASM ${ASMS})
-            set(OBJS ${OBJS} ${ASM}.obj)
-            add_custom_command(
-                OUTPUT ${ASM}.obj
-                COMMAND ${YASM_EXECUTABLE} ARGS ${FLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/x86/${ASM} -o ${ASM}.obj
-                DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/x86/${ASM})
-        endforeach()
-        add_library(assembly STATIC x86/asm-primitives.cpp x86/pixel.h x86/mc.h x86/ipfilter8.h ${FULLPATHASM} ${OBJS})
+    if(MSVC_IDE OR XCODE)
+        # MSVC requires custom build rules in the main cmake script for yasm
+        set(MSVC_ASMS "${A_SRCS}" CACHE INTERNAL "yasm sources")
+        set(A_SRCS)
     else()
         enable_language(ASM_YASM)
-        set(ASM_PRIMITIVES x86/asm-primitives.cpp x86/pixel.h x86/mc.h x86/ipfilter8.h ${FULLPATHASM})
     endif()
+
+    foreach(SRC ${A_SRCS} ${C_SRCS})
+        set(ASM_PRIMITIVES ${ASM_PRIMITIVES} x86/${SRC})
+    endforeach()
 endif(ENABLE_PRIMITIVES_ASM)
 
 if(GCC)
@@ -214,11 +137,12 @@ if(GCC)
         # force gcc to generate code for sync primitives
         set_source_files_properties(threadpool.cpp reference.cpp wavefront.cpp common.cpp PROPERTIES COMPILE_FLAGS -march=i686)
     endif()
-    set_source_files_properties(cpu.cpp PROPERTIES COMPILE_FLAGS -Wno-narrowing)
+    if (NOT CLANG AND NOT INTEL_CXX)
+        set_source_files_properties(cpu.cpp PROPERTIES COMPILE_FLAGS -Wno-narrowing)
+    endif()
 endif(GCC)
 set_source_files_properties(version.cpp PROPERTIES COMPILE_FLAGS -DX265_VERSION=${X265_VERSION})
 
-enable_language(ASM_YASM)
 add_library(common OBJECT
     ${LIBCOMMON_SRC} ${LIBCOMMON_HDR}
     ${ASM_PRIMITIVES} ${VEC_PRIMITIVES}
@@ -230,7 +154,6 @@ add_library(common OBJECT
     wavefront.h wavefront.cpp
     md5.cpp md5.h
     TShortYUV.cpp TShortYUV.h mv.h
-    reference.cpp reference.h
     common.cpp common.h
     lowres.cpp lowres.h
     piclist.cpp piclist.h)

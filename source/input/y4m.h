@@ -25,72 +25,73 @@
 #define X265_Y4M_H
 
 #include "input.h"
+#include "threading.h"
 #include <fstream>
 
-#if defined(ENABLE_THREAD)
 #define QUEUE_SIZE 5
-#include "threading.h"
-#endif
 
 namespace x265 {
 // x265 private namespace
 
-#if defined(ENABLE_THREAD)
 class Y4MInput : public Input, public Thread
-#else
-class Y4MInput : public Input
-#endif
 {
 protected:
 
-    int rateNum;
+    uint32_t rateNum;
 
-    int rateDenom;
+    uint32_t rateDenom;
 
     int width;
 
     int height;
 
+    int colorSpace;   ///< source Color Space Parameter
+
+    uint32_t plane_size[3];
+
+    uint32_t plane_stride[3];
+
     bool threadActive;
 
-#if defined(ENABLE_THREAD)
     volatile int head;
 
     volatile int tail;
 
     bool frameStat[QUEUE_SIZE];
 
-    char* buf[QUEUE_SIZE];
+    char* plane[QUEUE_SIZE][3];
 
     Event notFull;
 
     Event notEmpty;
-#else // if defined(ENABLE_THREAD)
-    char *buf;
-#endif // if defined(ENABLE_THREAD)
-    std::ifstream ifs;
+
+    std::istream *ifs;
 
     bool parseHeader();
 
 public:
 
-    Y4MInput(const char *filename);
+    Y4MInput(const char *filename, uint32_t inputBitDepth);
 
     virtual ~Y4MInput();
 
-    void setDimensions(int, int)                  { /* ignore, warn */ }
+    void setDimensions(int, int)  { /* ignore, warn */ }
 
-    void setBitDepth(int)                         { /* ignore, warn */ }
+    void setBitDepth(uint32_t)    { /* ignore, warn */ }
 
-    float getRate() const                         { return ((float)rateNum) / rateDenom; }
+    void setColorSpace(int)       { /* ignore, warn */ }
 
-    int getWidth() const                          { return width; }
+    float getRate() const         { return ((float)rateNum) / rateDenom; }
 
-    int getHeight() const                         { return height; }
+    int getWidth() const          { return width; }
 
-    bool isEof() const                            { return ifs.eof(); }
+    int getHeight() const         { return height; }
 
-    bool isFail()                                 { return !(ifs.is_open() && threadActive); }
+    int getColorSpace() const     { return colorSpace; }
+
+    bool isEof() const            { return ifs && ifs->eof();  }
+
+    bool isFail()                 { return !(ifs && !ifs->fail() && threadActive); }
 
     void startReader();
 
@@ -98,19 +99,17 @@ public:
 
     int  guessFrameCount();
 
-    void skipFrames(int numFrames);
+    void skipFrames(uint32_t numFrames);
 
     bool readPicture(x265_picture&);
 
-#if defined(ENABLE_THREAD)
+    void pictureAlloc(int index);
 
     void threadMain();
 
     bool populateFrameQueue();
 
-#endif
-
-    const char *getName() const                   { return "y4m"; }
+    const char *getName() const   { return "y4m"; }
 };
 }
 

@@ -27,8 +27,6 @@
 #include <cstdlib>
 #include "x265.h"
 
-#define CU_STAT_LOGFILE 0
-
 #define X265_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define X265_MAX(a, b) ((a) > (b) ? (a) : (b))
 #define COPY1_IF_LT(x, y) if ((y) < (x)) (x) = (y);
@@ -115,6 +113,7 @@ void x265_log(x265_param *param, int level, const char *fmt, ...);
 int  x265_check_params(x265_param *param);
 void x265_print_params(x265_param *param);
 int x265_set_globals(x265_param *param);
+int x265_exp2fix8(double x);
 char *x265_param2string(x265_param *p);
 
 #endif // ifndef X265_COMMON_H

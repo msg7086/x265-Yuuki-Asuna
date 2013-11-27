@@ -40,7 +40,7 @@ using namespace x265;
 const char* lumaPartStr[NUM_LUMA_PARTITIONS] =
 {
     "  4x4",
-    "  8x8", "  8x4", "  4x8", 
+    "  8x8", "  8x4", "  4x8",
     "16x16", " 16x8", " 8x16", "16x12", "12x16", " 16x4", " 4x16",
     "32x32", "32x16", "16x32", "32x24", "24x32", " 32x8", " 8x32",
     "64x64", "64x32", "32x64", "64x48", "48x64", "64x16", "16x64",
@@ -73,6 +73,9 @@ int main(int argc, char *argv[])
             printf("Testing only harnesses that match name <%s>\n", testname);
         }
     }
+#if HIGH_BIT_DEPTH
+    g_bitDepth = 12;
+#endif
 
     int seed = (int)time(NULL);
     const char *bpp[] = { "8bpp", "16bpp" };

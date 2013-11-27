@@ -38,6 +38,12 @@
 #ifndef X265_TYPEDEF_H
 #define X265_TYPEDEF_H
 
+#define REF_PIC_LIST_0 0
+#define REF_PIC_LIST_1 1
+#define REF_PIC_LIST_X 100
+
+#include <stdint.h>
+
 namespace x265 {
 // private namespace
 
@@ -46,27 +52,13 @@ namespace x265 {
 // ====================================================================================================================
 
 typedef unsigned char  UChar;
-typedef unsigned short UShort;
-typedef unsigned int   UInt;
-
-// ====================================================================================================================
-// 64-bit integer type
-// ====================================================================================================================
-
-#ifdef _MSC_VER
-typedef __int64             Int64;
-typedef unsigned __int64    UInt64;
-#else
-typedef long long           Int64;
-typedef unsigned long long  UInt64;
-#endif // ifdef _MSC_VER
 
 // ====================================================================================================================
 // Type definition
 // ====================================================================================================================
 
 #if HIGH_BIT_DEPTH
-typedef UShort Pel;            // 16-bit pixel type
+typedef uint16_t Pel;          // 16-bit pixel type
 #define X265_DEPTH x265::g_bitDepth  // runtime configurable bit depth
 extern int g_bitDepth;
 #else
@@ -87,14 +79,8 @@ enum SliceType
     I_SLICE
 };
 
-/// chroma formats (according to semantics of chroma_format_idc)
-enum ChromaFormat
-{
-    CHROMA_400  = 0,
-    CHROMA_420  = 1,
-    CHROMA_422  = 2,
-    CHROMA_444  = 3
-};
+#define CHROMA_H_SHIFT(x) (x == X265_CSP_I420 || x == X265_CSP_I422)
+#define CHROMA_V_SHIFT(x) (x == X265_CSP_I420)
 
 /// supported partition shape
 enum PartSize
@@ -126,14 +112,6 @@ enum TextType
     TEXT_CHROMA_U,      ///< chroma U
     TEXT_CHROMA_V,      ///< chroma V
     TEXT_ALL,           ///< Y+U+V
-};
-
-/// reference list index
-enum RefPicList
-{
-    REF_PIC_LIST_0 = 0, ///< reference list 0
-    REF_PIC_LIST_1 = 1, ///< reference list 1
-    REF_PIC_LIST_X = 100 ///< special mark
 };
 
 /// index for SBAC based RD optimization

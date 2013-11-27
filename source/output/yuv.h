@@ -39,7 +39,11 @@ protected:
 
     int height;
 
-    int depth;
+    uint32_t depth;
+
+    int colorSpace;
+
+    uint32_t frameSize;
 
     char *buf;
 
@@ -47,7 +51,7 @@ protected:
 
 public:
 
-    YUVOutput(const char *filename, int width, int height, int bitdepth);
+    YUVOutput(const char *filename, int width, int height, uint32_t bitdepth, int csp);
 
     virtual ~YUVOutput();
 

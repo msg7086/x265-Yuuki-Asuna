@@ -29,40 +29,28 @@
 using namespace x265;
 
 namespace {
-#if !HIGH_BIT_DEPTH
-void scale1D_128to64(pixel *dst, pixel *src, intptr_t /*stride*/)
+void convert16to32_shl(int32_t *dst, int16_t *org, intptr_t stride, int shift, int size)
 {
-    const __m128i mask = _mm_setr_epi32(0x06040200, 0x0E0C0A08, 0x07050301, 0x0F0D0B09);
+    int i, j;
 
-    __m128i T00 = _mm_shuffle_epi8(_mm_loadu_si128((__m128i*)&src[0 * 16]), mask);
-    __m128i T01 = _mm_shuffle_epi8(_mm_loadu_si128((__m128i*)&src[1 * 16]), mask);
-    __m128i T02 = _mm_shuffle_epi8(_mm_loadu_si128((__m128i*)&src[2 * 16]), mask);
-    __m128i T03 = _mm_shuffle_epi8(_mm_loadu_si128((__m128i*)&src[3 * 16]), mask);
-    __m128i T04 = _mm_shuffle_epi8(_mm_loadu_si128((__m128i*)&src[4 * 16]), mask);
-    __m128i T05 = _mm_shuffle_epi8(_mm_loadu_si128((__m128i*)&src[5 * 16]), mask);
-    __m128i T06 = _mm_shuffle_epi8(_mm_loadu_si128((__m128i*)&src[6 * 16]), mask);
-    __m128i T07 = _mm_shuffle_epi8(_mm_loadu_si128((__m128i*)&src[7 * 16]), mask);
+    for (i = 0; i < size; i++)
+    {
+        for (j = 0; j < size; j += 4)
+        {
+            __m128i im16;
+            __m128i im32;
 
-    __m128i T10 = _mm_unpacklo_epi64(T00, T01);
-    __m128i T11 = _mm_unpackhi_epi64(T00, T01);
-    __m128i T12 = _mm_unpacklo_epi64(T02, T03);
-    __m128i T13 = _mm_unpackhi_epi64(T02, T03);
-    __m128i T14 = _mm_unpacklo_epi64(T04, T05);
-    __m128i T15 = _mm_unpackhi_epi64(T04, T05);
-    __m128i T16 = _mm_unpacklo_epi64(T06, T07);
-    __m128i T17 = _mm_unpackhi_epi64(T06, T07);
+            im16 = _mm_loadl_epi64((__m128i*)&org[i * stride + j]);
+            im32 = _mm_srai_epi32(_mm_unpacklo_epi16(im16, im16), 16);
+            im32 = _mm_slli_epi32(im32, shift);
+            _mm_storeu_si128((__m128i*)dst, im32);
 
-    __m128i T20 = _mm_avg_epu8(T10, T11);
-    __m128i T21 = _mm_avg_epu8(T12, T13);
-    __m128i T22 = _mm_avg_epu8(T14, T15);
-    __m128i T23 = _mm_avg_epu8(T16, T17);
-
-    _mm_storeu_si128((__m128i*)&dst[0], T20);
-    _mm_storeu_si128((__m128i*)&dst[16], T21);
-    _mm_storeu_si128((__m128i*)&dst[32], T22);
-    _mm_storeu_si128((__m128i*)&dst[48], T23);
+            dst += 4;
+        }
+    }
 }
 
+#if !HIGH_BIT_DEPTH
 void scale2D_64to32(pixel *dst, pixel *src, intptr_t stride)
 {
     int i;
@@ -98,16 +86,15 @@ void scale2D_64to32(pixel *dst, pixel *src, intptr_t stride)
         _mm_storeu_si128((__m128i*)&dst[(i >> 1) * 32 + 16], _mm_packus_epi16(S22, S23));
     }
 }
-
 #endif // if !HIGH_BIT_DEPTH
 }
 
 namespace x265 {
 void Setup_Vec_PixelPrimitives_ssse3(EncoderPrimitives &p)
 {
-    p.sad[0] = p.sad[0];
+    p.cvt16to32_shl = convert16to32_shl;
+
 #if !HIGH_BIT_DEPTH
-    p.scale1D_128to64 = scale1D_128to64;
     p.scale2D_64to32 = scale2D_64to32;
 #endif
 }

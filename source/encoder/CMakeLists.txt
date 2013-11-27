@@ -15,7 +15,6 @@ set(LIBENCODER_HDR
     ../Lib/TLibEncoder/NALwrite.h
     ../Lib/TLibEncoder/SEIwrite.h
     ../Lib/TLibEncoder/SyntaxElementWriter.h
-    ../Lib/TLibEncoder/TEncAnalyze.h
     ../Lib/TLibEncoder/TEncBinCoderCABAC.h
     ../Lib/TLibEncoder/TEncCfg.h
     ../Lib/TLibEncoder/TEncCu.h
@@ -64,4 +63,5 @@ add_library(encoder OBJECT ../x265.h
     dpb.cpp dpb.h
     ratecontrol.cpp ratecontrol.h
     compress.cpp
+    reference.cpp reference.h
     encoder.cpp encoder.h)

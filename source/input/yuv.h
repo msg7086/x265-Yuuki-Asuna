@@ -25,21 +25,15 @@
 #define X265_YUV_H
 
 #include "input.h"
+#include "threading.h"
 #include <fstream>
 
-#if defined(ENABLE_THREAD)
 #define QUEUE_SIZE 5
-#include "threading.h"
-#endif
 
 namespace x265 {
 // private x265 namespace
 
-#if defined(ENABLE_THREAD)
 class YUVInput : public Input, public Thread
-#else
-class YUVInput : public Input
-#endif
 {
 protected:
 
@@ -47,15 +41,16 @@ protected:
 
     int height;
 
-    int depth;
+    int colorSpace; //< source Color Space Parameter
 
-    int pixelbytes;
+    uint32_t depth;
 
-    int framesize;
+    uint32_t pixelbytes;
+
+    uint32_t framesize;
 
     bool threadActive;
 
-#if defined(ENABLE_THREAD)
     volatile int head;
 
     volatile int tail;
@@ -67,21 +62,22 @@ protected:
     Event notFull;
 
     Event notEmpty;
-#else // if defined(ENABLE_THREAD)
-    char* buf;
-#endif // if defined(ENABLE_THREAD)
 
-    std::ifstream ifs;
+    std::istream *ifs;
 
 public:
 
-    YUVInput(const char *filename);
+    YUVInput(const char *filename, uint32_t inputBitDepth);
 
     virtual ~YUVInput();
 
     void setDimensions(int w, int h);
 
-    void setBitDepth(int bitDepth)                { depth = bitDepth; }
+    void setColorSpace(int csp)                   { colorSpace = csp; }
+
+    int getColorSpace() const                     { return colorSpace; }
+
+    void setBitDepth(uint32_t bitDepth)           { depth = bitDepth; }
 
     float getRate() const                         { return 0.0f; }
 
@@ -89,9 +85,9 @@ public:
 
     int getHeight() const                         { return height; }
 
-    bool isEof() const                            { return ifs.eof(); }
+    bool isEof() const                            { return ifs && ifs->eof();  }
 
-    bool isFail()                                 { return !(ifs.is_open() && threadActive); }
+    bool isFail()                                 { return !(ifs && !ifs->fail() && threadActive); }
 
     void startReader();
 
@@ -99,17 +95,13 @@ public:
 
     int  guessFrameCount();
 
-    void skipFrames(int numFrames);
+    void skipFrames(uint32_t numFrames);
 
     bool readPicture(x265_picture&);
-
-#if defined(ENABLE_THREAD)
 
     void threadMain();
 
     bool populateFrameQueue();
-
-#endif
 
     const char *getName() const                   { return "yuv"; }
 };

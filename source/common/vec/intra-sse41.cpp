@@ -35,195 +35,6 @@ using namespace x265;
 
 namespace {
 #if !HIGH_BIT_DEPTH
-inline void predDCFiltering(pixel* above, pixel* left, pixel* dst, intptr_t dstStride, int width)
-{
-    int y;
-    pixel pixDC = *dst;
-    int pixDCx3 = pixDC * 3 + 2;
-
-    // boundary pixels processing
-    dst[0] = (pixel)((above[0] + left[0] + 2 * pixDC + 2) >> 2);
-
-    __m128i im1 = _mm_set1_epi16(pixDCx3);
-    __m128i im2, im3;
-
-    __m128i pix;
-    switch (width)
-    {
-    case 4:
-        pix = _mm_cvtsi32_si128(*(uint32_t*)&above[1]);
-        im2 = _mm_unpacklo_epi8(pix, _mm_setzero_si128());
-        im2 = _mm_srai_epi16(_mm_add_epi16(im1, im2), 2);
-        pix = _mm_packus_epi16(im2, im2);
-        *(uint32_t*)&dst[1] = _mm_cvtsi128_si32(pix);
-        break;
-
-    case 8:
-        pix = _mm_loadl_epi64((__m128i*)&above[1]);
-        im2 = _mm_unpacklo_epi8(pix, _mm_setzero_si128());
-        im2 = _mm_srai_epi16(_mm_add_epi16(im1, im2), 2);
-        pix = _mm_packus_epi16(im2, im2);
-        _mm_storel_epi64((__m128i*)&dst[1], pix);
-        break;
-
-    case 16:
-        pix = _mm_loadu_si128((__m128i*)&above[1]);
-        im2 = _mm_unpacklo_epi8(pix, _mm_setzero_si128());
-        im3 = _mm_unpackhi_epi8(pix, _mm_setzero_si128());
-        im2 = _mm_srai_epi16(_mm_add_epi16(im1, im2), 2);
-        im3 = _mm_srai_epi16(_mm_add_epi16(im1, im3), 2);
-        pix = _mm_packus_epi16(im2, im3);
-        _mm_storeu_si128((__m128i*)&dst[1], pix);
-        break;
-
-    case 32:
-        pix = _mm_loadu_si128((__m128i*)&above[1]);
-        im2 = _mm_unpacklo_epi8(pix, _mm_setzero_si128());
-        im3 = _mm_unpackhi_epi8(pix, _mm_setzero_si128());
-        im2 = _mm_srai_epi16(_mm_add_epi16(im1, im2), 2);
-        im3 = _mm_srai_epi16(_mm_add_epi16(im1, im3), 2);
-        pix = _mm_packus_epi16(im2, im3);
-        _mm_storeu_si128((__m128i*)&dst[1], pix);
-
-        pix = _mm_loadu_si128((__m128i*)&above[1 + 16]);
-        im2 = _mm_unpacklo_epi8(pix, _mm_setzero_si128());
-        im3 = _mm_unpackhi_epi8(pix, _mm_setzero_si128());
-        im2 = _mm_srai_epi16(_mm_add_epi16(im1, im2), 2);
-        im3 = _mm_srai_epi16(_mm_add_epi16(im1, im3), 2);
-        pix = _mm_packus_epi16(im2, im3);
-        _mm_storeu_si128((__m128i*)&dst[1 + 16], pix);
-        break;
-    }
-
-    for (y = 1; y < width; y++)
-    {
-        dst[dstStride] = (pixel)((left[y] + pixDCx3) >> 2);
-        dst += dstStride;
-    }
-}
-
-void intra_pred_dc(pixel* above, pixel* left, pixel* dst, intptr_t dstStride, int width, int filter)
-{
-    int sum;
-    int logSize = g_convertToBit[width] + 2;
-
-    __m128i pixL, pixT, temp;
-
-    switch (width)
-    {
-    case 4:
-        pixL = _mm_cvtsi32_si128(*(uint32_t*)left);
-        pixT = _mm_cvtsi32_si128(*(uint32_t*)above);
-        pixL = _mm_unpacklo_epi8(pixL, _mm_setzero_si128());
-        pixT = _mm_unpacklo_epi8(pixT, _mm_setzero_si128());
-        temp = _mm_add_epi16(pixL, pixT);
-        sum  = _mm_cvtsi128_si32(_mm_hadd_epi16(_mm_hadd_epi16(temp, temp), temp));
-        break;
-    case 8:
-#if X86_64
-        pixL = _mm_cvtsi64_si128(*(uint64_t*)left);
-        pixT = _mm_cvtsi64_si128(*(uint64_t*)above);
-#else
-        pixL = _mm_loadu_si128((__m128i*)left);
-        pixT = _mm_loadu_si128((__m128i*)above);
-#endif
-        pixL = _mm_unpacklo_epi8(pixL, _mm_setzero_si128());
-        pixT = _mm_unpacklo_epi8(pixT, _mm_setzero_si128());
-        temp = _mm_add_epi16(pixL, pixT);
-        sum  = _mm_cvtsi128_si32(_mm_hadd_epi16(_mm_hadd_epi16(_mm_hadd_epi16(temp, temp), temp), temp));
-        break;
-    case 16:
-        pixL = _mm_loadu_si128((__m128i*)left);
-        pixT = _mm_loadu_si128((__m128i*)above);
-        temp = _mm_sad_epu8(pixL, _mm_setzero_si128());
-        temp = _mm_add_epi16(temp, _mm_sad_epu8(pixT, _mm_setzero_si128()));
-        sum = _mm_cvtsi128_si32(_mm_add_epi32(_mm_shuffle_epi32(temp, 2), temp));
-        break;
-
-    default:
-    case 32:
-        pixL = _mm_loadu_si128((__m128i*)left);
-        temp = _mm_sad_epu8(pixL, _mm_setzero_si128());
-        pixL = _mm_loadu_si128((__m128i*)(left + 16));
-        temp = _mm_add_epi16(temp, _mm_sad_epu8(pixL, _mm_setzero_si128()));
-
-        pixT = _mm_loadu_si128((__m128i*)above);
-        temp = _mm_add_epi16(temp, _mm_sad_epu8(pixT, _mm_setzero_si128()));
-        pixT = _mm_loadu_si128((__m128i*)(above + 16));
-        temp = _mm_add_epi16(temp, _mm_sad_epu8(pixT, _mm_setzero_si128()));
-        sum = _mm_cvtsi128_si32(_mm_add_epi32(_mm_shuffle_epi32(temp, 2), temp));
-        break;
-
-    }
-
-    logSize += 1;
-    pixel dcVal = (sum + (1 << (logSize - 1))) >> logSize;
-    __m128i dcValN = _mm_set1_epi8(dcVal);
-
-    pixel *dst1 = dst;
-    switch (width)
-    {
-    case 4:
-        *(uint32_t*)dst1 = _mm_cvtsi128_si32(dcValN);
-        dst1 += dstStride;
-        *(uint32_t*)dst1 = _mm_cvtsi128_si32(dcValN);
-        dst1 += dstStride;
-        *(uint32_t*)dst1 = _mm_cvtsi128_si32(dcValN);
-        dst1 += dstStride;
-        *(uint32_t*)dst1 = _mm_cvtsi128_si32(dcValN);
-        break;
-
-    case 8:
-        _mm_storel_epi64((__m128i*)dst1, dcValN);
-        dst1 += dstStride;
-        _mm_storel_epi64((__m128i*)dst1, dcValN);
-        dst1 += dstStride;
-        _mm_storel_epi64((__m128i*)dst1, dcValN);
-        dst1 += dstStride;
-        _mm_storel_epi64((__m128i*)dst1, dcValN);
-        dst1 += dstStride;
-        _mm_storel_epi64((__m128i*)dst1, dcValN);
-        dst1 += dstStride;
-        _mm_storel_epi64((__m128i*)dst1, dcValN);
-        dst1 += dstStride;
-        _mm_storel_epi64((__m128i*)dst1, dcValN);
-        dst1 += dstStride;
-        _mm_storel_epi64((__m128i*)dst1, dcValN);
-        break;
-
-    case 16:
-        for (int k = 0; k < 16; k += 4)
-        {
-            _mm_storeu_si128((__m128i*)dst1, dcValN);
-            dst1 += dstStride;
-            _mm_storeu_si128((__m128i*)dst1, dcValN);
-            dst1 += dstStride;
-            _mm_storeu_si128((__m128i*)dst1, dcValN);
-            dst1 += dstStride;
-            _mm_storeu_si128((__m128i*)dst1, dcValN);
-            dst1 += dstStride;
-        }
-        break;
-
-    case 32:
-        for (int k = 0; k < 32; k += 2)
-        {
-            _mm_storeu_si128((__m128i*)dst1, dcValN);
-            _mm_storeu_si128((__m128i*)(dst1 + 16), dcValN);
-            dst1 += dstStride;
-            _mm_storeu_si128((__m128i*)dst1, dcValN);
-            _mm_storeu_si128((__m128i*)(dst1 + 16), dcValN);
-            dst1 += dstStride;
-        }
-        break;
-    }
-
-    if (filter)
-    {
-        predDCFiltering(above, left, dst, dstStride, width);
-    }
-}
-
 __m128i v_multiL, v_multiH, v_multiH2, v_multiH3, v_multiH4, v_multiH5, v_multiH6, v_multiH7;
 __m128i v_multi_2Row;
 
@@ -241,115 +52,6 @@ static void initFileStaticVars()
     v_multiH6 = _mm_setr_epi16(49, 50, 51, 52, 53, 54, 55, 56);
     v_multiH7 = _mm_setr_epi16(57, 58, 59, 60, 61, 62, 63, 64);
     v_multi_2Row = _mm_setr_epi16(1, 2, 3, 4, 1, 2, 3, 4);
-}
-
-#define BROADCAST16(a, d, x) { \
-    const __m128i mask = _mm_set1_epi16( (((d) * 2) | ((d) * 2 + 1) << 8) ); \
-    (x) = _mm_shuffle_epi8((a), mask); \
-}
-
-void intra_pred_planar4_sse4(pixel* above, pixel* left, pixel* dst, intptr_t dstStride)
-{
-    pixel bottomLeft, topRight;
-
-    // Get left and above reference column and row
-    __m128i im0 = _mm_cvtsi32_si128(*(int*)above); // topRow
-    __m128i v_topRow = _mm_cvtepu8_epi16(im0);
-
-    v_topRow = _mm_shuffle_epi32(v_topRow, 0x44);
-
-    // Prepare intermediate variables used in interpolation
-    bottomLeft = left[4];
-    topRight   = above[4];
-
-    __m128i v_bottomLeft = _mm_set1_epi16(bottomLeft);
-    __m128i v_bottomRow   = _mm_sub_epi16(v_bottomLeft, v_topRow);
-
-    v_topRow = _mm_slli_epi16(v_topRow, 2);
-
-    __m128i v_horPred, v_rightColumnN;
-    __m128i v_im4;
-    __m128i v_im5;
-    __m128i _tmp0, _tmp1;
-
-    __m128i v_bottomRowL = _mm_unpacklo_epi64(v_bottomRow, _mm_setzero_si128());
-    v_topRow = _mm_sub_epi16(v_topRow, v_bottomRowL);
-    v_bottomRow = _mm_slli_epi16(v_bottomRow, 1);
-
-#define COMP_PRED_PLANAR_2ROW(Y) { \
-        _tmp0 = _mm_cvtsi32_si128((left[(Y)] << 2) + 4); \
-        _tmp0 = _mm_shufflelo_epi16(_tmp0, 0); \
-        _tmp1 = _mm_cvtsi32_si128((left[((Y)+1)] << 2) + 4); \
-        _tmp1 = _mm_shufflelo_epi16(_tmp1, 0); \
-        v_horPred = _mm_unpacklo_epi64(_tmp0, _tmp1); \
-        _tmp0 = _mm_cvtsi32_si128(topRight - left[(Y)]); \
-        _tmp0 = _mm_shufflelo_epi16(_tmp0, 0); \
-        _tmp1 = _mm_cvtsi32_si128(topRight - left[((Y)+1)]); \
-        _tmp1 = _mm_shufflelo_epi16(_tmp1, 0); \
-        v_rightColumnN = _mm_unpacklo_epi64(_tmp0, _tmp1); \
-        v_rightColumnN = _mm_mullo_epi16(v_rightColumnN, v_multi_2Row); \
-        v_horPred = _mm_add_epi16(v_horPred, v_rightColumnN); \
-        v_topRow = _mm_add_epi16(v_topRow, v_bottomRow); \
-        v_im4 = _mm_srai_epi16(_mm_add_epi16(v_horPred, v_topRow), 3); \
-        v_im5 = _mm_packus_epi16(v_im4, v_im4); \
-        *(uint32_t*)&dst[(Y)*dstStride] = _mm_cvtsi128_si32(v_im5); \
-        *(uint32_t*)&dst[((Y)+1) * dstStride] = _mm_cvtsi128_si32(_mm_shuffle_epi32(v_im5, 0x55));; \
-}
-
-    COMP_PRED_PLANAR_2ROW(0)
-    COMP_PRED_PLANAR_2ROW(2)
-
-#undef COMP_PRED_PLANAR4_ROW
-}
-
-void intra_pred_planar8_sse4(pixel* above, pixel* left, pixel* dst, intptr_t dstStride)
-{
-    pixel bottomLeft, topRight;
-
-    // Get left and above reference column and row
-    __m128i v_topRow = _mm_cvtepu8_epi16(_mm_loadl_epi64((__m128i*)above)); // topRow
-
-    __m128i v_leftColumn = _mm_cvtepu8_epi16(_mm_loadl_epi64((__m128i*)left));
-
-    // Prepare intermediate variables used in interpolation
-    bottomLeft = left[8];
-    topRight   = above[8];
-
-    __m128i v_bottomLeft = _mm_set1_epi16(bottomLeft);
-    __m128i v_topRight   = _mm_set1_epi16(topRight);
-
-    __m128i v_bottomRow   = _mm_sub_epi16(v_bottomLeft, v_topRow);
-    __m128i v_rightColumn = _mm_sub_epi16(v_topRight, v_leftColumn);
-
-    v_topRow = _mm_slli_epi16(v_topRow, 3);
-    v_leftColumn = _mm_slli_epi16(v_leftColumn, 3);
-
-    __m128i v_horPred4 = _mm_add_epi16(v_leftColumn, _mm_set1_epi16(8));
-    __m128i v_horPred, v_rightColumnN;
-    __m128i v_im4;
-    __m128i v_im5;
-
-#define COMP_PRED_PLANAR_ROW(Y) { \
-        BROADCAST16(v_horPred4, (Y), v_horPred); \
-        BROADCAST16(v_rightColumn, (Y), v_rightColumnN); \
-        v_rightColumnN = _mm_mullo_epi16(v_rightColumnN, v_multiL); \
-        v_horPred = _mm_add_epi16(v_horPred, v_rightColumnN); \
-        v_topRow = _mm_add_epi16(v_topRow, v_bottomRow); \
-        v_im4 = _mm_srai_epi16(_mm_add_epi16(v_horPred, v_topRow), 4); \
-        v_im5 = _mm_packus_epi16(v_im4, v_im4); \
-        _mm_storel_epi64((__m128i*)&dst[(Y)*dstStride], v_im5); \
-}
-
-    COMP_PRED_PLANAR_ROW(0)
-    COMP_PRED_PLANAR_ROW(1)
-    COMP_PRED_PLANAR_ROW(2)
-    COMP_PRED_PLANAR_ROW(3)
-    COMP_PRED_PLANAR_ROW(4)
-    COMP_PRED_PLANAR_ROW(5)
-    COMP_PRED_PLANAR_ROW(6)
-    COMP_PRED_PLANAR_ROW(7)
-
-#undef COMP_PRED_PLANAR_ROW
 }
 
 void intra_pred_planar16_sse4(pixel* above, pixel* left, pixel* dst, intptr_t dstStride)
@@ -600,25 +302,6 @@ void intra_pred_planar64_sse4(pixel* above, pixel* left, pixel* dst, intptr_t ds
 
 #undef COMP_PRED_PLANAR_ROW
 }
-
-typedef void intra_pred_planar_t (pixel* above, pixel* left, pixel* dst, intptr_t dstStride);
-intra_pred_planar_t *intraPlanarN[] =
-{
-    intra_pred_planar4_sse4,
-    intra_pred_planar8_sse4,
-    intra_pred_planar16_sse4,
-    intra_pred_planar32_sse4,
-    intra_pred_planar64_sse4,
-};
-
-void intra_pred_planar(pixel* above, pixel* left, pixel* dst, intptr_t dstStride, int width)
-{
-    int nLog2Size = g_convertToBit[width] + 2;
-
-    intraPlanarN[nLog2Size - 2](above, left, dst, dstStride);
-}
-
-#endif // if !HIGH_BIT_DEPTH
 
 ALIGN_VAR_32(static const unsigned char, tab_angle_0[][16]) =
 {
@@ -8696,24 +8379,27 @@ void predIntraAngs32(pixel *dst0, pixel *above0, pixel *left0, pixel *above1, pi
 #undef HALF
 #undef N
 }
+#endif // if !HIGH_BIT_DEPTH
 }
 
 namespace x265 {
 void Setup_Vec_IPredPrimitives_sse41(EncoderPrimitives& p)
 {
 #if HIGH_BIT_DEPTH
-    p.intra_pred_planar = p.intra_pred_planar;
+    p.intra_pred_planar[0] = p.intra_pred_planar[0];
 #else
     initFileStaticVars();
 
-    p.intra_pred_planar = intra_pred_planar;
-    p.intra_pred_dc = intra_pred_dc;
+    p.intra_pred_planar[BLOCK_16x16] = intra_pred_planar16_sse4;
+    p.intra_pred_planar[BLOCK_32x32] = intra_pred_planar32_sse4;
+    p.intra_pred_planar[BLOCK_64x64] = intra_pred_planar64_sse4;
 
 #if defined(__GNUC__) || defined(__INTEL_COMPILER) || (defined(_MSC_VER) && (_MSC_VER == 1500))
     p.intra_pred_allangs[0] = predIntraAngs4;
     p.intra_pred_allangs[1] = predIntraAngs8;
     p.intra_pred_allangs[2] = predIntraAngs16;
     p.intra_pred_allangs[3] = predIntraAngs32;
+
 #elif defined(_MSC_VER) && defined(X86_64)
 
     /* VC10 and VC11 both generate bad Win32 code for all these functions.

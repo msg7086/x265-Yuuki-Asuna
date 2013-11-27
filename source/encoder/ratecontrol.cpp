@@ -51,77 +51,84 @@ static inline double qp2qScale(double qp)
 }
 
 /* Compute variance to derive AC energy of each block */
-static inline uint32_t acEnergyVar(uint64_t sum_ssd, int shift)
+static inline uint32_t acEnergyVar(TComPic *pic, uint64_t sum_ssd, int shift, int i)
 {
     uint32_t sum = (uint32_t)sum_ssd;
     uint32_t ssd = (uint32_t)(sum_ssd >> 32);
 
+    pic->m_lowres.wp_sum[i] += sum;
+    pic->m_lowres.wp_ssd[i] += ssd;
     return ssd - ((uint64_t)sum * sum >> shift);
 }
 
 /* Find the energy of each block in Y/Cb/Cr plane */
-static inline uint32_t acEnergyPlane(pixel* src, int srcStride, int bChroma)
+static inline uint32_t acEnergyPlane(TComPic *pic, pixel* src, int srcStride, int bChroma)
 {
-    int blockStride = FENC_STRIDE >> 3;
-
     if (bChroma)
     {
         ALIGN_VAR_8(pixel, pix[8 * 8]);
-        primitives.blockcpy_pp(8, 8, pix, blockStride, src, srcStride);
-        return acEnergyVar(primitives.var[LUMA_8x8](pix, blockStride), 6);
+        primitives.luma_copy_pp[LUMA_8x8](pix, 8, src, srcStride);
+        return acEnergyVar(pic, primitives.var[BLOCK_8x8](pix, 8), 6, bChroma);
     }
     else
-        return acEnergyVar(primitives.var[LUMA_16x16](src, srcStride), 8);
+        return acEnergyVar(pic, primitives.var[BLOCK_16x16](src, srcStride), 8, bChroma);
 }
 
-/* Find the total AC energy of each CU in all planes */
-double RateControl::acEnergyCu(TComPic* pic, uint32_t cuAddr)
+/* Find the total AC energy of each block in all planes */
+double RateControl::acEnergyCu(TComPic* pic, uint32_t block_x, uint32_t block_y)
 {
-    uint32_t var = 0;
-    double avgQp = 0, strength = cfg->param.rc.aqStrength * 1.0397f;
-    pixel* srcLuma = pic->getPicYuvOrg()->getLumaAddr(cuAddr);
-    pixel* srcCb = pic->getPicYuvOrg()->getCbAddr(cuAddr);
-    pixel* srcCr = pic->getPicYuvOrg()->getCrAddr(cuAddr);
-    UInt blockWidth = g_maxCUWidth >> 2;
-    UInt blockHeight = g_maxCUHeight >> 2;
-    UInt frameStride = pic->getPicYuvOrg()->getStride();
-    UInt cStride = pic->getPicYuvOrg()->getCStride();
+    int stride = pic->getPicYuvOrg()->getStride();
+    int cStride = pic->getPicYuvOrg()->getCStride();
+    uint32_t blockOffsetLuma = block_x + (block_y * stride);
+    uint32_t blockOffsetChroma = (block_x >> 1) + ((block_y >> 1) * cStride);
 
-    /* Calculate Qp offset for each 16x16 block in the CU and average them over entire CU */
-    for (UInt h = 0, cnt = 0; h < g_maxCUHeight; h += blockHeight)
-    {
-        for (UInt w = 0; w < g_maxCUWidth; w += blockWidth, cnt++)
-        {
-            UInt blockOffsetLuma = w + (h * frameStride);
-            UInt blockOffsetChroma = (w >> 1) + ((h >> 1) * cStride);
-            var = acEnergyPlane(srcLuma + blockOffsetLuma, frameStride, 0);
-            var += acEnergyPlane(srcCb + blockOffsetChroma, cStride, 1);
-            var += acEnergyPlane(srcCr + blockOffsetChroma, cStride, 1);
-            avgQp += strength * (X265_LOG2(X265_MAX(var, 1)) - (14.427f));
-        }
-    }
+    uint32_t var;
 
-    avgQp /= 16;
+    var  = acEnergyPlane(pic, pic->getPicYuvOrg()->getLumaAddr() + blockOffsetLuma, stride, 0);
+    var += acEnergyPlane(pic, pic->getPicYuvOrg()->getCbAddr() + blockOffsetChroma, cStride, 1);
+    var += acEnergyPlane(pic, pic->getPicYuvOrg()->getCrAddr() + blockOffsetChroma, cStride, 2);
     x265_emms();
-    return avgQp;
+    double strength = cfg->param.rc.aqStrength * 1.0397f;
+    return strength * (X265_LOG2(X265_MAX(var, 1)) - 14.427f);
 }
 
 void RateControl::calcAdaptiveQuantFrame(TComPic *pic)
 {
     /* Actual adaptive quantization */
-    if (cfg->param.rc.aqMode)
+    int maxCol = pic->getPicYuvOrg()->getWidth();
+    int maxRow = pic->getPicYuvOrg()->getHeight();
+    for (int y = 0; y < 3; y++ )
     {
-        int maxRows = pic->getPicSym()->getFrameHeightInCU();
-        int maxCols = pic->getPicSym()->getFrameWidthInCU();
-        for (int cu_y = 0; cu_y < maxRows; cu_y++)
+        pic->m_lowres.wp_ssd[y] = 0;
+        pic->m_lowres.wp_sum[y] = 0;
+    }
+
+    /* Calculate Qp offset for each 16x16 block in the frame */
+    int block_xy = 0;
+    int block_x = 0, block_y = 0;
+
+    for (block_y = 0; block_y < maxRow; block_y += 16)
+    {
+        for (block_x = 0; block_x < maxCol; block_x += 16)
         {
-            for (int cu_x = 0; cu_x < maxCols; cu_x++)
+            double qp_adj = acEnergyCu(pic, block_x, block_y);
+            if (cfg->param.rc.aqMode)
             {
-                double qp_adj;
-                int cu_xy = maxCols * cu_y + cu_x;
-                qp_adj = acEnergyCu(pic, cu_xy);
-                pic->m_qpAqOffset[cu_xy] = qp_adj;
+                pic->m_lowres.qpAqOffset[block_xy] = qp_adj;
+                pic->m_lowres.invQscaleFactor[block_xy] = x265_exp2fix8(qp_adj);
+                block_xy++;
             }
+        }
+    }
+
+    if (cfg->param.bEnableWeightedPred)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            uint64_t sum, ssd;
+            sum = pic->m_lowres.wp_sum[i];
+            ssd = pic->m_lowres.wp_ssd[i];
+            pic->m_lowres.wp_ssd[i] = ssd - (sum * sum + (block_x * block_y) / 2) / (block_x * block_y);
         }
     }
 }
@@ -129,9 +136,25 @@ void RateControl::calcAdaptiveQuantFrame(TComPic *pic)
 RateControl::RateControl(TEncCfg * _cfg)
 {
     this->cfg = _cfg;
+    ncu = (int)((cfg->param.sourceHeight * cfg->param.sourceWidth) / pow((int)16, 2.0));
+
+    // validate for cfg->param.rc, maybe it is need to add a function like x265_parameters_valiate()
+    cfg->param.rc.rfConstant = Clip3((double)-QP_BD_OFFSET, (double)51, cfg->param.rc.rfConstant);
+    if (cfg->param.rc.rateControlMode == X265_RC_CRF)
+    {
+        cfg->param.rc.qp = (int)cfg->param.rc.rfConstant + QP_BD_OFFSET;
+        cfg->param.rc.bitrate = 0;
+
+        double baseCplx = ncu * (cfg->param.bframes ? 120 : 80);
+        double mbtree_offset = 0; //added later
+        rateFactorConstant = pow(baseCplx, 1 - cfg->param.rc.qCompress) /
+            qp2qScale(cfg->param.rc.rfConstant + mbtree_offset + QP_BD_OFFSET);
+    }
+
+    isAbr = cfg->param.rc.rateControlMode != X265_RC_CQP; // later add 2pass option
+
     bitrate = cfg->param.rc.bitrate * 1000;
     frameDuration = 1.0 / cfg->param.frameRate;
-    ncu = (int)((cfg->param.sourceHeight * cfg->param.sourceWidth) / pow((int)16, 2.0));
     lastNonBPictType = -1;
     baseQp = cfg->param.rc.qp;
     qp = baseQp;
@@ -140,6 +163,7 @@ RateControl::RateControl(TEncCfg * _cfg)
     shortTermCplxSum = 0;
     shortTermCplxCount = 0;
     framesDone = 0;
+    lastNonBPictType = I_SLICE;
 
     if (cfg->param.rc.rateControlMode == X265_RC_ABR)
     {
@@ -151,13 +175,22 @@ RateControl::RateControl(TEncCfg * _cfg)
         /* estimated ratio that produces a reasonable QP for the first I-frame */
         cplxrSum = .01 * pow(7.0e5, cfg->param.rc.qCompress) * pow(ncu, 0.5);
         wantedBitsWindow = bitrate * frameDuration;
-        lastNonBPictType = I_SLICE;
     }
-    ipOffset = 6.0 * (float)(X265_LOG2(cfg->param.rc.ipFactor));
-    pbOffset = 6.0 * (float)(X265_LOG2(cfg->param.rc.pbFactor));
+    else if (cfg->param.rc.rateControlMode == X265_RC_CRF)
+    {
+#define ABR_INIT_QP ((int)cfg->param.rc.rfConstant + QP_BD_OFFSET)
+        accumPNorm = .01;
+        accumPQp = ABR_INIT_QP * accumPNorm;
+        /* estimated ratio that produces a reasonable QP for the first I-frame */
+        cplxrSum = .01 * pow(7.0e5, cfg->param.rc.qCompress) * pow(ncu, 0.5);
+        wantedBitsWindow = bitrate * frameDuration;
+    }
+
+    ipOffset = 6.0 * X265_LOG2(cfg->param.rc.ipFactor);
+    pbOffset = 6.0 * X265_LOG2(cfg->param.rc.pbFactor);
     for (int i = 0; i < 3; i++)
     {
-        lastQScaleFor[i] = qp2qScale(ABR_INIT_QP_MIN);
+        lastQScaleFor[i] = qp2qScale(cfg->param.rc.rateControlMode == X265_RC_CRF ? ABR_INIT_QP : ABR_INIT_QP_MIN);
         lmin[i] = qp2qScale(MIN_QP);
         lmax[i] = qp2qScale(MAX_QP);
     }
@@ -178,9 +211,8 @@ void RateControl::rateControlStart(TComPic* pic, Lookahead *l, RateControlEntry*
     curSlice = pic->getSlice();
     sliceType = curSlice->getSliceType();
     rce->sliceType = sliceType;
-    switch (cfg->param.rc.rateControlMode)
-    {
-    case X265_RC_ABR:
+
+    if (isAbr) //ABR,CRF
     {
         lastSatd = l->getEstimatedPictureCost(pic);
         double q = qScale2qp(rateEstimateQscale(rce));
@@ -189,17 +221,10 @@ void RateControl::rateControlStart(TComPic* pic, Lookahead *l, RateControlEntry*
         /* copy value of lastRceq into thread local rce struct *to be used in RateControlEnd() */
         rce->qRceq = lastRceq;
         accumPQpUpdate();
-        break;
     }
-
-    case X265_RC_CQP:
+    else //CQP
+    {
         qp = qpConstant[sliceType];
-        break;
-
-    case X265_RC_CRF:
-    default:
-        assert(!"unimplemented");
-        break;
     }
 
     if (sliceType != B_SLICE)
@@ -260,7 +285,7 @@ double RateControl::rateEstimateQscale(RateControlEntry *rce)
     }
     else
     {
-		double abrBuffer = 2 * cfg->param.rc.rateTolerance * bitrate;
+        double abrBuffer = 2 * cfg->param.rc.rateTolerance * bitrate;
 
         /* 1pass ABR */
 
@@ -283,20 +308,28 @@ double RateControl::rateEstimateQscale(RateControlEntry *rce)
         rce->blurredComplexity = shortTermCplxSum / shortTermCplxCount;
         rce->mvBits = 0;
         rce->sliceType = sliceType;
-        q = getQScale(rce, wantedBitsWindow / cplxrSum);
 
-        /* ABR code can potentially be counterproductive in CBR, so just don't bother.
-         * Don't run it if the frame complexity is zero either. */
-        if (lastSatd)
+        if (cfg->param.rc.rateControlMode == X265_RC_CRF)
         {
-            /* use framesDone instead of POC as poc count is not serial with bframes enabled */
-            double timeDone = (double)(framesDone - cfg->param.frameNumThreads + 1) / cfg->param.frameRate;
-            wantedBits = timeDone * bitrate;
-            if (wantedBits > 0 && totalBits > 0)
+            q = getQScale(rce, rateFactorConstant);
+        }
+        else
+        {
+            q = getQScale(rce, wantedBitsWindow / cplxrSum);
+
+            /* ABR code can potentially be counterproductive in CBR, so just don't bother.
+             * Don't run it if the frame complexity is zero either. */
+            if (lastSatd)
             {
-                abrBuffer *= X265_MAX(1, sqrt(timeDone));
-                overflow = Clip3(.5, 2.0, 1.0 + (totalBits - wantedBits) / abrBuffer);
-                q *= overflow;
+                /* use framesDone instead of POC as poc count is not serial with bframes enabled */
+                double timeDone = (double)(framesDone - cfg->param.frameNumThreads + 1) / cfg->param.frameRate;
+                wantedBits = timeDone * bitrate;
+                if (wantedBits > 0 && totalBits > 0)
+                {
+                    abrBuffer *= X265_MAX(1, sqrt(timeDone));
+                    overflow = Clip3(.5, 2.0, 1.0 + (totalBits - wantedBits) / abrBuffer);
+                    q *= overflow;
+                }
             }
         }
 
@@ -306,30 +339,34 @@ double RateControl::rateEstimateQscale(RateControlEntry *rce)
             q = qp2qScale(accumPQp / accumPNorm);
             q /= fabs(cfg->param.rc.ipFactor);
         }
-		else if (framesDone>0)
-		{
-			 if (cfg->param.rc.rateControlMode != X265_RC_CRF)
-			 {
-				double lqmin = 0, lqmax = 0;
-				if (totalBits == 0)
-				{
-					lqmin = qp2qScale(ABR_INIT_QP_MIN) / lstep;
-					lqmax = qp2qScale(ABR_INIT_QP_MAX) * lstep;
-				}
-				else
-				{
-					lqmin = lastQScaleFor[sliceType] / lstep;
-					lqmax = lastQScaleFor[sliceType] * lstep;
-				}
+        else if (framesDone > 0)
+        {
+            if (cfg->param.rc.rateControlMode != X265_RC_CRF)
+            {
+                double lqmin = 0, lqmax = 0;
+                if (totalBits == 0)
+                {
+                    lqmin = qp2qScale(ABR_INIT_QP_MIN) / lstep;
+                    lqmax = qp2qScale(ABR_INIT_QP_MAX) * lstep;
+                }
+                else
+                {
+                    lqmin = lastQScaleFor[sliceType] / lstep;
+                    lqmax = lastQScaleFor[sliceType] * lstep;
+                }
 
-				if (overflow > 1.1 && framesDone > 3)
-					lqmax *= lstep;
-				else if (overflow <0.9)
-					lqmin /= lstep;
+                if (overflow > 1.1 && framesDone > 3)
+                    lqmax *= lstep;
+                else if (overflow < 0.9)
+                    lqmin /= lstep;
 
-				q = Clip3(lqmin, lqmax, q);
-			 }
-		}
+                q = Clip3(lqmin, lqmax, q);
+            }
+        }
+        else if (cfg->param.rc.rateControlMode == X265_RC_CRF && cfg->param.rc.qCompress != 1)
+        {
+            q = qp2qScale(ABR_INIT_QP) / fabs(cfg->param.rc.ipFactor);
+        }
 
         double lmin1 = lmin[sliceType];
         double lmax1 = lmax[sliceType];
@@ -364,7 +401,7 @@ double RateControl::getQScale(RateControlEntry *rce, double rateFactor)
 /* After encoding one frame, update rate control state */
 int RateControl::rateControlEnd(int64_t bits, RateControlEntry* rce)
 {
-    if (cfg->param.rc.rateControlMode == X265_RC_ABR)
+    if (isAbr)
     {
         if (rce->sliceType != B_SLICE)
             /* The factor 1.5 is to tune up the actual bits, otherwise the cplxrSum is scaled too low

@@ -22,7 +22,7 @@
  *****************************************************************************/
 
 #include "TLibCommon/TComRom.h"
-#include "TLibCommon/ContextModel.h"
+#include "TLibEncoder/TEncSbac.h"
 #include "primitives.h"
 #include "common.h"
 
@@ -35,38 +35,26 @@
 namespace x265 {
 // x265 private namespace
 
-static int8_t maptable[] =
+uint8_t lumaPartitioneMapTable[] =
 {
 //  4          8          12          16          20  24          28  32          36  40  44  48          52  56  60  64
-    LUMA_4x4,  LUMA_4x8,  -1,         LUMA_4x16,  -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 4
-    LUMA_8x4,  LUMA_8x8,  -1,         LUMA_8x16,  -1, -1,         -1, LUMA_8x32,  -1, -1, -1, -1,         -1, -1, -1, -1,         // 8
-    -1,        -1,        -1,         LUMA_12x16, -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 12
-    LUMA_16x4, LUMA_16x8, LUMA_16x12, LUMA_16x16, -1, -1,         -1, LUMA_16x32, -1, -1, -1, -1,         -1, -1, -1, LUMA_16x64, // 16
-    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 20
-    -1,        -1,        -1,         -1,         -1, -1,         -1, LUMA_24x32, -1, -1, -1, -1,         -1, -1, -1, -1,         // 24
-    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 28
-    -1,        LUMA_32x8, -1,         LUMA_32x16, -1, LUMA_32x24, -1, LUMA_32x32, -1, -1, -1, -1,         -1, -1, -1, LUMA_32x64, // 32
-    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 36
-    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 40
-    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 44
-    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, LUMA_48x64, // 48
-    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 52
-    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 56
-    -1,        -1,        -1,         -1,         -1, -1,         -1, -1,         -1, -1, -1, -1,         -1, -1, -1, -1,         // 60
-    -1,        -1,        -1,         LUMA_64x16, -1, -1,         -1, LUMA_64x32, -1, -1, -1, LUMA_64x48, -1, -1, -1, LUMA_64x64  // 64
+    LUMA_4x4,  LUMA_4x8,  255,        LUMA_4x16,  255, 255,        255, 255,        255, 255, 255, 255,        255, 255, 255, 255,        // 4
+    LUMA_8x4,  LUMA_8x8,  255,        LUMA_8x16,  255, 255,        255, LUMA_8x32,  255, 255, 255, 255,        255, 255, 255, 255,        // 8
+    255,        255,      255,        LUMA_12x16, 255, 255,        255, 255,        255, 255, 255, 255,        255, 255, 255, 255,        // 12
+    LUMA_16x4, LUMA_16x8, LUMA_16x12, LUMA_16x16, 255, 255,        255, LUMA_16x32, 255, 255, 255, 255,        255, 255, 255, LUMA_16x64, // 16
+    255,        255,      255,        255,        255, 255,        255, 255,        255, 255, 255, 255,        255, 255, 255, 255,        // 20
+    255,        255,      255,        255,        255, 255,        255, LUMA_24x32, 255, 255, 255, 255,        255, 255, 255, 255,        // 24
+    255,        255,      255,        255,        255, 255,        255, 255,        255, 255, 255, 255,        255, 255, 255, 255,        // 28
+    255,        LUMA_32x8, 255,       LUMA_32x16, 255, LUMA_32x24, 255, LUMA_32x32, 255, 255, 255, 255,        255, 255, 255, LUMA_32x64, // 32
+    255,        255,      255,        255,        255, 255,        255, 255,        255, 255, 255, 255,        255, 255, 255, 255,        // 36
+    255,        255,      255,        255,        255, 255,        255, 255,        255, 255, 255, 255,        255, 255, 255, 255,        // 40
+    255,        255,      255,        255,        255, 255,        255, 255,        255, 255, 255, 255,        255, 255, 255, 255,        // 44
+    255,        255,      255,        255,        255, 255,        255, 255,        255, 255, 255, 255,        255, 255, 255, LUMA_48x64, // 48
+    255,        255,      255,        255,        255, 255,        255, 255,        255, 255, 255, 255,        255, 255, 255, 255,        // 52
+    255,        255,      255,        255,        255, 255,        255, 255,        255, 255, 255, 255,        255, 255, 255, 255,        // 56
+    255,        255,      255,        255,        255, 255,        255, 255,        255, 255, 255, 255,        255, 255, 255, 255,        // 60
+    255,        255,      255,        LUMA_64x16, 255, 255,        255, LUMA_64x32, 255, 255, 255, LUMA_64x48, 255, 255, 255, LUMA_64x64  // 64
 };
-
-// Returns a LumaPartitions enum if the size matches a supported partition dimension
-int PartitionFromSizes(int width, int height)
-{
-    assert(((width | height) & ~(4 | 8 | 16 | 32 | 64)) == 0);
-
-    int w = (width >> 2) - 1;
-    int h = (height >> 2) - 1;
-    int part = (int)maptable[(w << 4) + h];
-    assert(part >= 0);
-    return part;
-}
 
 /* the "authoritative" set of encoder primitives */
 EncoderPrimitives primitives;
@@ -95,7 +83,7 @@ void x265_setup_primitives(x265_param *param, int cpuid)
 {
     // initialize global variables
     initROM();
-    ContextModel::buildNextStateTable();
+    buildNextStateTable();
 
     if (cpuid < 0)
     {
@@ -133,8 +121,6 @@ void x265_setup_primitives(x265_param *param, int cpuid)
         x265_log(param, X265_LOG_INFO, "%s\n", buf);
     }
 
-    x265_log(param, X265_LOG_INFO, "performance primitives:");
-
     Setup_C_Primitives(primitives);
 
 #if ENABLE_VECTOR_PRIMITIVES
@@ -158,14 +144,15 @@ void x265_setup_primitives(x265_param *param, int cpuid)
     primitives.sa8d_inter[LUMA_16x12] = primitives.satd[LUMA_16x12];
     primitives.sa8d_inter[LUMA_12x16] = primitives.satd[LUMA_12x16];
 
-#if ENABLE_VECTOR_PRIMITIVES
-    if (param->logLevel >= X265_LOG_INFO) fprintf(stderr, " intrinsic");
+#if ENABLE_VECTOR_PRIMITIVES && ENABLE_ASM_PRIMITIVES
+    /* no logging if full optimizations are enabled */
+#elif ENABLE_ASM_PRIMITIVES
+    x265_log(param, X265_LOG_INFO, "performance primitives: only assembly\n");
+#elif ENABLE_VECTOR_PRIMITIVES
+    x265_log(param, X265_LOG_INFO, "performance primitives: only intrinsics\n");
+#else
+    x265_log(param, X265_LOG_INFO, "performance primitives: none\n");
 #endif
-#if ENABLE_ASM_PRIMITIVES
-    if (param->logLevel >= X265_LOG_INFO) fprintf(stderr, " assembly");
-#endif
-
-    if (param->logLevel >= X265_LOG_INFO) fprintf(stderr, "\n");
 }
 
 #if !defined(ENABLE_ASM_PRIMITIVES)

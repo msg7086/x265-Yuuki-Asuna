@@ -84,18 +84,16 @@ public:
 /// class for motion information in one CU
 class TComCUMvField
 {
-private:
+public:
 
     MV* m_mv;
     MV* m_mvd;
     char*     m_refIdx;
-    UInt      m_numPartitions;
+    uint32_t      m_numPartitions;
     AMVPInfo  m_cAMVPInfo;
 
     template<typename T>
-    void setAll(T *p, T const & val, PartSize cuMode, int partAddr, UInt depth, int partIdx);
-
-public:
+    void setAll(T *p, T const & val, PartSize cuMode, int partAddr, uint32_t depth, int partIdx);
 
     TComCUMvField() : m_mv(NULL), m_mvd(NULL), m_refIdx(NULL), m_numPartitions(0) {}
 
@@ -105,7 +103,7 @@ public:
     // create / destroy
     // ------------------------------------------------------------------------------------------------------------------
 
-    void create(UInt numPartition);
+    void create(uint32_t numPartition);
     void destroy();
 
     // ------------------------------------------------------------------------------------------------------------------
@@ -116,7 +114,7 @@ public:
 
     void copyFrom(const TComCUMvField * cuMvFieldSrc, int numPartSrc, int partAddrDst);
     void copyTo(TComCUMvField* cuMvFieldDst, int partAddrDst) const;
-    void copyTo(TComCUMvField* cuMvFieldDst, int partAddrDst, UInt offset, UInt numPart) const;
+    void copyTo(TComCUMvField* cuMvFieldDst, int partAddrDst, uint32_t offset, uint32_t numPart) const;
 
     // ------------------------------------------------------------------------------------------------------------------
     // get
@@ -134,10 +132,10 @@ public:
     // set
     // ------------------------------------------------------------------------------------------------------------------
 
-    void    setAllMv(const MV& mv,              PartSize cuMode, int partAddr, UInt depth, int partIdx = 0);
-    void    setAllMvd(const MV& mvd,            PartSize cuMode, int partAddr, UInt depth, int partIdx = 0);
-    void    setAllRefIdx(int refIdx,                  PartSize mbMode, int partAddr, UInt depth, int partIdx = 0);
-    void    setAllMvField(const TComMvField& mvField, PartSize mbMode, int partAddr, UInt depth, int partIdx = 0);
+    void    setAllMv(const MV& mv,              PartSize cuMode, int partAddr, uint32_t depth, int partIdx = 0);
+    void    setAllMvd(const MV& mvd,            PartSize cuMode, int partAddr, uint32_t depth, int partIdx = 0);
+    void    setAllRefIdx(int refIdx,                  PartSize mbMode, int partAddr, uint32_t depth, int partIdx = 0);
+    void    setAllMvField(const TComMvField& mvField, PartSize mbMode, int partAddr, uint32_t depth, int partIdx = 0);
 
     void setNumPartition(int numPart)
     {

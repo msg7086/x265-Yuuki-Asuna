@@ -40,9 +40,8 @@
 
 #include "CommonDef.h"
 #include "TComRom.h"
-
 #include "x265.h"
-#include "reference.h"
+#include "md5.h"
 
 namespace x265 {
 // private namespace
@@ -59,7 +58,7 @@ class TShortYUV;
 /// picture YUV buffer class
 class TComPicYuv
 {
-private:
+public:
 
     // ------------------------------------------------------------------------------------------------
     //  YUV buffer
@@ -73,22 +72,21 @@ private:
     Pel*  m_picOrgU;
     Pel*  m_picOrgV;
 
-    // Pre-interpolated reference pictures for each QPEL offset, may be more than
-    // one if weighted references are in use
-    MotionReference *m_refList;
-
     // ------------------------------------------------------------------------------------------------
     //  Parameter for general YUV buffer usage
     // ------------------------------------------------------------------------------------------------
     int   m_picWidth;          ///< Width of picture
     int   m_picHeight;         ///< Height of picture
+    int   m_picCsp;            ///< Picture color format
+    int   m_hChromaShift;
+    int   m_vChromaShift;
 
     int   m_cuWidth;           ///< Width of Coding Unit (CU)
     int   m_cuHeight;          ///< Height of Coding Unit (CU)
-    int*  m_cuOffsetY;
-    int*  m_cuOffsetC;
-    int*  m_buOffsetY;
-    int*  m_buOffsetC;
+    int32_t*  m_cuOffsetY;
+    int32_t*  m_cuOffsetC;
+    int32_t*  m_buOffsetY;
+    int32_t*  m_buOffsetC;
 
     int   m_lumaMarginX;
     int   m_lumaMarginY;
@@ -97,8 +95,6 @@ private:
     int   m_stride;
     int   m_strideC;
 
-public:
-
     int   m_numCuInWidth;
     int   m_numCuInHeight;
 
@@ -106,17 +102,13 @@ public:
     virtual ~TComPicYuv();
 
     void xExtendPicCompBorder(Pel* recon, int stride, int width, int height, int marginX, int marginY);
+
     // ------------------------------------------------------------------------------------------------
     //  Memory management
     // ------------------------------------------------------------------------------------------------
 
-    void  create(int picWidth, int picHeight, UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth);
+    void  create(int picWidth, int picHeight, int csp, uint32_t maxCUWidth, uint32_t maxCUHeight, uint32_t maxCUDepth);
     void  destroy();
-
-    void  createLuma(int picWidth, int picHeight, UInt maxCUWidth, UInt maxCUHeight, UInt maxCUDepth);
-    void  destroyLuma();
-
-    void  clearReferences();
 
     // ------------------------------------------------------------------------------------------------
     //  Get information of picture
@@ -169,28 +161,16 @@ public:
 
     Pel*  getCrAddr(int cuAddr, int absZOrderIdx) { return m_picOrgV + m_cuOffsetC[cuAddr] + m_buOffsetC[g_zscanToRaster[absZOrderIdx]]; }
 
-    // ------------------------------------------------------------------------------------------------
-    //  Miscellaneous
-    // ------------------------------------------------------------------------------------------------
+    uint32_t getCUHeight(int rowNum);
 
-    //  Copy function to picture
-    void  copyToPic(TComPicYuv* destYuv);
-    void  copyToPicLuma(TComPicYuv* destYuv);
-    void  copyToPicCb(TComPicYuv* destYuv);
-    void  copyToPicCr(TComPicYuv* destYuv);
-    void  copyFromPicture(const x265_picture&, int *pad);
-
-    MotionReference* generateMotionReference(wpScalingParam *w);
-
-    //  Dump picture
-    void  dump(char* pFileName, bool bAdd = false);
-
-    friend class MotionReference;
+    void  copyFromPicture(const x265_picture&, int32_t *pad);
 }; // END CLASS DEFINITION TComPicYuv
 
-void calcChecksum(TComPicYuv & pic, UChar digest[3][16]);
-void calcCRC(TComPicYuv & pic, UChar digest[3][16]);
-void calcMD5(TComPicYuv & pic, UChar digest[3][16]);
+void updateChecksum(const Pel* plane, uint32_t& checksumVal, uint32_t height, uint32_t width, uint32_t stride, int row, uint32_t cu_Height);
+void updateCRC(const Pel* plane, uint32_t& crcVal, uint32_t height, uint32_t width, uint32_t stride);
+void crcFinish(uint32_t & crc, UChar digest[16]);
+void checksumFinish(uint32_t & checksum, UChar digest[16]);
+void updateMD5Plane(MD5Context& md5, const Pel* plane, uint32_t width, uint32_t height, uint32_t stride);
 }
 //! \}
 

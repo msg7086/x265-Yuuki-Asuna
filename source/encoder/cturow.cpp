@@ -35,10 +35,10 @@ void CTURow::create(Encoder* top)
     m_sbacCoder.init(&m_binCoderCABAC);
     m_trQuant.init(1 << top->getQuadtreeTULog2MaxSize(), top->param.bEnableRDOQ, top->param.bEnableRDOQTS, top->param.bEnableTSkipFast);
 
-    m_rdSbacCoders = new TEncSbac **[g_maxCUDepth + 1];
-    m_binCodersCABAC = new TEncBinCABAC **[g_maxCUDepth + 1];
+    m_rdSbacCoders = new TEncSbac * *[g_maxCUDepth + 1];
+    m_binCodersCABAC = new TEncBinCABAC * *[g_maxCUDepth + 1];
 
-    for (UInt depth = 0; depth < g_maxCUDepth + 1; depth++)
+    for (uint32_t depth = 0; depth < g_maxCUDepth + 1; depth++)
     {
         m_rdSbacCoders[depth]  = new TEncSbac*[CI_NUM];
         m_binCodersCABAC[depth] = new TEncBinCABAC*[CI_NUM];
@@ -56,8 +56,8 @@ void CTURow::create(Encoder* top)
     m_search.setEntropyCoder(&m_entropyCoder);
     m_search.setRDGoOnSbacCoder(&m_rdGoOnSbacCoder);
 
-    m_cuCoder.create((UChar)g_maxCUDepth, g_maxCUWidth);
     m_cuCoder.init(top);
+    m_cuCoder.create((UChar)g_maxCUDepth, g_maxCUWidth);
     m_cuCoder.setRdCost(&m_rdCost);
     m_cuCoder.setRDSbacCoder(m_rdSbacCoders);
     m_cuCoder.setEntropyCoder(&m_entropyCoder);
@@ -97,7 +97,7 @@ void CTURow::processCU(TComDataCU *cu, TComSlice *slice, TEncSbac *bufferSbac, b
 
 void CTURow::destroy()
 {
-    for (UInt depth = 0; depth < g_maxCUDepth + 1; depth++)
+    for (uint32_t depth = 0; depth < g_maxCUDepth + 1; depth++)
     {
         for (int ciIdx = 0; ciIdx < CI_NUM; ciIdx++)
         {
@@ -106,7 +106,7 @@ void CTURow::destroy()
         }
     }
 
-    for (UInt depth = 0; depth < g_maxCUDepth + 1; depth++)
+    for (uint32_t depth = 0; depth < g_maxCUDepth + 1; depth++)
     {
         delete [] m_rdSbacCoders[depth];
         delete [] m_binCodersCABAC[depth];

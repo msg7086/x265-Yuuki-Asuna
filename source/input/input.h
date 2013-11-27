@@ -24,7 +24,6 @@
 #ifndef X265_INPUT_H
 #define X265_INPUT_H
 
-#define ENABLE_THREAD
 #define MIN_FRAME_WIDTH 64
 #define MAX_FRAME_WIDTH 8192
 #define MIN_FRAME_HEIGHT 64
@@ -47,11 +46,13 @@ public:
 
     Input()           {}
 
-    static Input* open(const char *filename);
+    static Input* open(const char *filename, uint32_t inputBitDepth, bool bForceY4m);
 
     virtual void setDimensions(int width, int height) = 0;
 
-    virtual void setBitDepth(int bitDepth) = 0;
+    virtual void setBitDepth(uint32_t bitDepth) = 0;
+
+    virtual void setColorSpace(int csp) = 0;
 
     virtual float getRate() const = 0;
 
@@ -59,11 +60,13 @@ public:
 
     virtual int getHeight() const = 0;
 
+    virtual int getColorSpace() const = 0;
+
     virtual void startReader() = 0;
 
     virtual void release() = 0;
 
-    virtual void skipFrames(int numFrames) = 0;
+    virtual void skipFrames(uint32_t numFrames) = 0;
 
     virtual bool readPicture(x265_picture& pic) = 0;
 

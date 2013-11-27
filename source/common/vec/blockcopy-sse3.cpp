@@ -90,7 +90,7 @@ void blockcopy_pp(int bx, int by, pixel *dst, intptr_t dstride, pixel *src, intp
     }
 }
 
-void blockcopy_ps(int bx, int by, pixel *dst, intptr_t dstride, short *src, intptr_t sstride)
+void blockcopy_ps(int bx, int by, pixel *dst, intptr_t dstride, int16_t *src, intptr_t sstride)
 {
     size_t aligncheck = (size_t)dst | (size_t)src | bx | sstride | dstride;
 
@@ -130,171 +130,9 @@ void blockcopy_ps(int bx, int by, pixel *dst, intptr_t dstride, short *src, intp
         }
     }
 }
-
-void pixeladd_pp(int bx, int by, pixel *dst, intptr_t dstride, pixel *src0, pixel *src1, intptr_t sstride0, intptr_t sstride1)
-{
-    size_t aligncheck = (size_t)dst | (size_t)src0 | bx | sstride0 | sstride1 | dstride;
-
-    if (!(aligncheck & 15))
-    {
-        __m128i maxval = _mm_set1_epi8((unsigned char)((1 << X265_DEPTH) - 1));
-        __m128i zero = _mm_setzero_si128();
-
-        // fast path, multiples of 16 pixel wide blocks
-        for (int y = 0; y < by; y++)
-        {
-            for (int x = 0; x < bx; x += 16)
-            {
-                __m128i word0, word1, sum;
-                word0 = _mm_load_si128((__m128i const*)(src0 + x));
-                word1 = _mm_load_si128((__m128i const*)(src1 + x));
-                sum = _mm_adds_epu8(word0, word1);
-                sum = _mm_max_epu8(sum, zero);
-                sum = _mm_min_epu8(sum, maxval);
-                _mm_storeu_si128((__m128i*)&dst[x], sum);
-            }
-
-            src0 += sstride0;
-            src1 += sstride1;
-            dst += dstride;
-        }
-    }
-    else if (!(bx & 15))
-    {
-        __m128i maxval = _mm_set1_epi8((unsigned char)((1 << X265_DEPTH) - 1));
-        __m128i zero = _mm_setzero_si128();
-
-        // fast path, multiples of 16 pixel wide blocks but pointers/strides require unaligned accesses
-        for (int y = 0; y < by; y++)
-        {
-            for (int x = 0; x < bx; x += 16)
-            {
-                __m128i word0, word1, sum;
-                word0 = _mm_load_si128((__m128i const*)(src0 + x));
-                word1 = _mm_load_si128((__m128i const*)(src1 + x));
-                sum = _mm_adds_epu8(word0, word1);
-                sum = _mm_max_epu8(sum, zero);
-                sum = _mm_min_epu8(sum, maxval);
-                _mm_storeu_si128((__m128i*)&dst[x], sum);
-            }
-
-            src0 += sstride0;
-            src1 += sstride1;
-            dst += dstride;
-        }
-    }
-    else
-    {
-        int tmp;
-        int max = (1 << X265_DEPTH) - 1;
-        // slow path, irregular memory alignments or sizes
-        for (int y = 0; y < by; y++)
-        {
-            for (int x = 0; x < bx; x++)
-            {
-                tmp = src0[x] + src1[x];
-                tmp = tmp < 0 ? 0 : tmp;
-                tmp = tmp > max ? max : tmp;
-                dst[x] = (pixel)tmp;
-            }
-
-            src0 += sstride0;
-            src1 += sstride1;
-            dst += dstride;
-        }
-    }
-}
-
 #endif /* if HIGH_BIT_DEPTH */
 
-void blockcopy_sp(int bx, int by, short *dst, intptr_t dstride, uint8_t *src, intptr_t sstride)
-{
-    size_t aligncheck = (size_t)dst | (size_t)src | bx | sstride | dstride;
-
-    if (!(aligncheck & 15))
-    {
-        // fast path, multiples of 16 pixel wide blocks
-        for (int y = 0; y < by; y++)
-        {
-            for (int x = 0; x < bx; x += 16)
-            {
-                __m128i word0 = _mm_load_si128((__m128i const*)(src + x));        // load block of 16 byte from src
-                __m128i word1 = _mm_unpacklo_epi8(word0, _mm_setzero_si128());    // interleave with zero extensions
-                _mm_store_si128((__m128i*)&dst[x], word1);                        // store block into dst
-                __m128i word2 = _mm_unpackhi_epi8(word0, _mm_setzero_si128());    // interleave with zero extensions
-                _mm_store_si128((__m128i*)&dst[x + 8], word2);                    // store block into dst
-            }
-
-            src += sstride;
-            dst += dstride;
-        }
-    }
-    else
-    {
-        // slow path, irregular memory alignments or sizes
-        for (int y = 0; y < by; y++)
-        {
-            for (int x = 0; x < bx; x++)
-            {
-                dst[x] = (short)src[x];
-            }
-
-            src += sstride;
-            dst += dstride;
-        }
-    }
-}
-
-void pixelsub_sp(int bx, int by, short *dst, intptr_t dstride, uint8_t *src0, uint8_t *src1, intptr_t sstride0, intptr_t sstride1)
-{
-    size_t aligncheck = (size_t)dst | (size_t)src0 | bx | sstride0 | sstride1 | dstride;
-
-    if (!(aligncheck & 15))
-    {
-        // fast path, multiples of 16 pixel wide blocks
-        for (int y = 0; y < by; y++)
-        {
-            for (int x = 0; x < bx; x += 16)
-            {
-                __m128i word0, word1;
-                __m128i word3, word4;
-                __m128i mask = _mm_setzero_si128();
-
-                word0 = _mm_load_si128((__m128i const*)(src0 + x));    // load 16 bytes from src1
-                word1 = _mm_load_si128((__m128i const*)(src1 + x));    // load 16 bytes from src2
-
-                word3 = _mm_unpacklo_epi8(word0, mask);    // interleave with zero extensions
-                word4 = _mm_unpacklo_epi8(word1, mask);
-                _mm_store_si128((__m128i*)&dst[x], _mm_subs_epi16(word3, word4));    // store block into dst
-
-                word3 = _mm_unpackhi_epi8(word0, mask);    // interleave with zero extensions
-                word4 = _mm_unpackhi_epi8(word1, mask);
-                _mm_store_si128((__m128i*)&dst[x + 8], _mm_subs_epi16(word3, word4));    // store block into dst
-            }
-
-            src0 += sstride0;
-            src1 += sstride1;
-            dst += dstride;
-        }
-    }
-    else
-    {
-        // slow path, irregular memory alignments or sizes
-        for (int y = 0; y < by; y++)
-        {
-            for (int x = 0; x < bx; x++)
-            {
-                dst[x] = (short)(src0[x] - src1[x]);
-            }
-
-            src0 += sstride0;
-            src1 += sstride1;
-            dst += dstride;
-        }
-    }
-}
-
-void pixeladd_ss(int bx, int by, short *dst, intptr_t dstride, short *src0, short *src1, intptr_t sstride0, intptr_t sstride1)
+void pixeladd_ss(int bx, int by, int16_t *dst, intptr_t dstride, int16_t *src0, int16_t *src1, intptr_t sstride0, intptr_t sstride1)
 {
     size_t aligncheck = (size_t)dst | (size_t)src0 | sstride0 | sstride1 | dstride;
 
@@ -363,7 +201,7 @@ void pixeladd_ss(int bx, int by, short *dst, intptr_t dstride, short *src0, shor
                 tmp = src0[x] + src1[x];
                 tmp = tmp < 0 ? 0 : tmp;
                 tmp = tmp > max ? max : tmp;
-                dst[x] = (short)tmp;
+                dst[x] = (int16_t)tmp;
             }
 
             src0 += sstride0;
@@ -380,22 +218,11 @@ void Setup_Vec_BlockCopyPrimitives_sse3(EncoderPrimitives &p)
 #if HIGH_BIT_DEPTH
     p.blockcpy_pp = blockcopy_pp;
     p.blockcpy_ps = (blockcpy_ps_t)blockcopy_pp;
-    p.blockcpy_sp = (blockcpy_sp_t)blockcopy_pp;
-#else
-    p.pixeladd_pp = pixeladd_pp;
-#endif
-
-#if HIGH_BIT_DEPTH
     // At high bit depth, a pixel is a short
-    p.blockcpy_sc = (blockcpy_sc_t)blockcopy_sp;
-    p.pixeladd_pp = (pixeladd_pp_t)pixeladd_ss;
     p.pixeladd_ss = pixeladd_ss;
 #else
     p.blockcpy_pp = blockcopy_pp;
     p.blockcpy_ps = blockcopy_ps;
-    p.blockcpy_sp = blockcopy_sp;
-    p.blockcpy_sc = blockcopy_sp;
-    p.pixelsub_sp = pixelsub_sp;
     p.pixeladd_ss = pixeladd_ss;
 #endif // if HIGH_BIT_DEPTH
 }

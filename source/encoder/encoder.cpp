@@ -57,7 +57,6 @@ Encoder::Encoder()
     m_frameEncoder = NULL;
     m_rateControl = NULL;
     m_dpb = NULL;
-    m_globalSsim = 0;
     m_nals = NULL;
     m_packetData = NULL;
     m_outputCount = 0;
@@ -217,7 +216,7 @@ int Encoder::encode(bool flush, const x265_picture* pic_in, x265_picture *pic_ou
 
         // Encoder holds a reference count until collecting stats
         ATOMIC_INC(&pic->m_countRefEncoders);
-        if (param.rc.aqMode)
+        if (param.rc.aqMode || param.bEnableWeightedPred)
             m_rateControl->calcAdaptiveQuantFrame(pic);
         m_lookahead->addPicture(pic, pic_in->sliceType);
     }
@@ -256,13 +255,13 @@ int Encoder::encode(bool flush, const x265_picture* pic_in, x265_picture *pic_ou
         {
             TComPicYuv *recpic = out->getPicYuvRec();
             pic_out->poc = out->getSlice()->getPOC();
-            pic_out->bitDepth = sizeof(Pel) * 8;
+            pic_out->bitDepth = X265_DEPTH;
             pic_out->userData = out->m_userData;
             pic_out->pts = out->m_pts;
             switch (out->getSlice()->getSliceType())
             {
             case I_SLICE:
-                pic_out->sliceType = X265_TYPE_I;
+                pic_out->sliceType = out->m_lowres.bKeyframe ? X265_TYPE_IDR : X265_TYPE_I;
                 break;
             case P_SLICE:
                 pic_out->sliceType = X265_TYPE_P;
@@ -315,48 +314,223 @@ int Encoder::encode(bool flush, const x265_picture* pic_in, x265_picture *pic_ou
     return ret;
 }
 
-void Encoder::printSummary()
+void EncStats::addPsnr(double psnrY, double psnrU, double psnrV)
+{
+    m_psnrSumY += psnrY;
+    m_psnrSumU += psnrU;
+    m_psnrSumV += psnrV;
+}
+
+void EncStats::addBits(uint64_t bits)
+{
+    m_accBits += bits;
+    m_numPics++;
+}
+
+void EncStats::addSsim(double ssim)
+{
+    m_globalSsim += ssim;
+}
+
+char* Encoder::statsString(EncStats& stat, char* buffer)
 {
     double fps = (double)param.frameRate;
+    double scale = fps / 1000 / (double)stat.m_numPics;
 
+    int len = sprintf(buffer, "%-6d ", stat.m_numPics);
+    len += sprintf(buffer + len, "kb/s: %-8.2lf", stat.m_accBits * scale);
+    if (param.bEnablePsnr)
+    {
+        len += sprintf(buffer + len, " PSNR Mean: Y:%.3lf U:%.3lf V:%.3lf",
+                       stat.m_psnrSumY / (double)stat.m_numPics,
+                       stat.m_psnrSumU / (double)stat.m_numPics,
+                       stat.m_psnrSumV / (double)stat.m_numPics);
+    }
+    if (param.bEnableSsim)
+    {
+        len += sprintf(buffer + len, " SSIM Mean: %.3lf",
+                       stat.m_globalSsim / (double)stat.m_numPics);
+    }
+    return buffer;
+}
+
+void Encoder::printSummary()
+{
+    for (int sliceType = 2; sliceType >= 0; sliceType--)
+    {
+        if (sliceType == P_SLICE && !m_analyzeP.m_numPics)
+            continue;
+        if (sliceType == B_SLICE && !m_analyzeB.m_numPics)
+            continue;
+
+        StatisticLog finalLog;
+        uint64_t cntIntraNxN = 0, cntIntra[4];
+        for (int depth = 0; depth < (int)g_maxCUDepth; depth++)
+        {
+            uint64_t cntInter, cntSplit, cntSkipCu;
+            uint64_t cuInterDistribution[INTER_MODES], cuIntraDistribution[INTRA_MODES];
+            for (int j = 0; j < param.frameNumThreads; j++)
+            {
+                for (int row = 0; row < m_frameEncoder[0].m_numRows; row++)
+                {
+                    StatisticLog& enclog = m_frameEncoder[j].m_rows[row].m_cuCoder.m_sliceTypeLog[sliceType];
+                    finalLog.cntIntra[depth] += enclog.cntIntra[depth];
+                    finalLog.cntTotalCu[depth] += enclog.cntTotalCu[depth];
+                    if (sliceType != I_SLICE)
+                    {
+                        finalLog.cntInter[depth] += enclog.cntInter[depth];
+                        finalLog.cntSkipCu[depth] += enclog.cntSkipCu[depth];
+                        finalLog.cntSplit[depth] += enclog.cntSplit[depth];
+                        for (int m = 0; m < INTER_MODES; m++)
+                        {
+                            if (m < INTRA_MODES)
+                            {
+                                finalLog.cuIntraDistribution[depth][m] += enclog.cuIntraDistribution[depth][m];
+                            }
+                            finalLog.cuInterDistribution[depth][m] += enclog.cuInterDistribution[depth][m];
+                        }
+                    }
+                    if (depth == (int)g_maxCUDepth - 1)
+                        finalLog.cntIntraNxN += enclog.cntIntraNxN;
+                }
+            }
+            // check for 0/0, if true assign 0 else calculate percentage
+            for (int n = 0; n < INTER_MODES; n++)
+            {
+                if (finalLog.cntInter[depth] == 0)
+                    cuInterDistribution[n] = 0;
+                else
+                    cuInterDistribution[n] = (finalLog.cuInterDistribution[depth][n] * 100) / finalLog.cntInter[depth];
+                if (n < INTRA_MODES)
+                {
+                    if (finalLog.cntIntra[depth] == 0)
+                    {
+                        cntIntraNxN = 0;
+                        cuIntraDistribution[n] = 0;
+                    }
+                    else
+                    {
+                        cntIntraNxN = (finalLog.cntIntraNxN * 100) / finalLog.cntIntra[depth];
+                        cuIntraDistribution[n] = (finalLog.cuIntraDistribution[depth][n] * 100) / finalLog.cntIntra[depth];
+                    }
+                }
+            }
+            if (finalLog.cntTotalCu[depth] == 0)
+            {
+                cntInter = 0;
+                cntIntra[depth] = 0;
+                cntSplit = 0;
+                cntSkipCu = 0;
+            }
+            else
+            {
+                cntInter = (finalLog.cntInter[depth] * 100) / finalLog.cntTotalCu[depth];
+                cntIntra[depth] = (finalLog.cntIntra[depth] * 100) / finalLog.cntTotalCu[depth];
+                cntSplit = (finalLog.cntSplit[depth] * 100) / finalLog.cntTotalCu[depth];
+                cntSkipCu = (finalLog.cntSkipCu[depth] * 100) / finalLog.cntTotalCu[depth];
+                if (sliceType == I_SLICE)
+                    cntIntraNxN = (finalLog.cntIntraNxN * 100) / finalLog.cntTotalCu[depth];
+            }
+#if defined(_MSC_VER)
+#define LL "%I64d"
+#else
+#define LL "%lld"
+#endif
+            // print statistics
+            if (sliceType != I_SLICE)
+            {
+                char stats[256];
+                int len;
+
+                int cuSize = g_maxCUWidth >> depth;
+                len = sprintf(stats, "Split "LL"%% Merge "LL"%% Inter "LL"%%",
+                              cntSplit, cntSkipCu, cntInter);
+
+                if (param.bEnableAMP)
+                    len += sprintf(stats + len, "(%dx%d "LL"%% %dx%d "LL"%% %dx%d "LL"%% AMP "LL"%%)",
+                                   cuSize, cuSize, cuInterDistribution[0],
+                                   cuSize/2, cuSize, cuInterDistribution[2],
+                                   cuSize, cuSize/2, cuInterDistribution[1],
+                                   cuInterDistribution[3]);
+                else if (param.bEnableRectInter)
+                    len += sprintf(stats + len, "(%dx%d "LL"%% %dx%d "LL"%% %dx%d "LL"%%)",
+                                   cuSize, cuSize, cuInterDistribution[0],
+                                   cuSize/2, cuSize, cuInterDistribution[2],
+                                   cuSize, cuSize/2, cuInterDistribution[1]);
+
+                if (cntIntra[depth])
+                {
+                    len += sprintf(stats + len, " Intra "LL"%%(DC "LL"%% P "LL"%% Ang "LL"%%",
+                                   cntIntra[depth], cuIntraDistribution[0],
+                                   cuIntraDistribution[1], cuIntraDistribution[2]);
+                    if (depth == (int)g_maxCUDepth - 1)
+                        len += sprintf(stats + len, " %dx%d "LL"%%", cuSize/2, cuSize/2, cntIntraNxN);
+                    len += sprintf(stats + len, ")");
+                }
+
+                x265_log(&param, X265_LOG_INFO, "%c%-2d: %s\n", sliceType == P_SLICE ? 'P' : 'B', cuSize, stats);
+            }
+        }
+        if (sliceType == I_SLICE)
+        {
+            char stats[50];
+            if (g_maxCUDepth == 4)
+                sprintf(stats, LL"%%  "LL"%%  "LL"%%  "LL"%%  "LL"%%", cntIntra[0], cntIntra[1], cntIntra[2], cntIntra[3], cntIntraNxN);
+            else if (g_maxCUDepth == 3)
+                sprintf(stats, LL"%%  "LL"%%  "LL"%%  "LL"%%", cntIntra[0], cntIntra[1], cntIntra[2], cntIntraNxN);
+            else
+                sprintf(stats, LL"%%  "LL"%%  "LL"%%", cntIntra[0], cntIntra[1], cntIntraNxN);
+            x265_log(&param, X265_LOG_INFO, "I-frame %d..4:  %s\n", g_maxCUWidth, stats);
+        }
+    }
     if (param.logLevel >= X265_LOG_INFO)
     {
-        m_analyzeI.printOut('i', fps);
-        m_analyzeP.printOut('p', fps);
-        m_analyzeB.printOut('b', fps);
-        m_analyzeAll.printOut('a', fps);
-    }
-    if (param.bEnableWeightedPred)
-    {
-        int numPFrames = m_analyzeP.getNumPic();
-        x265_log(&param, X265_LOG_INFO, "%d of %d (%.2f%%) P frames weighted\n",
-                 m_numWPFrames, numPFrames, (float) 100.0 * m_numWPFrames / numPFrames); 
+        char buffer[200];
+        if (m_analyzeI.m_numPics)
+            x265_log(&param, X265_LOG_INFO, "frame I: %s\n", statsString(m_analyzeI, buffer));
+        if (m_analyzeP.m_numPics)
+            x265_log(&param, X265_LOG_INFO, "frame P: %s\n", statsString(m_analyzeP, buffer));
+        if (m_analyzeB.m_numPics)
+            x265_log(&param, X265_LOG_INFO, "frame B: %s\n", statsString(m_analyzeB, buffer));
+        if (m_analyzeAll.m_numPics)
+            x265_log(&param, X265_LOG_INFO, "global : %s\n", statsString(m_analyzeAll, buffer));
+        if (param.bEnableWeightedPred && m_analyzeP.m_numPics)
+        {
+            x265_log(&param, X265_LOG_INFO, "%d of %d (%.2f%%) P frames weighted\n",
+                     m_numWPFrames, m_analyzeP.m_numPics, (float)100.0 * m_numWPFrames / m_analyzeP.m_numPics);
+        }
     }
 }
 
-void Encoder::fetchStats(x265_stats *stats)
+void Encoder::fetchStats(x265_stats *stats, size_t statsSizeBytes)
 {
-    stats->globalPsnrY = m_analyzeAll.getPsnrY();
-    stats->globalPsnrU = m_analyzeAll.getPsnrU();
-    stats->globalPsnrV = m_analyzeAll.getPsnrV();
-    stats->encodedPictureCount = m_analyzeAll.getNumPic();
-    stats->totalWPFrames = m_numWPFrames;
-    stats->accBits = m_analyzeAll.getBits();
-    stats->elapsedEncodeTime = (double)(x265_mdate() - m_encodeStartTime) / 1000000;
-    if (stats->encodedPictureCount > 0)
+    if (statsSizeBytes >= sizeof(stats))
     {
-        stats->globalSsim = m_globalSsim / stats->encodedPictureCount;
-        stats->globalPsnr = (stats->globalPsnrY * 6 + stats->globalPsnrU + stats->globalPsnrV) / (8 * stats->encodedPictureCount);
-        stats->elapsedVideoTime = (double)stats->encodedPictureCount / param.frameRate;
-        stats->bitrate = (0.001f * stats->accBits) / stats->elapsedVideoTime;
+        stats->globalPsnrY = m_analyzeAll.m_psnrSumY;
+        stats->globalPsnrU = m_analyzeAll.m_psnrSumU;
+        stats->globalPsnrV = m_analyzeAll.m_psnrSumV;
+        stats->encodedPictureCount = m_analyzeAll.m_numPics;
+        stats->totalWPFrames = m_numWPFrames;
+        stats->accBits = m_analyzeAll.m_accBits;
+        stats->elapsedEncodeTime = (double)(x265_mdate() - m_encodeStartTime) / 1000000;
+        if (stats->encodedPictureCount > 0)
+        {
+            stats->globalSsim = m_analyzeAll.m_globalSsim / stats->encodedPictureCount;
+            stats->globalPsnr = (stats->globalPsnrY * 6 + stats->globalPsnrU + stats->globalPsnrV) / (8 * stats->encodedPictureCount);
+            stats->elapsedVideoTime = (double)stats->encodedPictureCount / param.frameRate;
+            stats->bitrate = (0.001f * stats->accBits) / stats->elapsedVideoTime;
+        }
+        else
+        {
+            stats->globalSsim = 0;
+            stats->globalPsnr = 0;
+            stats->bitrate = 0;
+            stats->elapsedVideoTime = 0;
+        }
     }
-    else
-    {
-        stats->globalSsim = 0;
-        stats->globalPsnr = 0;
-        stats->bitrate = 0;
-        stats->elapsedVideoTime = 0;
-    }
+    /* If new statistics are added to x265_stats, we must check here whether the
+     * structure provided by the user is the new structure or an older one (for
+     * future safety) */
 }
 
 void Encoder::writeLog(int argc, char **argv)
@@ -380,16 +554,16 @@ void Encoder::writeLog(int argc, char **argv)
         fprintf(m_csvfpt, ", %s, ", buffer);
 
         x265_stats stats;
-        fetchStats(&stats);
+        fetchStats(&stats, sizeof(stats));
 
         // elapsed time, fps, bitrate
         fprintf(m_csvfpt, "%.2f, %.2f, %.2f,",
-            stats.elapsedEncodeTime, stats.encodedPictureCount / stats.elapsedEncodeTime, stats.bitrate);
+                stats.elapsedEncodeTime, stats.encodedPictureCount / stats.elapsedEncodeTime, stats.bitrate);
 
         if (param.bEnablePsnr)
             fprintf(m_csvfpt, " %.3lf, %.3lf, %.3lf, %.3lf,",
-            stats.globalPsnrY/stats.encodedPictureCount, stats.globalPsnrU/stats.encodedPictureCount,
-            stats.globalPsnrV/stats.encodedPictureCount, stats.globalPsnr);
+                    stats.globalPsnrY / stats.encodedPictureCount, stats.globalPsnrU / stats.encodedPictureCount,
+                    stats.globalPsnrV / stats.encodedPictureCount, stats.globalPsnr);
         else
             fprintf(m_csvfpt, " -, -, -, -,");
         if (param.bEnableSsim)
@@ -482,7 +656,7 @@ uint64_t Encoder::calculateHashAndPSNR(TComPic* pic, NALUnitEBSP **nalunits)
     int maxvalC = 255 << (X265_DEPTH - 8);
     double refValueY = (double)maxvalY * maxvalY * size;
     double refValueC = (double)maxvalC * maxvalC * size / 4.0;
-    UInt64 ssdY, ssdU, ssdV;
+    uint64_t ssdY, ssdU, ssdV;
 
     ssdY = pic->m_SSDY;
     ssdU = pic->m_SSDU;
@@ -494,53 +668,28 @@ uint64_t Encoder::calculateHashAndPSNR(TComPic* pic, NALUnitEBSP **nalunits)
     const char* digestStr = NULL;
     if (param.decodedPictureHashSEI)
     {
-        SEIDecodedPictureHash sei_recon_picture_digest;
         if (param.decodedPictureHashSEI == 1)
         {
-            /* calculate MD5sum for entire reconstructed picture */
-            sei_recon_picture_digest.method = SEIDecodedPictureHash::MD5;
-            calcMD5(*recon, sei_recon_picture_digest.digest);
-            digestStr = digestToString(sei_recon_picture_digest.digest, 16);
+            digestStr = digestToString(m_frameEncoder->m_seiReconPictureDigest.digest, 16);
         }
         else if (param.decodedPictureHashSEI == 2)
         {
-            sei_recon_picture_digest.method = SEIDecodedPictureHash::CRC;
-            calcCRC(*recon, sei_recon_picture_digest.digest);
-            digestStr = digestToString(sei_recon_picture_digest.digest, 2);
+            digestStr = digestToString(m_frameEncoder->m_seiReconPictureDigest.digest, 2);
         }
         else if (param.decodedPictureHashSEI == 3)
         {
-            sei_recon_picture_digest.method = SEIDecodedPictureHash::CHECKSUM;
-            calcChecksum(*recon, sei_recon_picture_digest.digest);
-            digestStr = digestToString(sei_recon_picture_digest.digest, 4);
+            digestStr = digestToString(m_frameEncoder->m_seiReconPictureDigest.digest, 4);
         }
-
-        /* write the SEI messages */
-        OutputNALUnit onalu(NAL_UNIT_SUFFIX_SEI, 0);
-        m_frameEncoder->m_seiWriter.writeSEImessage(onalu.m_Bitstream, sei_recon_picture_digest, pic->getSlice()->getSPS());
-        writeRBSPTrailingBits(onalu.m_Bitstream);
-
-        int count = 0;
-        while (nalunits[count] != NULL)
-        {
-            count++;
-        }
-
-        nalunits[count] = (NALUnitEBSP*)X265_MALLOC(NALUnitEBSP, 1);
-        if (nalunits[count])
-            nalunits[count]->init(onalu);
-        else
-            digestStr = NULL;
     }
 
     /* calculate the size of the access unit, excluding:
      *  - any AnnexB contributions (start_code_prefix, zero_byte, etc.,)
      *  - SEI NAL units
      */
-    UInt numRBSPBytes = 0;
+    uint32_t numRBSPBytes = 0;
     for (int count = 0; nalunits[count] != NULL; count++)
     {
-        UInt numRBSPBytes_nal = nalunits[count]->m_packetSize;
+        uint32_t numRBSPBytes_nal = nalunits[count]->m_packetSize;
 #if VERBOSE_RATE
         printf("*** %6s numBytesInNALunit: %u\n", nalUnitTypeToString((*it)->m_nalUnitType), numRBSPBytes_nal);
 #endif
@@ -550,28 +699,47 @@ uint64_t Encoder::calculateHashAndPSNR(TComPic* pic, NALUnitEBSP **nalunits)
         }
     }
 
-    UInt bits = numRBSPBytes * 8;
+    uint32_t bits = numRBSPBytes * 8;
 
-    //===== add PSNR =====
-    m_analyzeAll.addResult(psnrY, psnrU, psnrV, (double)bits);
     TComSlice*  slice = pic->getSlice();
+
+    //===== add bits, psnr and ssim =====
+    m_analyzeAll.addBits(bits);
+
+    if (param.bEnablePsnr)
+    {
+        m_analyzeAll.addPsnr(psnrY, psnrU, psnrV);
+    }
+
+    double ssim = 0.0;
+    if (param.bEnableSsim && pic->m_ssimCnt > 0)
+    {
+        ssim = pic->m_ssim / pic->m_ssimCnt;
+        m_analyzeAll.addSsim(ssim);
+    }
     if (slice->isIntra())
     {
-        m_analyzeI.addResult(psnrY, psnrU, psnrV, (double)bits);
+        m_analyzeI.addBits(bits);
+        if (param.bEnablePsnr)
+            m_analyzeI.addPsnr(psnrY, psnrU, psnrV);
+        if (param.bEnableSsim)
+            m_analyzeI.addSsim(ssim);
     }
-    if (slice->isInterP())
+    else if (slice->isInterP())
     {
-        m_analyzeP.addResult(psnrY, psnrU, psnrV, (double)bits);
+        m_analyzeP.addBits(bits);
+        if (param.bEnablePsnr)
+            m_analyzeP.addPsnr(psnrY, psnrU, psnrV);
+        if (param.bEnableSsim)
+            m_analyzeP.addSsim(ssim);
     }
-    if (slice->isInterB())
+    else if (slice->isInterB())
     {
-        m_analyzeB.addResult(psnrY, psnrU, psnrV, (double)bits);
-    }
-    double ssim = 0.0;
-    if (param.bEnableSsim && pic->getSlice()->m_ssimCnt > 0)
-    {
-        ssim = pic->getSlice()->m_ssim / pic->getSlice()->m_ssimCnt;
-        m_globalSsim += ssim;
+        m_analyzeB.addBits(bits);
+        if (param.bEnablePsnr)
+            m_analyzeB.addPsnr(psnrY, psnrU, psnrV);
+        if (param.bEnableSsim)
+            m_analyzeB.addSsim(ssim);
     }
 
     // if debug log level is enabled, per frame logging is performed
@@ -595,10 +763,10 @@ uint64_t Encoder::calculateHashAndPSNR(TComPic* pic, NALUnitEBSP **nalunits)
             for (int list = 0; list < numLists; list++)
             {
                 fprintf(stderr, " [L%d ", list);
-                for (int ref = 0; ref < slice->getNumRefIdx(RefPicList(list)); ref++)
+                for (int ref = 0; ref < slice->getNumRefIdx(list); ref++)
                 {
-                    int k = slice->getRefPOC(RefPicList(list), ref) - slice->getLastIDR();
-                    fprintf(stderr, "%d ",k);
+                    int k = slice->getRefPOC(list, ref) - slice->getLastIDR();
+                    fprintf(stderr, "%d ", k);
                 }
 
                 fprintf(stderr, "]");
@@ -625,12 +793,13 @@ uint64_t Encoder::calculateHashAndPSNR(TComPic* pic, NALUnitEBSP **nalunits)
                 for (int list = 0; list < numLists; list++)
                 {
                     fprintf(m_csvfpt, ", ");
-                    for (int ref = 0; ref < slice->getNumRefIdx(RefPicList(list)); ref++)
+                    for (int ref = 0; ref < slice->getNumRefIdx(list); ref++)
                     {
-                        int k = slice->getRefPOC(RefPicList(list), ref) - slice->getLastIDR();
+                        int k = slice->getRefPOC(list, ref) - slice->getLastIDR();
                         fprintf(m_csvfpt, " %d", k);
                     }
                 }
+
                 if (numLists == 1)
                     fprintf(m_csvfpt, ", -");
             }
@@ -697,6 +866,7 @@ void Encoder::initSPS(TComSPS *sps)
     sps->setPicWidthInLumaSamples(param.sourceWidth);
     sps->setPicHeightInLumaSamples(param.sourceHeight);
     sps->setConformanceWindow(m_conformanceWindow);
+    sps->setChromaFormatIdc(param.internalCsp);
     sps->setMaxCUWidth(g_maxCUWidth);
     sps->setMaxCUHeight(g_maxCUHeight);
     sps->setMaxCUDepth(g_maxCUDepth);
@@ -726,14 +896,14 @@ void Encoder::initSPS(TComSPS *sps)
 
     sps->setMaxTrSize(1 << m_quadtreeTULog2MaxSize);
 
-    for (UInt i = 0; i < g_maxCUDepth - g_addCUDepth; i++)
+    for (uint32_t i = 0; i < g_maxCUDepth - g_addCUDepth; i++)
     {
         sps->setAMPAcc(i, param.bEnableAMP);
     }
 
     sps->setUseAMP(param.bEnableAMP);
 
-    for (UInt i = g_maxCUDepth - g_addCUDepth; i < g_maxCUDepth; i++)
+    for (uint32_t i = g_maxCUDepth - g_addCUDepth; i < g_maxCUDepth; i++)
     {
         sps->setAMPAcc(i, 0);
     }
@@ -749,7 +919,7 @@ void Encoder::initSPS(TComSPS *sps)
     // TODO: hard-code these values in SPS code
     sps->setMaxTLayers(1);
     sps->setTemporalIdNestingFlag(true);
-    for (UInt i = 0; i < sps->getMaxTLayers(); i++)
+    for (uint32_t i = 0; i < sps->getMaxTLayers(); i++)
     {
         sps->setMaxDecPicBuffering(m_maxDecPicBuffering[i], i);
         sps->setNumReorderPics(m_numReorderPics[i], i);
@@ -809,7 +979,7 @@ void Encoder::initSPS(TComSPS *sps)
 void Encoder::initPPS(TComPPS *pps)
 {
     pps->setConstrainedIntraPred(param.bEnableConstrainedIntra);
-    bool bUseDQP = (getMaxCuDQPDepth() > 0) ? true : false;
+    bool bUseDQP = ((getMaxCuDQPDepth() > 0) || param.rc.aqMode) ? true : false;
 
     int lowestQP = -(6 * (X265_DEPTH - 8)); //m_cSPS.getQpBDOffsetY();
 
@@ -968,7 +1138,7 @@ void Encoder::determineLevelAndProfile(x265_param *_param)
         break;
     }
 
-    if (_param->internalBitDepth == 10)
+    if (_param->inputBitDepth > 8)
         m_profile = Profile::MAIN10;
     else if (_param->keyframeMax == 1)
         m_profile = Profile::MAINSTILLPICTURE;
@@ -987,11 +1157,26 @@ void Encoder::configure(x265_param *_param)
         _param->poolNumThreads = 1;
 
     setThreadPool(ThreadPool::allocThreadPool(_param->poolNumThreads));
-    int actual = ThreadPool::getThreadPool()->getThreadCount();
-    if (actual > 1)
+    int poolThreadCount = ThreadPool::getThreadPool()->getThreadCount();
+    int rows = (_param->sourceHeight + _param->maxCUSize - 1) / _param->maxCUSize;
+
+    if (_param->frameNumThreads == 0)
     {
-        x265_log(_param, X265_LOG_INFO, "WPP streams / pool / frames  : %d / %d / %d\n",
-                 (_param->sourceHeight + _param->maxCUSize - 1) / _param->maxCUSize, actual, _param->frameNumThreads);
+        // auto-detect frame threads
+        if (poolThreadCount > 32)
+            _param->frameNumThreads = 6;  // dual-socket 10-core IvyBridge or higher
+        else if (poolThreadCount >= 16)
+            _param->frameNumThreads = 5;  // 8 HT cores, or dual socket
+        else if (poolThreadCount >= 12)
+            _param->frameNumThreads = 3;  // 6 HT cores
+        else if (poolThreadCount >= 4)
+            _param->frameNumThreads = 2;  // Dual or Quad core
+        else
+            _param->frameNumThreads = 1;
+    }
+    if (poolThreadCount > 1)
+    {
+        x265_log(_param, X265_LOG_INFO, "WPP streams / pool / frames  : %d / %d / %d\n", rows, poolThreadCount, _param->frameNumThreads);
     }
     else if (_param->frameNumThreads > 1)
     {
@@ -1007,12 +1192,11 @@ void Encoder::configure(x265_param *_param)
     {
         x265_log(_param, X265_LOG_INFO, "Warning: picture-based SAO used with frame parallelism\n");
     }
-
     if (!_param->keyframeMin)
     {
         _param->keyframeMin = _param->keyframeMax;
     }
-    if (_param->keyframeMin == 1)
+    if (_param->keyframeMax <= 1)
     {
         // disable lookahead for all-intra encodes
         _param->bFrameAdaptive = 0;
@@ -1022,17 +1206,15 @@ void Encoder::configure(x265_param *_param)
     {
         _param->bEnableAMP = false;
     }
-    // if a bitrate is specified, chose ABR.  Else default to CQP
-    if (_param->rc.bitrate)
-    {
-        _param->rc.rateControlMode = X265_RC_ABR;
-    }
 
     if (!(_param->bEnableRDOQ && _param->bEnableTransformSkip))
     {
         _param->bEnableRDOQTS = 0;
     }
-
+    if (_param->bpyramid && !_param->bframes)
+    {
+        _param->bpyramid = 0;
+    }
     /* Set flags according to RDLevel specified - check_params has verified that RDLevel is within range */
     switch (_param->rdLevel)
     {
@@ -1069,8 +1251,10 @@ void Encoder::configure(x265_param *_param)
     vps.setMaxLayers(1);
     for (int i = 0; i < MAX_TLAYER; i++)
     {
-        m_numReorderPics[i] = 1;
-        m_maxDecPicBuffering[i] = X265_MIN(MAX_NUM_REF, X265_MAX(m_numReorderPics[i] + 1, _param->maxNumReferences) + 1);
+        /* Increase the DPB size and reorderpicture if enabled the bpyramid */
+        m_numReorderPics[i] = (_param->bpyramid && _param->bframes > 1) ? 2 : 1;
+        m_maxDecPicBuffering[i] = X265_MIN(MAX_NUM_REF, X265_MAX(m_numReorderPics[i] + 1, _param->maxNumReferences) + m_numReorderPics[i]);
+
         vps.setNumReorderPics(m_numReorderPics[i], i);
         vps.setMaxDecPicBuffering(m_maxDecPicBuffering[i], i);
     }
@@ -1194,7 +1378,7 @@ int Encoder::extractNalData(NALUnitEBSP **nalunits)
     for (; nalcount < num; nalcount++)
     {
         const NALUnitEBSP& nalu = *nalunits[nalcount];
-        uint32_t size = 0; /* size of annexB unit in bytes */
+        uint32_t size; /* size of annexB unit in bytes */
 
         static const char start_code_prefix[] = { 0, 0, 0, 1 };
         if (nalcount == 0 || nalu.m_nalUnitType == NAL_UNIT_SPS || nalu.m_nalUnitType == NAL_UNIT_PPS)
@@ -1208,28 +1392,26 @@ int Encoder::extractNalData(NALUnitEBSP **nalunits)
              *    7.4.1.2.3.
              */
             ::memcpy(m_packetData + memsize, start_code_prefix, 4);
-            size += 4;
+            size = 4;
         }
         else
         {
             ::memcpy(m_packetData + memsize, start_code_prefix + 1, 3);
-            size += 3;
+            size = 3;
         }
         memsize += size;
-        uint32_t nalSize = nalu.m_packetSize;
-        ::memcpy(m_packetData + memsize, nalu.m_nalUnitData, nalSize);
-        size += nalSize;
-        memsize += nalSize;
+        ::memcpy(m_packetData + memsize, nalu.m_nalUnitData, nalu.m_packetSize);
+        memsize += nalu.m_packetSize;
 
-        m_nals[nalcount].i_type = nalu.m_nalUnitType;
-        m_nals[nalcount].i_payload = size;
+        m_nals[nalcount].type = nalu.m_nalUnitType;
+        m_nals[nalcount].sizeBytes = size + nalu.m_packetSize;
     }
 
     /* Setup payload pointers, now that we're done adding content to m_packetData */
     for (int i = 0; i < nalcount; i++)
     {
-        m_nals[i].p_payload = (uint8_t*)m_packetData + offset;
-        offset += m_nals[i].i_payload;
+        m_nals[i].payload = (uint8_t*)m_packetData + offset;
+        offset += m_nals[i].sizeBytes;
     }
 
 fail:
@@ -1266,7 +1448,7 @@ x265_encoder *x265_encoder_open(x265_param *param)
 }
 
 extern "C"
-int x265_encoder_headers(x265_encoder *enc, x265_nal **pp_nal, int *pi_nal)
+int x265_encoder_headers(x265_encoder *enc, x265_nal **pp_nal, uint32_t *pi_nal)
 {
     if (!pp_nal)
         return 0;
@@ -1300,7 +1482,7 @@ int x265_encoder_headers(x265_encoder *enc, x265_nal **pp_nal, int *pi_nal)
 }
 
 extern "C"
-int x265_encoder_encode(x265_encoder *enc, x265_nal **pp_nal, int *pi_nal, x265_picture *pic_in, x265_picture *pic_out)
+int x265_encoder_encode(x265_encoder *enc, x265_nal **pp_nal, uint32_t *pi_nal, x265_picture *pic_in, x265_picture *pic_out)
 {
     Encoder *encoder = static_cast<Encoder*>(enc);
     NALUnitEBSP *nalunits[MAX_NAL_UNITS] = { 0, 0, 0, 0, 0 };
@@ -1330,11 +1512,11 @@ int x265_encoder_encode(x265_encoder *enc, x265_nal **pp_nal, int *pi_nal, x265_
 EXTERN_CYCLE_COUNTER(ME);
 
 extern "C"
-void x265_encoder_get_stats(x265_encoder *enc, x265_stats *outputStats)
+void x265_encoder_get_stats(x265_encoder *enc, x265_stats *outputStats, uint32_t statsSizeBytes)
 {
     Encoder *encoder = static_cast<Encoder*>(enc);
 
-    encoder->fetchStats(outputStats);
+    encoder->fetchStats(outputStats, statsSizeBytes);
 }
 
 extern "C"
@@ -1349,6 +1531,7 @@ extern "C"
 void x265_encoder_close(x265_encoder *enc)
 {
     Encoder *encoder = static_cast<Encoder*>(enc);
+
     REPORT_CYCLE_COUNTER(ME);
 
     encoder->printSummary();

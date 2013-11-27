@@ -53,46 +53,52 @@ private:
         return blkX + blkY * size;
     }
 
+    int m_csp;
+    int m_part;
 public:
 
-    short* m_bufY;
-    short* m_bufCb;
-    short* m_bufCr;
+    int16_t* m_bufY;
+    int16_t* m_bufCb;
+    int16_t* m_bufCr;
 
     unsigned int m_width;
     unsigned int m_height;
     unsigned int m_cwidth;
     unsigned int m_cheight;
 
+    int m_hChromaShift;
+    int m_vChromaShift;
+
     TShortYUV();
     virtual ~TShortYUV();
 
-    void create(unsigned int width, unsigned int height);
+    void create(unsigned int width, unsigned int height, int csp);
+
     void destroy();
     void clear();
 
-    short* getLumaAddr()  { return m_bufY; }
+    int16_t* getLumaAddr()  { return m_bufY; }
 
-    short* getCbAddr()    { return m_bufCb; }
+    int16_t* getCbAddr()    { return m_bufCb; }
 
-    short* getCrAddr()    { return m_bufCr; }
+    int16_t* getCrAddr()    { return m_bufCr; }
 
     //  Access starting position of YUV partition unit buffer
-    short* getLumaAddr(unsigned int partUnitIdx) { return m_bufY + getAddrOffset(partUnitIdx, m_width); }
+    int16_t* getLumaAddr(unsigned int partUnitIdx) { return m_bufY + getAddrOffset(partUnitIdx, m_width); }
 
-    short* getCbAddr(unsigned int partUnitIdx) { return m_bufCb + (getAddrOffset(partUnitIdx, m_cwidth) >> 1); }
+    int16_t* getCbAddr(unsigned int partUnitIdx) { return m_bufCb + (getAddrOffset(partUnitIdx, m_cwidth) >> 1); }
 
-    short* getCrAddr(unsigned int partUnitIdx) { return m_bufCr + (getAddrOffset(partUnitIdx, m_cwidth) >> 1); }
+    int16_t* getCrAddr(unsigned int partUnitIdx) { return m_bufCr + (getAddrOffset(partUnitIdx, m_cwidth) >> 1); }
 
     //  Access starting position of YUV transform unit buffer
-    short* getLumaAddr(unsigned int partIdx, unsigned int size) { return m_bufY + getAddrOffset(partIdx, size, m_width); }
+    int16_t* getLumaAddr(unsigned int partIdx, unsigned int size) { return m_bufY + getAddrOffset(partIdx, size, m_width); }
 
-    short* getCbAddr(unsigned int partIdx, unsigned int size) { return m_bufCb + getAddrOffset(partIdx, size, m_cwidth); }
+    int16_t* getCbAddr(unsigned int partIdx, unsigned int size) { return m_bufCb + getAddrOffset(partIdx, size, m_cwidth); }
 
-    short* getCrAddr(unsigned int partIdx, unsigned int size) { return m_bufCr + getAddrOffset(partIdx, size, m_cwidth); }
+    int16_t* getCrAddr(unsigned int partIdx, unsigned int size) { return m_bufCr + getAddrOffset(partIdx, size, m_cwidth); }
 
-    void subtractLuma(TComYuv* srcYuv0, TComYuv* srcYuv1, unsigned int trUnitIdx, unsigned int partSize);
-    void subtractChroma(TComYuv* srcYuv0, TComYuv* srcYuv1, unsigned int trUnitIdx, unsigned int partSize);
+    void subtractLuma(TComYuv* srcYuv0, TComYuv* srcYuv1, unsigned int trUnitIdx, unsigned int partSize, uint32_t part);
+    void subtractChroma(TComYuv* srcYuv0, TComYuv* srcYuv1, unsigned int trUnitIdx, unsigned int partSize, uint32_t part);
     void subtract(TComYuv* srcYuv0, TComYuv* srcYuv1, unsigned int trUnitIdx, unsigned int partSize);
 
     void addClip(TShortYUV* srcYuv0, TShortYUV* srcYuv1, unsigned int trUnitIdx, unsigned int partSize);

@@ -30,6 +30,7 @@
 #define X265_PRIMITIVES_H
 
 #include <stdint.h>
+#include <assert.h>
 #include "cpu.h"
 
 #define FENC_STRIDE 64
@@ -49,13 +50,11 @@ typedef uint16_t pixel;
 typedef uint32_t sum_t;
 typedef uint64_t sum2_t;
 typedef uint64_t pixel4;
-typedef int64_t ssim_t;
 #else
 typedef uint8_t pixel;
 typedef uint16_t sum_t;
 typedef uint32_t sum2_t;
 typedef uint32_t pixel4;
-typedef int32_t ssim_t;
 #endif // if HIGH_BIT_DEPTH
 
 namespace x265 {
@@ -71,8 +70,10 @@ enum LumaPartitions
     NUM_LUMA_PARTITIONS
 };
 
-// 4:2:0 chroma partition sizes
-enum ChromaPartions
+// 4:2:0 chroma partition sizes. These enums are just a convenience for indexing into the
+// chroma primitive arrays when instantiating templates. The function tables should always
+// be indexed by the luma partition enum
+enum Chroma420Partions
 {
     CHROMA_2x2, // never used by HEVC
     CHROMA_4x4,   CHROMA_4x2,   CHROMA_2x4,
@@ -113,15 +114,6 @@ enum IDcts
     NUM_IDCTS
 };
 
-enum IPFilterConf_P_P
-{
-    FILTER_H_P_P_8,
-    FILTER_H_P_P_4,
-    FILTER_V_P_P_8,
-    FILTER_V_P_P_4,
-    NUM_IPFILTER_P_P
-};
-
 enum IPFilterConf_P_S
 {
     FILTER_H_P_S_8,
@@ -131,13 +123,6 @@ enum IPFilterConf_P_S
     NUM_IPFILTER_P_S
 };
 
-enum IPFilterConf_S_P
-{
-    FILTER_V_S_P_8,
-    FILTER_V_S_P_4,
-    NUM_IPFILTER_S_P
-};
-
 enum IPFilterConf_S_S
 {
     FILTER_V_S_S_8,
@@ -145,60 +130,79 @@ enum IPFilterConf_S_S
     NUM_IPFILTER_S_S
 };
 
-// Returns a Partitions enum for the given size, always expected to return a valid enum
-int PartitionFromSizes(int width, int height);
+// Returns a LumaPartitions enum for the given size, always expected to return a valid enum
+inline int partitionFromSizes(int width, int height)
+{
+    assert(((width | height) & ~(4 | 8 | 16 | 32 | 64)) == 0);
+    extern uint8_t lumaPartitioneMapTable[];
+    int w = (width >> 2) - 1;
+    int h = (height >> 2) - 1;
+    int part = (int)lumaPartitioneMapTable[(w << 4) + h];
+    assert(part != 255);
+    return part;
+}
 
 typedef int  (*pixelcmp_t)(pixel *fenc, intptr_t fencstride, pixel *fref, intptr_t frefstride); // fenc is aligned
-typedef int  (*pixelcmp_ss_t)(short *fenc, intptr_t fencstride, short *fref, intptr_t frefstride);
-typedef int  (*pixelcmp_sp_t)(short *fenc, intptr_t fencstride, pixel *fref, intptr_t frefstride);
-typedef void (*pixelcmp_x4_t)(pixel *fenc, pixel *fref0, pixel *fref1, pixel *fref2, pixel *fref3, intptr_t frefstride, int *res);
-typedef void (*pixelcmp_x3_t)(pixel *fenc, pixel *fref0, pixel *fref1, pixel *fref2, intptr_t frefstride, int *res);
-typedef void (*ipfilter_pp_t)(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, const short *coeff);
-typedef void (*ipfilter_ps_t)(pixel *src, intptr_t srcStride, short *dst, intptr_t dstStride, int width, int height, const short *coeff);
-typedef void (*ipfilter_sp_t)(short *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, const short *coeff);
-typedef void (*ipfilter_ss_t)(short *src, intptr_t srcStride, short *dst, intptr_t dstStride, int width, int height, const short *coeff);
-typedef void (*ipfilter_p2s_t)(pixel *src, intptr_t srcStride, short *dst, intptr_t dstStride, int width, int height);
-typedef void (*ipfilter_s2p_t)(short *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height);
+typedef int  (*pixelcmp_ss_t)(int16_t *fenc, intptr_t fencstride, int16_t *fref, intptr_t frefstride);
+typedef int  (*pixelcmp_sp_t)(int16_t *fenc, intptr_t fencstride, pixel *fref, intptr_t frefstride);
+typedef void (*pixelcmp_x4_t)(pixel *fenc, pixel *fref0, pixel *fref1, pixel *fref2, pixel *fref3, intptr_t frefstride, int32_t *res);
+typedef void (*pixelcmp_x3_t)(pixel *fenc, pixel *fref0, pixel *fref1, pixel *fref2, intptr_t frefstride, int32_t *res);
+typedef void (*ipfilter_ps_t)(pixel *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int width, int height, const int16_t *coeff);
+typedef void (*ipfilter_sp_t)(int16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, const int coeffIdx);
+typedef void (*ipfilter_ss_t)(int16_t *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int width, int height, const int coeffIdx);
+typedef void (*ipfilter_p2s_t)(pixel *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int width, int height);
+typedef void (*ipfilter_s2p_t)(int16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height);
 typedef void (*blockcpy_pp_t)(int bx, int by, pixel *dst, intptr_t dstride, pixel *src, intptr_t sstride); // dst is aligned
-typedef void (*blockcpy_sp_t)(int bx, int by, short *dst, intptr_t dstride, pixel *src, intptr_t sstride); // dst is aligned
-typedef void (*blockcpy_ps_t)(int bx, int by, pixel *dst, intptr_t dstride, short *src, intptr_t sstride); // dst is aligned
-typedef void (*blockcpy_sc_t)(int bx, int by, short *dst, intptr_t dstride, uint8_t *src, intptr_t sstride); // dst is aligned
-typedef void (*pixelsub_sp_t)(int bx, int by, short *dst, intptr_t dstride, pixel *src0, pixel *src1, intptr_t sstride0, intptr_t sstride1);
-typedef void (*pixeladd_ss_t)(int bx, int by, short *dst, intptr_t dstride, short *src0, short *src1, intptr_t sstride0, intptr_t sstride1);
-typedef void (*pixeladd_pp_t)(int bx, int by, pixel *dst, intptr_t dstride, pixel *src0, pixel *src1, intptr_t sstride0, intptr_t sstride1);
+typedef void (*blockcpy_sp_t)(int bx, int by, int16_t *dst, intptr_t dstride, pixel *src, intptr_t sstride); // dst is aligned
+typedef void (*blockcpy_ps_t)(int bx, int by, pixel *dst, intptr_t dstride, int16_t *src, intptr_t sstride); // dst is aligned
+typedef void (*blockcpy_sc_t)(int bx, int by, int16_t *dst, intptr_t dstride, uint8_t *src, intptr_t sstride); // dst is aligned
+typedef void (*pixelsub_ps_t)(int bx, int by, int16_t *dst, intptr_t dstride, pixel *src0, pixel *src1, intptr_t sstride0, intptr_t sstride1);
+typedef void (*pixeladd_ss_t)(int bx, int by, int16_t *dst, intptr_t dstride, int16_t *src0, int16_t *src1, intptr_t sstride0, intptr_t sstride1);
 typedef void (*pixelavg_pp_t)(pixel *dst, intptr_t dstride, pixel *src0, intptr_t sstride0, pixel *src1, intptr_t sstride1, int weight);
-typedef void (*blockfill_s_t)(short *dst, intptr_t dstride, short val);
+typedef void (*blockfill_s_t)(int16_t *dst, intptr_t dstride, int16_t val);
 
-typedef void (*intra_dc_t)(pixel* above, pixel* left, pixel* dst, intptr_t dstStride, int width, int bFilter);
-typedef void (*intra_planar_t)(pixel* above, pixel* left, pixel* dst, intptr_t dstStride, int width);
+typedef void (*intra_dc_t)(pixel* above, pixel* left, pixel* dst, intptr_t dstStride, int bFilter);
+typedef void (*intra_planar_t)(pixel* above, pixel* left, pixel* dst, intptr_t dstStride);
 typedef void (*intra_ang_t)(pixel* dst, int dstStride, int width, int dirMode, bool bFilter, pixel *refLeft, pixel *refAbove);
 typedef void (*intra_allangs_t)(pixel *dst, pixel *above0, pixel *left0, pixel *above1, pixel *left1, bool bLuma);
 
-typedef void (*cvt16to32_shl_t)(int *dst, short *src, intptr_t, int, int);
-typedef void (*cvt16to16_shl_t)(short *dst, short *src, int, int, intptr_t, int);
-typedef void (*cvt32to16_shr_t)(short *dst, int *src, intptr_t, int, int);
+typedef void (*cvt16to32_shl_t)(int32_t *dst, int16_t *src, intptr_t, int, int);
+typedef void (*cvt16to16_shl_t)(int16_t *dst, int16_t *src, int, int, intptr_t, int);
+typedef void (*cvt32to16_shr_t)(int16_t *dst, int32_t *src, intptr_t, int, int);
 
-typedef void (*dct_t)(short *src, int *dst, intptr_t stride);
-typedef void (*idct_t)(int *src, short *dst, intptr_t stride);
-typedef void (*calcresidual_t)(pixel *fenc, pixel *pred, short *residual, int stride);
-typedef void (*calcrecon_t)(pixel* pred, short* residual, pixel* recon, short* reconqt, pixel *reconipred, int stride, int strideqt, int strideipred);
+typedef void (*dct_t)(int16_t *src, int32_t *dst, intptr_t stride);
+typedef void (*idct_t)(int32_t *src, int16_t *dst, intptr_t stride);
+typedef void (*calcresidual_t)(pixel *fenc, pixel *pred, int16_t *residual, intptr_t stride);
+typedef void (*calcrecon_t)(pixel* pred, int16_t* residual, pixel* recon, int16_t* reconqt, pixel *reconipred, int stride, int strideqt, int strideipred);
 typedef void (*transpose_t)(pixel* dst, pixel* src, intptr_t stride);
-typedef uint32_t (*quant_t)(int *coef, int *quantCoeff, int *deltaU, int *qCoef, int qBits, int add, int numCoeff, int* lastPos);
-typedef void (*dequant_t)(const int* src, int* dst, int width, int height, int mcqp_miper, int mcqp_mirem, bool useScalingList,
-                          unsigned int trSizeLog2, int *dequantCoef);
+typedef uint32_t (*quant_t)(int32_t *coef, int32_t *quantCoeff, int32_t *deltaU, int32_t *qCoef, int qBits, int add, int numCoeff, int32_t* lastPos);
+typedef void (*dequant_scaling_t)(const int32_t* src, const int32_t *dequantCoef, int32_t* dst, int num, int mcqp_miper, int shift);
+typedef void (*dequant_normal_t)(const int32_t* quantCoef, int32_t* coef, int num, int scale, int shift);
 
-typedef void (*weightpUniPixel_t)(pixel *src, pixel *dst, intptr_t srcStride, intptr_t dstStride, int width, int height, int w0, int round, int shift, int offset);
-typedef void (*weightpUni_t)(int16_t *src, pixel *dst, intptr_t srcStride, intptr_t dstStride, int width, int height, int w0, int round, int shift, int offset);
+typedef void (*weightp_pp_t)(pixel *src, pixel *dst, intptr_t srcStride, intptr_t dstStride, int width, int height, int w0, int round, int shift, int offset);
+typedef void (*weightp_sp_t)(int16_t *src, pixel *dst, intptr_t srcStride, intptr_t dstStride, int width, int height, int w0, int round, int shift, int offset);
 typedef void (*scale_t)(pixel *dst, pixel *src, intptr_t stride);
 typedef void (*downscale_t)(pixel *src0, pixel *dstf, pixel *dsth, pixel *dstv, pixel *dstc,
                             intptr_t src_stride, intptr_t dst_stride, int width, int height);
 typedef void (*extendCURowBorder_t)(pixel* txt, intptr_t stride, int width, int height, int marginX);
-typedef void (*ssim_4x4x2_core_t)(const pixel *pix1, intptr_t stride1, const pixel *pix2, intptr_t stride2, ssim_t sums[2][4]);
-typedef float (*ssim_end4_t)(ssim_t sum0[5][4], ssim_t sum1[5][4], int width);
+typedef void (*ssim_4x4x2_core_t)(const pixel *pix1, intptr_t stride1, const pixel *pix2, intptr_t stride2, int sums[2][4]);
+typedef float (*ssim_end4_t)(int sum0[5][4], int sum1[5][4], int width);
 typedef uint64_t (*var_t)(pixel *pix, intptr_t stride);
 typedef void (*plane_copy_deinterleave_t)(pixel *dstu, intptr_t dstuStride, pixel *dstv, intptr_t dstvStride, pixel *src,  intptr_t srcStride, int w, int h);
 
 typedef void (*filter_pp_t) (pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx);
+typedef void (*filter_ps_t) (pixel *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int coeffIdx);
+typedef void (*filter_sp_t) (int16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int coeffIdx);
+typedef void (*filter_ss_t) (int16_t *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int coeffIdx);
+typedef void (*filter_hv_pp_t) (pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int idxX, int idxY);
+typedef void (*filter_p2s_t)(pixel *src, intptr_t srcStride, int16_t *dst, int width, int height);
+
+typedef void (*copy_pp_t)(pixel *dst, intptr_t dstride, pixel *src, intptr_t sstride); // dst is aligned
+typedef void (*copy_sp_t)(pixel *dst, intptr_t dstStride, int16_t *src, intptr_t srcStride);
+typedef void (*copy_ps_t)(int16_t *dst, intptr_t dstStride, pixel *src, intptr_t srcStride);
+
+typedef void (*pixel_sub_ps_t)(int16_t *dst, intptr_t dstride, pixel *src0, pixel *src1, intptr_t sstride0, intptr_t sstride1);
+typedef void (*pixel_add_ps_t)(pixel *a, intptr_t dstride, pixel *b0, int16_t *b1, intptr_t sstride0, intptr_t sstride1);
 
 /* Define a structure containing function pointers to optimized encoder
  * primitives.  Each pointer can reference either an assembly routine,
@@ -215,54 +219,74 @@ struct EncoderPrimitives
     pixelcmp_t      sa8d_inter[NUM_LUMA_PARTITIONS]; // sa8d primitives for motion search partitions
     pixelcmp_t      sa8d[NUM_SQUARE_BLOCKS];         // sa8d primitives for square intra blocks
 
-    blockcpy_pp_t   blockcpy_pp;                // block copy pixel from pixel
-    blockcpy_ps_t   blockcpy_ps;                // block copy pixel from short
-    blockcpy_sp_t   blockcpy_sp;                // block copy short from pixel
-    blockcpy_sc_t   blockcpy_sc;                // block copy short from unsigned char
     blockfill_s_t   blockfill_s[NUM_SQUARE_BLOCKS];  // block fill with value
+    blockcpy_pp_t   blockcpy_pp;                     // block copy pixel from pixel
+    blockcpy_ps_t   blockcpy_ps;                     // block copy pixel from short
     cvt16to32_shl_t cvt16to32_shl;
-    cvt16to16_shl_t cvt16to16_shl;
     cvt32to16_shr_t cvt32to16_shr;
 
-    ipfilter_pp_t   ipfilter_pp[NUM_IPFILTER_P_P];
-    ipfilter_ps_t   ipfilter_ps[NUM_IPFILTER_P_S];
-    ipfilter_sp_t   ipfilter_sp[NUM_IPFILTER_S_P];
-    ipfilter_ss_t   ipfilter_ss[NUM_IPFILTER_S_S];
-    ipfilter_p2s_t  ipfilter_p2s;
-    ipfilter_s2p_t  ipfilter_s2p;
-    extendCURowBorder_t extendRowBorder;
-    filter_pp_t     chroma_hpp[NUM_CHROMA_PARTITIONS];
-    filter_pp_t     luma_hpp[NUM_LUMA_PARTITIONS];
-    filter_pp_t     chroma_vpp[NUM_CHROMA_PARTITIONS];
+    copy_pp_t       luma_copy_pp[NUM_LUMA_PARTITIONS];
+    copy_sp_t       luma_copy_sp[NUM_LUMA_PARTITIONS];
+    copy_ps_t       luma_copy_ps[NUM_LUMA_PARTITIONS];
+    pixel_sub_ps_t  luma_sub_ps[NUM_LUMA_PARTITIONS];
+    pixel_add_ps_t  luma_add_ps[NUM_LUMA_PARTITIONS];
 
-    intra_dc_t      intra_pred_dc;
-    intra_planar_t  intra_pred_planar;
+    filter_pp_t     luma_hpp[NUM_LUMA_PARTITIONS];
+    filter_ps_t     luma_hps[NUM_LUMA_PARTITIONS];
+    filter_pp_t     luma_vpp[NUM_LUMA_PARTITIONS];
+    filter_ps_t     luma_vps[NUM_LUMA_PARTITIONS];
+    filter_sp_t     luma_vsp[NUM_LUMA_PARTITIONS];
+    filter_ss_t     luma_vss[NUM_LUMA_PARTITIONS];
+    filter_hv_pp_t  luma_hvpp[NUM_LUMA_PARTITIONS];
+    ipfilter_ps_t   ipfilter_ps[NUM_IPFILTER_P_S];
+    ipfilter_ss_t   ipfilter_ss[NUM_IPFILTER_S_S];
+    filter_p2s_t    luma_p2s;
+    filter_p2s_t    chroma_p2s;
+    ipfilter_sp_t   chroma_vsp;
+
+    weightp_sp_t    weight_sp;
+    weightp_pp_t    weight_pp;
+    pixeladd_ss_t   pixeladd_ss;
+    pixelavg_pp_t   pixelavg_pp[NUM_LUMA_PARTITIONS];
+
+    intra_dc_t      intra_pred_dc[NUM_SQUARE_BLOCKS];
+    intra_planar_t  intra_pred_planar[NUM_SQUARE_BLOCKS];
     intra_ang_t     intra_pred_ang;
     intra_allangs_t intra_pred_allangs[NUM_SQUARE_BLOCKS];
+    scale_t         scale1D_128to64;
+    scale_t         scale2D_64to32;
 
     dct_t           dct[NUM_DCTS];
     idct_t          idct[NUM_IDCTS];
     quant_t         quant;
-    dequant_t       dequant;
+    dequant_scaling_t dequant_scaling;
+    dequant_normal_t dequant_normal;
 
     calcresidual_t  calcresidual[NUM_SQUARE_BLOCKS];
     calcrecon_t     calcrecon[NUM_SQUARE_BLOCKS];
     transpose_t     transpose[NUM_SQUARE_BLOCKS];
 
-    weightpUni_t    weightpUni;
-    weightpUniPixel_t weightpUniPixel;
-    pixelsub_sp_t   pixelsub_sp;
-    pixeladd_ss_t   pixeladd_ss;
-    pixeladd_pp_t   pixeladd_pp;
-    pixelavg_pp_t   pixelavg_pp[NUM_LUMA_PARTITIONS];
-
-    scale_t         scale1D_128to64;
-    scale_t         scale2D_64to32;
-    downscale_t     frame_init_lowres_core;
-    ssim_end4_t     ssim_end_4;
-    var_t           var[NUM_LUMA_PARTITIONS];
+    var_t           var[NUM_SQUARE_BLOCKS];
     ssim_4x4x2_core_t ssim_4x4x2_core;
+    ssim_end4_t     ssim_end_4;
+
+    downscale_t     frame_init_lowres_core;
     plane_copy_deinterleave_t plane_copy_deinterleave_c;
+    extendCURowBorder_t extendRowBorder;
+
+    struct {
+        filter_pp_t     filter_vpp[NUM_LUMA_PARTITIONS];
+        filter_ps_t     filter_vps[NUM_LUMA_PARTITIONS];
+        filter_sp_t     filter_vsp[NUM_LUMA_PARTITIONS];
+        filter_ss_t     filter_vss[NUM_LUMA_PARTITIONS];
+        filter_pp_t     filter_hpp[NUM_LUMA_PARTITIONS];
+        filter_ps_t     filter_hps[NUM_LUMA_PARTITIONS];
+        copy_pp_t       copy_pp[NUM_LUMA_PARTITIONS];
+        copy_sp_t       copy_sp[NUM_LUMA_PARTITIONS];
+        copy_ps_t       copy_ps[NUM_LUMA_PARTITIONS];
+        pixel_sub_ps_t  sub_ps[NUM_LUMA_PARTITIONS];
+        pixel_add_ps_t  add_ps[NUM_LUMA_PARTITIONS];
+    } chroma[4]; // X265_CSP_COUNT - do not want to include x265.h here
 };
 
 /* This copy of the table is what gets used by the encoder.

@@ -35,96 +35,46 @@ extern "C" {
  *      opaque handler for encoder */
 typedef struct x265_encoder x265_encoder;
 
-// TODO: Existing names used for the different NAL unit types can be altered to better reflect the names in the spec.
-//       However, the names in the spec are not yet stable at this point. Once the names are stable, a cleanup
-//       effort can be done without use of macros to alter the names used to indicate the different NAL unit types.
 typedef enum
 {
-    NAL_UNIT_CODED_SLICE_TRAIL_N = 0, // 0
-    NAL_UNIT_CODED_SLICE_TRAIL_R,   // 1
-
-    NAL_UNIT_CODED_SLICE_TSA_N,     // 2
-    NAL_UNIT_CODED_SLICE_TLA_R,     // 3
-
-    NAL_UNIT_CODED_SLICE_STSA_N,    // 4
-    NAL_UNIT_CODED_SLICE_STSA_R,    // 5
-
-    NAL_UNIT_CODED_SLICE_RADL_N,    // 6
-    NAL_UNIT_CODED_SLICE_RADL_R,    // 7
-
-    NAL_UNIT_CODED_SLICE_RASL_N,    // 8
-    NAL_UNIT_CODED_SLICE_RASL_R,    // 9
-
-    NAL_UNIT_RESERVED_VCL_N10,
-    NAL_UNIT_RESERVED_VCL_R11,
-    NAL_UNIT_RESERVED_VCL_N12,
-    NAL_UNIT_RESERVED_VCL_R13,
-    NAL_UNIT_RESERVED_VCL_N14,
-    NAL_UNIT_RESERVED_VCL_R15,
-
-    NAL_UNIT_CODED_SLICE_BLA_W_LP,  // 16
-    NAL_UNIT_CODED_SLICE_BLA_W_RADL, // 17
-    NAL_UNIT_CODED_SLICE_BLA_N_LP,  // 18
-    NAL_UNIT_CODED_SLICE_IDR_W_RADL, // 19
-    NAL_UNIT_CODED_SLICE_IDR_N_LP,  // 20
-    NAL_UNIT_CODED_SLICE_CRA,       // 21
-    NAL_UNIT_RESERVED_IRAP_VCL22,
-    NAL_UNIT_RESERVED_IRAP_VCL23,
-
-    NAL_UNIT_RESERVED_VCL24,
-    NAL_UNIT_RESERVED_VCL25,
-    NAL_UNIT_RESERVED_VCL26,
-    NAL_UNIT_RESERVED_VCL27,
-    NAL_UNIT_RESERVED_VCL28,
-    NAL_UNIT_RESERVED_VCL29,
-    NAL_UNIT_RESERVED_VCL30,
-    NAL_UNIT_RESERVED_VCL31,
-
-    NAL_UNIT_VPS,                   // 32
-    NAL_UNIT_SPS,                   // 33
-    NAL_UNIT_PPS,                   // 34
-    NAL_UNIT_ACCESS_UNIT_DELIMITER, // 35
-    NAL_UNIT_EOS,                   // 36
-    NAL_UNIT_EOB,                   // 37
-    NAL_UNIT_FILLER_DATA,           // 38
-    NAL_UNIT_PREFIX_SEI,            // 39
-    NAL_UNIT_SUFFIX_SEI,            // 40
-    NAL_UNIT_RESERVED_NVCL41,
-    NAL_UNIT_RESERVED_NVCL42,
-    NAL_UNIT_RESERVED_NVCL43,
-    NAL_UNIT_RESERVED_NVCL44,
-    NAL_UNIT_RESERVED_NVCL45,
-    NAL_UNIT_RESERVED_NVCL46,
-    NAL_UNIT_RESERVED_NVCL47,
-    NAL_UNIT_UNSPECIFIED_48,
-    NAL_UNIT_UNSPECIFIED_49,
-    NAL_UNIT_UNSPECIFIED_50,
-    NAL_UNIT_UNSPECIFIED_51,
-    NAL_UNIT_UNSPECIFIED_52,
-    NAL_UNIT_UNSPECIFIED_53,
-    NAL_UNIT_UNSPECIFIED_54,
-    NAL_UNIT_UNSPECIFIED_55,
-    NAL_UNIT_UNSPECIFIED_56,
-    NAL_UNIT_UNSPECIFIED_57,
-    NAL_UNIT_UNSPECIFIED_58,
-    NAL_UNIT_UNSPECIFIED_59,
-    NAL_UNIT_UNSPECIFIED_60,
-    NAL_UNIT_UNSPECIFIED_61,
-    NAL_UNIT_UNSPECIFIED_62,
-    NAL_UNIT_UNSPECIFIED_63,
-    NAL_UNIT_INVALID,
+    NAL_UNIT_CODED_SLICE_TRAIL_N = 0,
+    NAL_UNIT_CODED_SLICE_TRAIL_R,
+    NAL_UNIT_CODED_SLICE_TSA_N,
+    NAL_UNIT_CODED_SLICE_TLA_R,
+    NAL_UNIT_CODED_SLICE_STSA_N,
+    NAL_UNIT_CODED_SLICE_STSA_R,
+    NAL_UNIT_CODED_SLICE_RADL_N,
+    NAL_UNIT_CODED_SLICE_RADL_R,
+    NAL_UNIT_CODED_SLICE_RASL_N,
+    NAL_UNIT_CODED_SLICE_RASL_R,
+    NAL_UNIT_CODED_SLICE_BLA_W_LP = 16,
+    NAL_UNIT_CODED_SLICE_BLA_W_RADL,
+    NAL_UNIT_CODED_SLICE_BLA_N_LP,
+    NAL_UNIT_CODED_SLICE_IDR_W_RADL,
+    NAL_UNIT_CODED_SLICE_IDR_N_LP,
+    NAL_UNIT_CODED_SLICE_CRA,
+    NAL_UNIT_VPS = 32,
+    NAL_UNIT_SPS,
+    NAL_UNIT_PPS,
+    NAL_UNIT_ACCESS_UNIT_DELIMITER,
+    NAL_UNIT_EOS,
+    NAL_UNIT_EOB,
+    NAL_UNIT_FILLER_DATA,
+    NAL_UNIT_PREFIX_SEI,
+    NAL_UNIT_SUFFIX_SEI,
+    NAL_UNIT_INVALID = 64,
 } NalUnitType;
 
-/* The data within the payload is already NAL-encapsulated; the type
- * is merely in the struct for easy access by the calling application.
- * All data returned in an x265_nal_t, including the data in p_payload, is no longer
- * valid after the next call to x265_encoder_encode.  Thus it must be used or copied
- * before calling x265_encoder_encode again. */
+/* The data within the payload is already NAL-encapsulated; the type is merely
+ * in the struct for easy access by the calling application.  All data returned
+ * in an x265_nal, including the data in payload, is no longer valid after the
+ * next call to x265_encoder_encode.  Thus it must be used or copied before
+ * calling x265_encoder_encode again. */
 typedef struct x265_nal
 {
-    int      i_type;      /* NalUnitType */
-    int      i_payload;   /* size in bytes */
-    uint8_t *p_payload;
+    uint32_t type;        /* NalUnitType */
+    uint32_t sizeBytes;   /* size in bytes */
+    uint8_t* payload;
 } x265_nal;
 
 typedef struct x265_picture
@@ -134,6 +84,7 @@ typedef struct x265_picture
     int     bitDepth;
     int     sliceType;
     int     poc;
+    int     colorSpace;
     int64_t pts;
     void*   userData;
 } x265_picture;
@@ -185,6 +136,7 @@ typedef enum
 #define X265_CPU_SLOW_PALIGNR    0x4000000  /* such as on the AMD Bobcat */
 
 static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star", "full", 0 };
+static const char * const x265_b_pyramid_names[] = { "none", "normal", 0 };
 
 #define X265_MAX_SUBPEL_LEVEL   7
 
@@ -204,10 +156,52 @@ static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star
 #define X265_TYPE_I             0x0002
 #define X265_TYPE_P             0x0003
 #define X265_TYPE_BREF          0x0004  /* Non-disposable B-frame */
+#define X265_B_PYRAMID_NORMAL   0x0001
 #define X265_TYPE_B             0x0005
 #define X265_TYPE_KEYFRAME      0x0006  /* IDR or I depending on b_open_gop option */
+#define X265_AQ_NONE                 0
+#define X265_AQ_VARIANCE             1
 #define IS_X265_TYPE_I(x) ((x) == X265_TYPE_I || (x) == X265_TYPE_IDR)
 #define IS_X265_TYPE_B(x) ((x) == X265_TYPE_B || (x) == X265_TYPE_BREF)
+
+/* NOTE! For this release only X265_CSP_I420 is supported */
+
+/* Supported internal color space types (according to semantics of chroma_format_idc) */
+#define X265_CSP_I400           0  /* yuv 4:0:0 planar */
+#define X265_CSP_I420           1  /* yuv 4:2:0 planar */
+#define X265_CSP_I422           2  /* yuv 4:2:2 planar */
+#define X265_CSP_I444           3  /* yuv 4:4:4 planar */
+#define X265_CSP_COUNT          4  /* Number of supported internal color spaces */
+
+/* These color spaces will eventually be supported as input pictures. The pictures will
+ * be converted to the appropriate planar color spaces at ingest */
+#define X265_CSP_NV12           4  /* yuv 4:2:0, with one y plane and one packed u+v */
+#define X265_CSP_NV16           5  /* yuv 4:2:2, with one y plane and one packed u+v */
+
+/* Interleaved color-spaces may eventually be supported as input pictures */
+#define X265_CSP_BGR            6  /* packed bgr 24bits   */
+#define X265_CSP_BGRA           7  /* packed bgr 32bits   */
+#define X265_CSP_RGB            8  /* packed rgb 24bits   */
+#define X265_CSP_MAX            9  /* end of list */
+
+static const char * const x265_source_csp_names[] = { "i400", "i420", "i422", "i444", "nv12", "nv16", 0 };
+
+typedef struct
+{
+    int planes;
+    int width[3];
+    int height[3];
+} x265_cli_csp;
+
+const x265_cli_csp x265_cli_csps[] =
+{
+    { 1, { 0, 0, 0 }, { 0, 0, 0 } }, /* i400 */
+    { 3, { 0, 1, 1 }, { 0, 1, 1 } }, /* i420 */
+    { 3, { 0, 1, 1 }, { 0, 0, 0 } }, /* i422 */
+    { 3, { 0, 0, 0 }, { 0, 0, 0 } }, /* i444 */
+    { 2, { 0, 0 },    { 0, 1 } },    /* nv12 */
+    { 2, { 0, 0 },    { 0, 0 } },    /* nv16 */
+};
 
 /* rate tolerance method */
 typedef enum
@@ -220,7 +214,7 @@ typedef enum
 /*Level of Rate Distortion Optimization Allowed */
 typedef enum
 {
-    X265_NO_RDO_NO_RDOQ, /* Partial RDO during mode decision (only at each depth/mode), no RDO in quantization*/
+    X265_NO_RDO_NO_RDOQ, /* Partial RDO during mode decision (only at each depth/mode), no RDO in quantization */
     X265_NO_RDO,         /* Partial RDO during mode decision (only at each depth/mode), quantization RDO enabled */
     X265_FULL_RDO        /* Full RD-based mode decision */
 } X265_RDO_LEVEL;
@@ -233,103 +227,374 @@ typedef struct x265_stats
     double    globalPsnrV;
     double    globalPsnr;
     double    globalSsim;
-    double    accBits;              /* total bits output thus far */
-    uint32_t  encodedPictureCount;  /* number of output pictures thus far */
     double    elapsedEncodeTime;    /* wall time since encoder was opened */
     double    elapsedVideoTime;     /* encoded picture count / frame rate */
     double    bitrate;              /* accBits / elapsed video time */
+    uint32_t  encodedPictureCount;  /* number of output pictures thus far */
     uint32_t  totalWPFrames;        /* number of uni-directional weighted frames used */
+    uint64_t  accBits;              /* total bits output thus far */
+
+    /* new statistic member variables must be added below this line */
 } x265_stats;
 
-/* Input parameters to the encoder */
+/* encoder input parameters */
 typedef struct x265_param
 {
+    /*== Encoder Environment ==*/
+
+    /* Enable wavefront parallel processing, greatly increases parallelism for
+     * less than 1% compression efficiency loss */
+    int       bEnableWavefront;
+
+    /* Number of threads to allocate for the process global thread pool, if no
+     * thread pool has yet been created. 0 implies auto-detection. By default
+     * x265 will try to allocate one worker thread per CPU core */
+    int       poolNumThreads;
+
+    /* Number of concurrently encoded frames, 0 implies auto-detection. By
+     * default x265 will use a number of frame threads emperically determined to
+     * be optimal for your CPU core count, between 2 and 6.  Using more than one
+     * frame thread causes motion search in the down direction to be clamped but
+     * otherwise encode behavior is unaffected. With CQP rate control the output
+     * bitstream is deterministic for all values of frameNumThreads greater than
+     * 1.  All other forms of rate-control can be negatively impacted by
+     * increases to the number of frame threads because the extra concurrency
+     * adds uncertainty to the bitrate estimations.  There is no limit to the
+     * number of frame threads you use for each encoder, but frame parallelism
+     * is generally limited by the the number of CU rows */
+    int       frameNumThreads;
+
+    /* The level of logging detail emitted by the encoder. X265_LOG_NONE to
+     * X265_LOG_DEBUG, default is X265_LOG_INFO */
     int       logLevel;
-    int       bEnableWavefront;                ///< enable wavefront parallel processing
-    int       poolNumThreads;                  ///< number of threads to allocate for thread pool
-    int       frameNumThreads;                 ///< number of concurrently encoded frames
 
-    int       internalBitDepth;                ///< bit-depth at which the encoder operates
-
-    const char *csvfn;                         ///< csv log filename. logLevel >= 3 is frame logging, else one line per run
-
-    // source specification
-    int       frameRate;                       ///< source frame-rate in Hz
-    int       sourceWidth;                     ///< source width in pixels
-    int       sourceHeight;                    ///< source height in pixels
-
-    // coding unit (CU) definition
-    uint32_t  maxCUSize;                       ///< max. CU width and height in pixels
-
-    uint32_t  tuQTMaxInterDepth;               ///< amount the TU is allow to recurse beyond the inter PU depth
-    uint32_t  tuQTMaxIntraDepth;               ///< amount the TU is allow to recurse beyond the intra PU depth
-
-    // coding structure
-    int       decodingRefreshType;             ///< Intra refresh type (0:none, 1:CDR, 2:IDR) default: 1
-    int       keyframeMin;                     ///< Minimum intra period in frames
-    int       keyframeMax;                     ///< Maximum intra period in frames
-    int       bOpenGOP;                        ///< Enable Open GOP referencing
-    int       bframes;                         ///< Max number of consecutive B-frames
-    int       lookaheadDepth;                  ///< Number of frames to use for lookahead, determines encoder latency
-    int       bFrameAdaptive;                  ///< 0 - none, 1 - fast, 2 - full (trellis) adaptive B frame scheduling
-    int       bFrameBias;
-    int       scenecutThreshold;               ///< how aggressively to insert extra I frames
-
-    // Intra coding tools
-    int       bEnableConstrainedIntra;         ///< enable constrained intra prediction (ignore inter predicted reference samples)
-    int       bEnableStrongIntraSmoothing;     ///< enable strong intra smoothing for 32x32 blocks where the reference samples are flat
-
-    // Inter coding tools
-    int       searchMethod;                    ///< ME search method (DIA, HEX, UMH, STAR, FULL)
-    int       subpelRefine;                    ///< amount of subpel work to perform (0 .. X265_MAX_SUBPEL_LEVEL)
-    int       searchRange;                     ///< ME search range
-    uint32_t  maxNumMergeCand;                 ///< Max number of merge candidates
-    int       bEnableWeightedPred;             ///< enable weighted prediction in P slices
-    int       bEnableWeightedBiPred;           ///< enable bi-directional weighted prediction in B slices
-
-    int       bEnableAMP;                      ///< enable asymmetrical motion predictions
-    int       bEnableRectInter;                ///< enable rectangular inter modes 2NxN, Nx2N
-    int       bEnableCbfFastMode;              ///< enable use of Cbf flags for fast mode decision
-    int       bEnableEarlySkip;                ///< enable early skip (merge) detection
-    int       rdLevel;                         ///< Configure RDO work level
-    int       bEnableRDO;
-    int       bEnableRDOQ;
-    int       bEnableSignHiding;               ///< enable hiding one sign bit per TU via implicit signaling
-    int       bEnableTransformSkip;            ///< enable intra transform skipping
-    int       bEnableTSkipFast;                ///< enable fast intra transform skipping
-    int       bEnableRDOQTS;                   ///< enable RD optimized quantization when transform skip is selected
-    int       maxNumReferences;                ///< maximum number of references a frame can have in L0
-
-    // loop filter
-    int       bEnableLoopFilter;               ///< enable Loop Filter
-
-    // SAO loop filter
-    int       bEnableSAO;                      ///< enable SAO filter
-    int       saoLcuBoundary;                  ///< SAO parameter estimation using non-deblocked pixels for LCU bottom and right boundary areas
-    int       saoLcuBasedOptimization;         ///< SAO LCU-based optimization
-
-    // coding quality
-    int       cbQpOffset;                      ///< Chroma Cb QP Offset (0:default)
-    int       crQpOffset;                      ///< Chroma Cr QP Offset (0:default)
-    int       rdPenalty;                       ///< RD-penalty for 32x32 TU for intra in non-intra slices (0: no RD-penalty, 1: RD-penalty, 2: maximum RD-penalty)
-
-    // debugging
-    int       decodedPictureHashSEI;           ///< Checksum(3)/CRC(2)/MD5(1)/disable(0) acting on decoded picture hash SEI message
-
-    // quality metrics
+    /* Enable the measurement and reporting of PSNR. Default is enabled */
     int       bEnablePsnr;
+    
+    /* Enable the measurement and reporting of SSIM. Default is disabled */
     int       bEnableSsim;
+
+    /* filename of CSV log. If logLevel is X265_LOG_DEBUG, the encoder will emit
+     * per-slice statistics to this log file in encode order. Otherwise the
+     * encoder will emit per-stream statistics into the log file when
+     * x265_encoder_log is called (presumably at the end of the encode) */
+    const char *csvfn;
+
+    /* Enable the generation of SEI messages for each encoded frame containing
+     * the hashes of the three reconstructed picture planes. Most decoders will
+     * validate those hashes against the reconstructed images it generates and
+     * report any mismatches. This is essentially a debugging feature.  Hash
+     * types are MD5(1), CRC(2), Checksum(3).  Default is 0, none */
+    int       decodedPictureHashSEI;
+
+
+    /*== Source Picture Specification ==*/
+
+    /* source pixel bit depth (and internal encoder bit depth). If x265 was
+     * compiled to use 8bit pixels (HIGH_BIT_DEPTH=0), this field must be 8 and
+     * x265_picture.bitDepth must also be 8. x265_max_bit_depth can be consulted
+     * at runtime to determine the maximum bit depth supported by your build of
+     * x265. A high bit depth build of x265 will support input bit depths of 8,
+     * 10, or 12 */
+    int       inputBitDepth;
+
+    /* Color space of internal pictures. Only X265_CSP_I420 is currently supported.
+     * Eventually, i422 and i444 will be supported as internal color spaces and other
+     * packed formats will be supported in x265_picture.colorSpace */
+    int       internalCsp;
+
+    /* Frame rate of source pictures */
+    int       frameRate;
+
+    /* Width (in pixels) of the source pictures. If this width is not an even
+     * multiple of 4, the encoder will pad the pictures internally to meet this
+     * minimum requirement. All valid HEVC widths are supported */
+    int       sourceWidth;
+
+    /* Height (in pixels) of the source pictures. If this height is not an even
+     * multiple of 4, the encoder will pad the pictures internally to meet this
+     * minimum requirement. All valid HEVC heights are supported */
+    int       sourceHeight;
+
+
+    /*== Coding Unit (CU) definitions ==*/
+
+    /* Maxiumum CU width and height in pixels.  The size must be 64, 32, or 16.
+     * The higher the size, the more efficiently x265 can encode areas of low
+     * complexity, greatly improving compression efficiency at large
+     * resolutions.  The smaller the size, the more effective wavefront and
+     * frame parallelism will become because of the increase in rows. default 64 */
+    uint32_t  maxCUSize;
+
+    /* The additional depth the residual quadtree is allowed to recurse beyond
+     * the coding quadtree, for inter coded blocks. This must be between 1 and
+     * 3. The higher the value the more efficiently the residual can be
+     * compressed by the DCT transforms, at the expense of much more compute */
+    uint32_t  tuQTMaxInterDepth;
+
+    /* The additional depth the residual quadtree is allowed to recurse beyond
+     * the coding quadtree, for intra coded blocks. This must be between 1 and
+     * 3. The higher the value the more efficiently the residual can be
+     * compressed by the DCT transforms, at the expense of much more compute */
+    uint32_t  tuQTMaxIntraDepth;
+
+
+    /*== GOP Structure and Lokoahead ==*/
+
+    /* Determine the intra refresh style your decoder will use. (0:none, 1:CDR,
+     * 2:IDR). Defaults to CDR */
+    int       decodingRefreshType;
+
+    /* Enable open GOP - meaning I slices are not necessariy IDR and thus frames
+     * encoded after an I slice may reference frames encoded prior to the I
+     * frame which have remained in the decoded picture buffer.  Open GOP
+     * generally has better compression efficiency and negligable encoder
+     * performance impact, but the use case may preclude it.  Default false */
+    int       bOpenGOP;
+
+    /* Minimum keyframe distance or intra period in number of frames. Can be
+     * between 1 and keyframeMax. When the lookahead is between the min and max
+     * thresholds, it will use an I slice if a scene cut is detected, or a
+     * P slice otherwise */
+    int       keyframeMin;
+
+    /* Maximum keyframe distance or intra period in number of frames. If 0 or
+     * 1, all frames are I frames. -1 is casted to MAX_UINT internally which
+     * effectively makes frame 0 the only I frame. Default is 250 */
+    int       keyframeMax;
+
+    /* The maximum number of L0 references a P or B slice may use. This
+     * influences the size of the decoded picture buffer. The higher this
+     * number, the more reference frames there will be available for motion
+     * search, improving compression efficiency of most video at a cost of
+     * performance. Value must be between 1 and 16, default is 3 */
+    int       maxNumReferences;
+
+    /* Sets the operating mode of the lookahead.  With b-adapt 0, the GOP
+     * structure is fixed based on the values of keyframeMax and bframes.
+     * With b-adapt 1 a light lookahead is used to chose B frame placement.
+     * With b-adapt 2 (trellis) a viterbi B path selection is performed */
+    int       bFrameAdaptive;
+
+    /* Maximum consecutive B frames that can be emitted by the lookehead. When
+     * b-adapt is 0 and keyframMax is greater than bframes, the lookahead emits
+     * a fixed pattern of `bframes` B frames between each P.  With b-adapt 1 the
+     * lookahead ignores the value of bframes for the most part.  With b-adapt 2
+     * the value of bframes determines the search (POC) distance performeed in
+     * both directions, quadradically increasing the compute load of the
+     * lookahead.  The higher the value, the more B frames the lookahead may
+     * possibly use consecutively, usually improving compression. Default is 3,
+     * maximum is 16 */
+    int       bframes;
+
+    /* 0 - none, 1 - normal.  When enabled, the encoder will use the B frame
+     * in the middle of each mini-GOP larger than 2 B frames as a motion
+     * reference for the surrounding B frames.  This improves compression
+     * efficiency for a performance penalty.  Referenced B frames are treated
+     * somewhere between a B and a P frame by rate control.  Default is
+     * enabled. */
+    int       bpyramid;
+
+    /* The number of frames that must be queued in the lookahead before it may
+     * make slice decisions. Increasing this value directly increases the encode
+     * latency. The longer the queue the more optimally the lookahead may make
+     * slice decisions, particularly with b-adapt 2. When mb-tree is enabled,
+     * the length of the queue linearly increases the effectiveness of the
+     * mb-tree analysis. Default is 40 frames, maximum is 250 */
+    int       lookaheadDepth;
+    
+    /* A value which is added to the cost estimate of B frames in the lookahead.
+     * It may be a positive value (making B frames appear more expensive, which
+     * causes the lookahead to chose more P frames) or negative, which makes the
+     * lookahead chose more B frames. Default is 0, there are no limits */
+    int       bFrameBias;
+
+    /* An arbitrary threshold which determines how agressively the lookahead
+     * should detect scene cuts. The default (40) is recommended. */
+    int       scenecutThreshold;
+
+
+    /*== Intra Coding Tools ==*/
+
+    /* Enable constrained intra prediction. This causes intra prediction to
+     * input samples that were inter predicted. For some use cases this is
+     * believed to me more robust to stream errors, but it has a compression
+     * penalty on P and (particularly) B slices. Defaults to diabled */
+    int       bEnableConstrainedIntra;
+
+    /* Enable strong intra smoothing for 32x32 blocks where the reference
+     * samples are flat. It may or may not improve compression efficiency,
+     * depending on your source material. Defaults to disabled */
+    int       bEnableStrongIntraSmoothing;
+
+
+    /*== Inter Coding Tools ==*/
+
+    /* ME search method (DIA, HEX, UMH, STAR, FULL). The search patterns
+     * (methods) are sorted in increasing complexity, with diamond being the
+     * simplest and fastest and full being the slowest.  DIA, HEX, and UMH were
+     * adapted from x264 directly. STAR is an adaption of the HEVC reference
+     * encoder's three step search, while full is a naive exhaustive search. The
+     * default is the star search, it has a good balance of performance and
+     * compression efficiecy */
+    int       searchMethod;
+
+    /* A value between 0 and X265_MAX_SUBPEL_LEVEL which adjusts the amount of
+     * effort performed during subpel refine. Default is 5 */
+    int       subpelRefine;
+
+    /* The maximum distance from the motion prediction that the full pel motion
+     * search is allowed to progress before terminating. This value can have an
+     * effect on frame parallelism, as referenced frames must be at least this
+     * many rows of reconstructed pixels ahead of the referencee at all times.
+     * (When considering reference lag, the motion prediction must be ignored
+     * because it cannot be known ahead of time).  Default is 60, which is the
+     * default max CU size (64) minus the luma HPEL half-filter length (4). If a
+     * smaller CU size is used, the search range should be similarly reduced */
+    int       searchRange;
+
+    /* The maximum number of merge candidates that are considered during inter
+     * analysis.  This number (between 1 and 5) is signaled in the stream
+     * headers and determines the number of bits required to signal a merge so
+     * it can have significant trade-offs. The smaller this number the higher
+     * the performance but the less compression efficiency. Default is 3 */
+    uint32_t  maxNumMergeCand;
+
+    /* Enable weighted prediction in P slices.  This enables weighting analysis
+     * in the lookahead, which influences slice decitions, and enables weighting
+     * analysis in the main encoder which allows P reference samples to have a
+     * weight function applied to them prior to using them for motion
+     * compensation.  In video which has lighting changes, it can give a large
+     * improvement in compression efficiency. Default is enabled */
+    int       bEnableWeightedPred;
+
+    /* Enable weighted bi-prediction in B slices. This option currently has no
+     * effect */
+    int       bEnableWeightedBiPred;
+
+
+    /*== Analysis tools ==*/
+
+    /* Enable asymmetrical motion predictions.  At CU depths 64, 32, and 16, it
+     * is possible to use 25%/75% split partitions in the up, down, right, left
+     * directions. For some material this can improve compression efficiency at
+     * the cost of extra analysis. bEnableRectInter must be enabled for this
+     * feature to be used. Default enabled */
+    int       bEnableAMP;
+
+    /* Enable rectangular motion prediction partitions (vertical and
+     * horizontal), available at all CU depths from 64x64 to 8x8. Default is
+     * enabled */
+    int       bEnableRectInter;
+
+    /* Enable the use of `coded block flags` (flags set to true when a residual
+     * has been coded for a given block) to avoid intra analysis in likely skip
+     * blocks. Default is disabled */
+    int       bEnableCbfFastMode;
+
+    /* Enable early skip decisions to avoid intra and inter analysis in likely
+     * skip blocks. Default is disabled */
+    int       bEnableEarlySkip;
+
+    /* Apply an optional penalty to the estimated cost of 32x32 intra blocks in
+     * non-intra slices. 0 is disabled, 1 enables a small penalty, and 2 enables
+     * a full penalty. This favors inter-coding and its low bitrate over
+     * potential increases in distortion, but usually improves performance.
+     * Default is 0 */
+    int       rdPenalty;
+
+    /* A value betwen X265_NO_RDO_NO_RDOQ and X265_RDO_LEVEL which determines
+     * the level of rate distortion optimizations to perform during mode
+     * decisions and quantization. The more RDO the better the compression
+     * efficiency at a major cost of performance. Default is no RDO (0) */
+    int       rdLevel;
+
+    int       bEnableRDO;    // obsolete
+    int       bEnableRDOQ;   // obsolete
+    int       bEnableRDOQTS; // obsolete
+
+
+    /*== Coding tools ==*/
+
+    /* Enable the implicit signaling of the sign bit of the last coefficient of
+     * each transform unit. This saves one bit per TU at the expense of figuring
+     * out which coefficient can be toggled with the least distortion.
+     * Default is enabled */
+    int       bEnableSignHiding;
+
+    /* Allow intra coded blocks to be encoded directly as residual without the
+     * DCT transform, when this improves efficiency. Checking whether the block
+     * will benefit from this option incurs a performance penalty. Default is
+     * enabled */
+    int       bEnableTransformSkip;
+
+    /* Enable a faster determination of whether skippig the DCT transform will
+     * be beneficial. Slight performance gain for some compression loss. Default
+     * is enabled */
+    int       bEnableTSkipFast;
+
+    /* Enable the deblocking loop filter, which improves visual quality by
+     * reducing blocking effects at block edges, particularly at lower bitrates
+     * or higher QP. When enabled it adds another CU row of reference lag,
+     * reducing frame parallelism effectiveness.  Default is enabled */
+    int       bEnableLoopFilter;
+
+    /* Enable the Sample Adaptive Offset loop filter, which reduces distortion
+     * effects by adjusting reconstructed sample values based on histogram
+     * analysis to better approximate the original samples. When enabled it adds
+     * a CU row of reference lag, reducing frame parallelism effectiveness.
+     * Default is enabled */
+    int       bEnableSAO;
+
+    /* Note: when deblocking and SAO are both enabled, the loop filter CU lag is
+     * only one row, as they operate in series o the same row. */
+
+    /* Select the method in which SAO deals with deblocking boundary pixels.  If
+     * 0 the right and bottom boundary areas are skipped. If 1, non-deblocked
+     * pixels are used entirely. Default is 0 */
+    int       saoLcuBoundary;
+
+    /* Select the scope of the SAO optimization. If 0 SAO is performed over the
+     * entire output picture at once, this can severly restrict frame
+     * parallelism so it is not recommended for many-core machines.  If 1 SAO is
+     * performed on LCUs in series. Default is 1 */
+    int       saoLcuBasedOptimization;
+
+    /* Generally a small signed integer which offsets the QP used to quantize
+     * the Cb chroma residual (delta from luma QP specified by rate-control).
+     * Default is 0, which is recommended */
+    int       cbQpOffset;
+
+    /* Generally a small signed integer which offsets the QP used to quantize
+     * the Cr chroma residual (delta from luma QP specified by rate-control).
+     * Default is 0, which is recommended */
+    int       crQpOffset;
+
+
+    /*== Rate Control ==*/
+
     struct
     {
+        /* Explicit mode of rate-control, necessary for API users. It must
+         * be one of the X265_RC_METHODS enum values. */
+        int       rateControlMode;
+
+        /* Base QP to use for Constant QP rate control. Adaptive QP may alter
+         * the QP used for each block. If a QP is specified on the command line
+         * CQP rate control is implied. Default: 32 */
+        int       qp;
+
+        /* target bitrate for Average BitRate (ABR) rate control. If a non- zero
+         * bitrate is specified on the command line, ABR is implied. Default 0 */
         int       bitrate;
+
         double    rateTolerance;
         double    qCompress;
         double    ipFactor;
         double    pbFactor;
         int       qpStep;
-        int       rateControlMode;             ///<Values corresponding to RcMethod
-        int       qp;                          ///< Constant QP base value
-        int       rateFactor;                  ///< Constant rate factor (CRF)
+        double    rfConstant;                  ///< Constant rate factor (CRF)
+
         int       aqMode;                      ///< Adaptive QP (AQ)
         double    aqStrength;
     } rc;
@@ -356,11 +621,6 @@ void x265_param_default(x265_param *param);
 #define X265_PARAM_BAD_VALUE (-2)
 int x265_param_parse(x265_param *p, const char *name, const char *value);
 
-/***
- * Initialize an x265_picture_t structure to default values
- */
-void x265_picture_init(x265_param *param, x265_picture *pic);
-
 /* x265_param_apply_profile:
  *      Applies the restrictions of the given profile. (one of below) */
 static const char * const x265_profile_names[] = { "main", "main10", "mainstillpicture", 0 };
@@ -368,6 +628,34 @@ static const char * const x265_profile_names[] = { "main", "main10", "mainstillp
 /*      (can be NULL, in which case the function will do nothing)
  *      returns 0 on success, negative on failure (e.g. invalid profile name). */
 int x265_param_apply_profile(x265_param *, const char *profile);
+
+/* x265_param_default_preset:
+ *      The same as x265_param_default, but also use the passed preset and tune
+ *      to modify the default settings.
+ *      (either can be NULL, which implies no preset or no tune, respectively)
+ *
+ *      Currently available presets are, ordered from fastest to slowest: */
+static const char * const x265_preset_names[] = { "ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow", "placebo", 0 };
+
+/*      The presets can also be indexed numerically, as in:
+ *      x265_param_default_preset( &param, "3", ... )
+ *      with ultrafast mapping to "0" and placebo mapping to "9".  This mapping may
+ *      of course change if new presets are added in between, but will always be
+ *      ordered from fastest to slowest.
+ *
+ *      Warning: the speed of these presets scales dramatically.  Ultrafast is a full
+ *      100 times faster than placebo!
+ *
+ *      Currently available tunings are: */
+static const char * const x265_tune_names[] = { "psnr", "ssim", "zero-latency", 0 };
+
+/*      returns 0 on success, negative on failure (e.g. invalid preset/tune name). */
+int x265_param_default_preset(x265_param *, const char *preset, const char *tune);
+
+/***
+ * Initialize an x265_picture structure to default values
+ */
+void x265_picture_init(x265_param *param, x265_picture *pic);
 
 /* x265_max_bit_depth:
  *      Specifies the maximum number of bits per pixel that x265 can input. This
@@ -402,18 +690,18 @@ x265_encoder* x265_encoder_open(x265_param *);
  *      *pi_nal is the number of NAL units outputted in pp_nal.
  *      returns negative on error.
  *      the payloads of all output NALs are guaranteed to be sequential in memory. */
-int x265_encoder_headers(x265_encoder *, x265_nal **pp_nal, int *pi_nal);
+int x265_encoder_headers(x265_encoder *, x265_nal **pp_nal, uint32_t *pi_nal);
 
 /* x265_encoder_encode:
  *      encode one picture.
  *      *pi_nal is the number of NAL units outputted in pp_nal.
  *      returns negative on error, zero if no NAL units returned.
  *      the payloads of all output NALs are guaranteed to be sequential in memory. */
-int x265_encoder_encode(x265_encoder *encoder, x265_nal **pp_nal, int *pi_nal, x265_picture *pic_in, x265_picture *pic_out);
+int x265_encoder_encode(x265_encoder *encoder, x265_nal **pp_nal, uint32_t *pi_nal, x265_picture *pic_in, x265_picture *pic_out);
 
 /* x265_encoder_get_stats:
  *       returns encoder statistics */
-void x265_encoder_get_stats(x265_encoder *encoder, x265_stats *);
+void x265_encoder_get_stats(x265_encoder *encoder, x265_stats *, uint32_t statsSizeBytes);
 
 /* x265_encoder_log:
  *       write a line to the configured CSV file.  If a CSV filename was not

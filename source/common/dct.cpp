@@ -42,7 +42,7 @@ namespace {
 
 // Fast DST Algorithm. Full matrix multiplication for DST and Fast DST algorithm
 // give identical results
-void fastForwardDst(short *block, short *coeff, int shift)  // input block, output coeff
+void fastForwardDst(int16_t *block, int16_t *coeff, int shift)  // input block, output coeff
 {
     int c[4];
     int rnd_factor = 1 << (shift - 1);
@@ -55,14 +55,14 @@ void fastForwardDst(short *block, short *coeff, int shift)  // input block, outp
         c[2] = block[4 * i + 0] - block[4 * i + 1];
         c[3] = 74 * block[4 * i + 2];
 
-        coeff[i] =      (short)((29 * c[0] + 55 * c[1]  + c[3] + rnd_factor) >> shift);
-        coeff[4 + i] =  (short)((74 * (block[4 * i + 0] + block[4 * i + 1] - block[4 * i + 3]) + rnd_factor) >> shift);
-        coeff[8 + i] =  (short)((29 * c[2] + 55 * c[0]  - c[3] + rnd_factor) >> shift);
-        coeff[12 + i] = (short)((55 * c[2] - 29 * c[1] + c[3] + rnd_factor) >> shift);
+        coeff[i] =      (int16_t)((29 * c[0] + 55 * c[1]  + c[3] + rnd_factor) >> shift);
+        coeff[4 + i] =  (int16_t)((74 * (block[4 * i + 0] + block[4 * i + 1] - block[4 * i + 3]) + rnd_factor) >> shift);
+        coeff[8 + i] =  (int16_t)((29 * c[2] + 55 * c[0]  - c[3] + rnd_factor) >> shift);
+        coeff[12 + i] = (int16_t)((55 * c[2] - 29 * c[1] + c[3] + rnd_factor) >> shift);
     }
 }
 
-void inversedst(short *tmp, short *block, int shift)  // input tmp, output block
+void inversedst(int16_t *tmp, int16_t *block, int shift)  // input tmp, output block
 {
     int i, c[4];
     int rnd_factor = 1 << (shift - 1);
@@ -75,14 +75,14 @@ void inversedst(short *tmp, short *block, int shift)  // input tmp, output block
         c[2] = tmp[i] - tmp[12 + i];
         c[3] = 74 * tmp[4 + i];
 
-        block[4 * i + 0] = (short)Clip3(-32768, 32767, (29 * c[0] + 55 * c[1]     + c[3]               + rnd_factor) >> shift);
-        block[4 * i + 1] = (short)Clip3(-32768, 32767, (55 * c[2] - 29 * c[1]     + c[3]               + rnd_factor) >> shift);
-        block[4 * i + 2] = (short)Clip3(-32768, 32767, (74 * (tmp[i] - tmp[8 + i]  + tmp[12 + i])      + rnd_factor) >> shift);
-        block[4 * i + 3] = (short)Clip3(-32768, 32767, (55 * c[0] + 29 * c[2]     - c[3]               + rnd_factor) >> shift);
+        block[4 * i + 0] = (int16_t)Clip3(-32768, 32767, (29 * c[0] + 55 * c[1]     + c[3]               + rnd_factor) >> shift);
+        block[4 * i + 1] = (int16_t)Clip3(-32768, 32767, (55 * c[2] - 29 * c[1]     + c[3]               + rnd_factor) >> shift);
+        block[4 * i + 2] = (int16_t)Clip3(-32768, 32767, (74 * (tmp[i] - tmp[8 + i]  + tmp[12 + i])      + rnd_factor) >> shift);
+        block[4 * i + 3] = (int16_t)Clip3(-32768, 32767, (55 * c[0] + 29 * c[2]     - c[3]               + rnd_factor) >> shift);
     }
 }
 
-void partialButterfly16(short *src, short *dst, int shift, int line)
+void partialButterfly16(int16_t *src, int16_t *dst, int shift, int line)
 {
     int j, k;
     int E[8], O[8];
@@ -112,22 +112,22 @@ void partialButterfly16(short *src, short *dst, int shift, int line)
         EEE[1] = EE[1] + EE[2];
         EEO[1] = EE[1] - EE[2];
 
-        dst[0] = (short)((g_t16[0][0] * EEE[0] + g_t16[0][1] * EEE[1] + add) >> shift);
-        dst[8 * line] = (short)((g_t16[8][0] * EEE[0] + g_t16[8][1] * EEE[1] + add) >> shift);
-        dst[4 * line] = (short)((g_t16[4][0] * EEO[0] + g_t16[4][1] * EEO[1] + add) >> shift);
-        dst[12 * line] = (short)((g_t16[12][0] * EEO[0] + g_t16[12][1] * EEO[1] + add) >> shift);
+        dst[0] = (int16_t)((g_t16[0][0] * EEE[0] + g_t16[0][1] * EEE[1] + add) >> shift);
+        dst[8 * line] = (int16_t)((g_t16[8][0] * EEE[0] + g_t16[8][1] * EEE[1] + add) >> shift);
+        dst[4 * line] = (int16_t)((g_t16[4][0] * EEO[0] + g_t16[4][1] * EEO[1] + add) >> shift);
+        dst[12 * line] = (int16_t)((g_t16[12][0] * EEO[0] + g_t16[12][1] * EEO[1] + add) >> shift);
 
         for (k = 2; k < 16; k += 4)
         {
-            dst[k * line] = (short)((g_t16[k][0] * EO[0] + g_t16[k][1] * EO[1] + g_t16[k][2] * EO[2] +
-                                     g_t16[k][3] * EO[3] + add) >> shift);
+            dst[k * line] = (int16_t)((g_t16[k][0] * EO[0] + g_t16[k][1] * EO[1] + g_t16[k][2] * EO[2] +
+                                       g_t16[k][3] * EO[3] + add) >> shift);
         }
 
         for (k = 1; k < 16; k += 2)
         {
-            dst[k * line] =  (short)((g_t16[k][0] * O[0] + g_t16[k][1] * O[1] + g_t16[k][2] * O[2] + g_t16[k][3] * O[3] +
-                                      g_t16[k][4] * O[4] + g_t16[k][5] * O[5] + g_t16[k][6] * O[6] + g_t16[k][7] * O[7] +
-                                      add) >> shift);
+            dst[k * line] =  (int16_t)((g_t16[k][0] * O[0] + g_t16[k][1] * O[1] + g_t16[k][2] * O[2] + g_t16[k][3] * O[3] +
+                                        g_t16[k][4] * O[4] + g_t16[k][5] * O[5] + g_t16[k][6] * O[6] + g_t16[k][7] * O[7] +
+                                        add) >> shift);
         }
 
         src += 16;
@@ -135,7 +135,7 @@ void partialButterfly16(short *src, short *dst, int shift, int line)
     }
 }
 
-void partialButterfly32(short *src, short *dst, int shift, int line)
+void partialButterfly32(int16_t *src, int16_t *dst, int shift, int line)
 {
     int j, k;
     int E[16], O[16];
@@ -173,30 +173,30 @@ void partialButterfly32(short *src, short *dst, int shift, int line)
         EEEE[1] = EEE[1] + EEE[2];
         EEEO[1] = EEE[1] - EEE[2];
 
-        dst[0] = (short)((g_t32[0][0] * EEEE[0] + g_t32[0][1] * EEEE[1] + add) >> shift);
-        dst[16 * line] = (short)((g_t32[16][0] * EEEE[0] + g_t32[16][1] * EEEE[1] + add) >> shift);
-        dst[8 * line] = (short)((g_t32[8][0] * EEEO[0] + g_t32[8][1] * EEEO[1] + add) >> shift);
-        dst[24 * line] = (short)((g_t32[24][0] * EEEO[0] + g_t32[24][1] * EEEO[1] + add) >> shift);
+        dst[0] = (int16_t)((g_t32[0][0] * EEEE[0] + g_t32[0][1] * EEEE[1] + add) >> shift);
+        dst[16 * line] = (int16_t)((g_t32[16][0] * EEEE[0] + g_t32[16][1] * EEEE[1] + add) >> shift);
+        dst[8 * line] = (int16_t)((g_t32[8][0] * EEEO[0] + g_t32[8][1] * EEEO[1] + add) >> shift);
+        dst[24 * line] = (int16_t)((g_t32[24][0] * EEEO[0] + g_t32[24][1] * EEEO[1] + add) >> shift);
         for (k = 4; k < 32; k += 8)
         {
-            dst[k * line] = (short)((g_t32[k][0] * EEO[0] + g_t32[k][1] * EEO[1] + g_t32[k][2] * EEO[2] +
-                                     g_t32[k][3] * EEO[3] + add) >> shift);
+            dst[k * line] = (int16_t)((g_t32[k][0] * EEO[0] + g_t32[k][1] * EEO[1] + g_t32[k][2] * EEO[2] +
+                                       g_t32[k][3] * EEO[3] + add) >> shift);
         }
 
         for (k = 2; k < 32; k += 4)
         {
-            dst[k * line] = (short)((g_t32[k][0] * EO[0] + g_t32[k][1] * EO[1] + g_t32[k][2] * EO[2] +
-                                     g_t32[k][3] * EO[3] + g_t32[k][4] * EO[4] + g_t32[k][5] * EO[5] +
-                                     g_t32[k][6] * EO[6] + g_t32[k][7] * EO[7] + add) >> shift);
+            dst[k * line] = (int16_t)((g_t32[k][0] * EO[0] + g_t32[k][1] * EO[1] + g_t32[k][2] * EO[2] +
+                                       g_t32[k][3] * EO[3] + g_t32[k][4] * EO[4] + g_t32[k][5] * EO[5] +
+                                       g_t32[k][6] * EO[6] + g_t32[k][7] * EO[7] + add) >> shift);
         }
 
         for (k = 1; k < 32; k += 2)
         {
-            dst[k * line] = (short)((g_t32[k][0] * O[0] + g_t32[k][1] * O[1] + g_t32[k][2] * O[2] + g_t32[k][3] * O[3] +
-                                     g_t32[k][4] * O[4] + g_t32[k][5] * O[5] + g_t32[k][6] * O[6] + g_t32[k][7] * O[7] +
-                                     g_t32[k][8] * O[8] + g_t32[k][9] * O[9] + g_t32[k][10] * O[10] + g_t32[k][11] *
-                                     O[11] + g_t32[k][12] * O[12] + g_t32[k][13] * O[13] + g_t32[k][14] * O[14] +
-                                     g_t32[k][15] * O[15] + add) >> shift);
+            dst[k * line] = (int16_t)((g_t32[k][0] * O[0] + g_t32[k][1] * O[1] + g_t32[k][2] * O[2] + g_t32[k][3] * O[3] +
+                                       g_t32[k][4] * O[4] + g_t32[k][5] * O[5] + g_t32[k][6] * O[6] + g_t32[k][7] * O[7] +
+                                       g_t32[k][8] * O[8] + g_t32[k][9] * O[9] + g_t32[k][10] * O[10] + g_t32[k][11] *
+                                       O[11] + g_t32[k][12] * O[12] + g_t32[k][13] * O[13] + g_t32[k][14] * O[14] +
+                                       g_t32[k][15] * O[15] + add) >> shift);
         }
 
         src += 32;
@@ -204,7 +204,7 @@ void partialButterfly32(short *src, short *dst, int shift, int line)
     }
 }
 
-void partialButterfly8(short *src, short *dst, int shift, int line)
+void partialButterfly8(int16_t *src, int16_t *dst, int shift, int line)
 {
     int j, k;
     int E[4], O[4];
@@ -226,22 +226,22 @@ void partialButterfly8(short *src, short *dst, int shift, int line)
         EE[1] = E[1] + E[2];
         EO[1] = E[1] - E[2];
 
-        dst[0] = (short)((g_t8[0][0] * EE[0] + g_t8[0][1] * EE[1] + add) >> shift);
-        dst[4 * line] = (short)((g_t8[4][0] * EE[0] + g_t8[4][1] * EE[1] + add) >> shift);
-        dst[2 * line] = (short)((g_t8[2][0] * EO[0] + g_t8[2][1] * EO[1] + add) >> shift);
-        dst[6 * line] = (short)((g_t8[6][0] * EO[0] + g_t8[6][1] * EO[1] + add) >> shift);
+        dst[0] = (int16_t)((g_t8[0][0] * EE[0] + g_t8[0][1] * EE[1] + add) >> shift);
+        dst[4 * line] = (int16_t)((g_t8[4][0] * EE[0] + g_t8[4][1] * EE[1] + add) >> shift);
+        dst[2 * line] = (int16_t)((g_t8[2][0] * EO[0] + g_t8[2][1] * EO[1] + add) >> shift);
+        dst[6 * line] = (int16_t)((g_t8[6][0] * EO[0] + g_t8[6][1] * EO[1] + add) >> shift);
 
-        dst[line] = (short)((g_t8[1][0] * O[0] + g_t8[1][1] * O[1] + g_t8[1][2] * O[2] + g_t8[1][3] * O[3] + add) >> shift);
-        dst[3 * line] = (short)((g_t8[3][0] * O[0] + g_t8[3][1] * O[1] + g_t8[3][2] * O[2] + g_t8[3][3] * O[3] + add) >> shift);
-        dst[5 * line] = (short)((g_t8[5][0] * O[0] + g_t8[5][1] * O[1] + g_t8[5][2] * O[2] + g_t8[5][3] * O[3] + add) >> shift);
-        dst[7 * line] = (short)((g_t8[7][0] * O[0] + g_t8[7][1] * O[1] + g_t8[7][2] * O[2] + g_t8[7][3] * O[3] + add) >> shift);
+        dst[line] = (int16_t)((g_t8[1][0] * O[0] + g_t8[1][1] * O[1] + g_t8[1][2] * O[2] + g_t8[1][3] * O[3] + add) >> shift);
+        dst[3 * line] = (int16_t)((g_t8[3][0] * O[0] + g_t8[3][1] * O[1] + g_t8[3][2] * O[2] + g_t8[3][3] * O[3] + add) >> shift);
+        dst[5 * line] = (int16_t)((g_t8[5][0] * O[0] + g_t8[5][1] * O[1] + g_t8[5][2] * O[2] + g_t8[5][3] * O[3] + add) >> shift);
+        dst[7 * line] = (int16_t)((g_t8[7][0] * O[0] + g_t8[7][1] * O[1] + g_t8[7][2] * O[2] + g_t8[7][3] * O[3] + add) >> shift);
 
         src += 8;
         dst++;
     }
 }
 
-void partialButterflyInverse4(short *src, short *dst, int shift, int line)
+void partialButterflyInverse4(int16_t *src, int16_t *dst, int shift, int line)
 {
     int j;
     int E[2], O[2];
@@ -256,17 +256,17 @@ void partialButterflyInverse4(short *src, short *dst, int shift, int line)
         E[1] = g_t4[0][1] * src[0] + g_t4[2][1] * src[2 * line];
 
         /* Combining even and odd terms at each hierarchy levels to calculate the final spatial domain vector */
-        dst[0] = (short)(Clip3(-32768, 32767, (E[0] + O[0] + add) >> shift));
-        dst[1] = (short)(Clip3(-32768, 32767, (E[1] + O[1] + add) >> shift));
-        dst[2] = (short)(Clip3(-32768, 32767, (E[1] - O[1] + add) >> shift));
-        dst[3] = (short)(Clip3(-32768, 32767, (E[0] - O[0] + add) >> shift));
+        dst[0] = (int16_t)(Clip3(-32768, 32767, (E[0] + O[0] + add) >> shift));
+        dst[1] = (int16_t)(Clip3(-32768, 32767, (E[1] + O[1] + add) >> shift));
+        dst[2] = (int16_t)(Clip3(-32768, 32767, (E[1] - O[1] + add) >> shift));
+        dst[3] = (int16_t)(Clip3(-32768, 32767, (E[0] - O[0] + add) >> shift));
 
         src++;
         dst += 4;
     }
 }
 
-void partialButterflyInverse8(short *src, short *dst, int shift, int line)
+void partialButterflyInverse8(int16_t *src, int16_t *dst, int shift, int line)
 {
     int j, k;
     int E[4], O[4];
@@ -293,8 +293,8 @@ void partialButterflyInverse8(short *src, short *dst, int shift, int line)
         E[2] = EE[1] - EO[1];
         for (k = 0; k < 4; k++)
         {
-            dst[k] = (short)Clip3(-32768, 32767, (E[k] + O[k] + add) >> shift);
-            dst[k + 4] = (short)Clip3(-32768, 32767, (E[3 - k] - O[3 - k] + add) >> shift);
+            dst[k] = (int16_t)Clip3(-32768, 32767, (E[k] + O[k] + add) >> shift);
+            dst[k + 4] = (int16_t)Clip3(-32768, 32767, (E[3 - k] - O[3 - k] + add) >> shift);
         }
 
         src++;
@@ -302,7 +302,7 @@ void partialButterflyInverse8(short *src, short *dst, int shift, int line)
     }
 }
 
-void partialButterflyInverse16(short *src, short *dst, int shift, int line)
+void partialButterflyInverse16(int16_t *src, int16_t *dst, int shift, int line)
 {
     int j, k;
     int E[8], O[8];
@@ -344,8 +344,8 @@ void partialButterflyInverse16(short *src, short *dst, int shift, int line)
 
         for (k = 0; k < 8; k++)
         {
-            dst[k]   = (short)Clip3(-32768, 32767, (E[k] + O[k] + add) >> shift);
-            dst[k + 8] = (short)Clip3(-32768, 32767, (E[7 - k] - O[7 - k] + add) >> shift);
+            dst[k]   = (int16_t)Clip3(-32768, 32767, (E[k] + O[k] + add) >> shift);
+            dst[k + 8] = (int16_t)Clip3(-32768, 32767, (E[7 - k] - O[7 - k] + add) >> shift);
         }
 
         src++;
@@ -353,7 +353,7 @@ void partialButterflyInverse16(short *src, short *dst, int shift, int line)
     }
 }
 
-void partialButterflyInverse32(short *src, short *dst, int shift, int line)
+void partialButterflyInverse32(int16_t *src, int16_t *dst, int shift, int line)
 {
     int j, k;
     int E[16], O[16];
@@ -408,8 +408,8 @@ void partialButterflyInverse32(short *src, short *dst, int shift, int line)
 
         for (k = 0; k < 16; k++)
         {
-            dst[k] = (short)Clip3(-32768, 32767, (E[k] + O[k] + add) >> shift);
-            dst[k + 16] = (short)Clip3(-32768, 32767, (E[15 - k] - O[15 - k] + add) >> shift);
+            dst[k] = (int16_t)Clip3(-32768, 32767, (E[k] + O[k] + add) >> shift);
+            dst[k + 16] = (int16_t)Clip3(-32768, 32767, (E[15 - k] - O[15 - k] + add) >> shift);
         }
 
         src++;
@@ -417,7 +417,7 @@ void partialButterflyInverse32(short *src, short *dst, int shift, int line)
     }
 }
 
-void partialButterfly4(short *src, short *dst, int shift, int line)
+void partialButterfly4(int16_t *src, int16_t *dst, int shift, int line)
 {
     int j;
     int E[2], O[2];
@@ -431,27 +431,27 @@ void partialButterfly4(short *src, short *dst, int shift, int line)
         E[1] = src[1] + src[2];
         O[1] = src[1] - src[2];
 
-        dst[0] = (short)((g_t4[0][0] * E[0] + g_t4[0][1] * E[1] + add) >> shift);
-        dst[2 * line] = (short)((g_t4[2][0] * E[0] + g_t4[2][1] * E[1] + add) >> shift);
-        dst[line] = (short)((g_t4[1][0] * O[0] + g_t4[1][1] * O[1] + add) >> shift);
-        dst[3 * line] = (short)((g_t4[3][0] * O[0] + g_t4[3][1] * O[1] + add) >> shift);
+        dst[0] = (int16_t)((g_t4[0][0] * E[0] + g_t4[0][1] * E[1] + add) >> shift);
+        dst[2 * line] = (int16_t)((g_t4[2][0] * E[0] + g_t4[2][1] * E[1] + add) >> shift);
+        dst[line] = (int16_t)((g_t4[1][0] * O[0] + g_t4[1][1] * O[1] + add) >> shift);
+        dst[3 * line] = (int16_t)((g_t4[3][0] * O[0] + g_t4[3][1] * O[1] + add) >> shift);
 
         src += 4;
         dst++;
     }
 }
 
-void dst4_c(short *src, int *dst, intptr_t stride)
+void dst4_c(int16_t *src, int32_t *dst, intptr_t stride)
 {
-    const int shift_1st = 1;
+    const int shift_1st = 1 + X265_DEPTH - 8;
     const int shift_2nd = 8;
 
-    ALIGN_VAR_32(short, coef[4 * 4]);
-    ALIGN_VAR_32(short, block[4 * 4]);
+    ALIGN_VAR_32(int16_t, coef[4 * 4]);
+    ALIGN_VAR_32(int16_t, block[4 * 4]);
 
     for (int i = 0; i < 4; i++)
     {
-        memcpy(&block[i * 4], &src[i * stride], 4 * sizeof(short));
+        memcpy(&block[i * 4], &src[i * stride], 4 * sizeof(int16_t));
     }
 
     fastForwardDst(block, coef, shift_1st);
@@ -469,17 +469,17 @@ void dst4_c(short *src, int *dst, intptr_t stride)
 #undef N
 }
 
-void dct4_c(short *src, int *dst, intptr_t stride)
+void dct4_c(int16_t *src, int32_t *dst, intptr_t stride)
 {
-    const int shift_1st = 1;
+    const int shift_1st = 1 + X265_DEPTH - 8;
     const int shift_2nd = 8;
 
-    ALIGN_VAR_32(short, coef[4 * 4]);
-    ALIGN_VAR_32(short, block[4 * 4]);
+    ALIGN_VAR_32(int16_t, coef[4 * 4]);
+    ALIGN_VAR_32(int16_t, block[4 * 4]);
 
     for (int i = 0; i < 4; i++)
     {
-        memcpy(&block[i * 4], &src[i * stride], 4 * sizeof(short));
+        memcpy(&block[i * 4], &src[i * stride], 4 * sizeof(int16_t));
     }
 
     partialButterfly4(block, coef, shift_1st, 4);
@@ -496,17 +496,17 @@ void dct4_c(short *src, int *dst, intptr_t stride)
 #undef N
 }
 
-void dct8_c(short *src, int *dst, intptr_t stride)
+void dct8_c(int16_t *src, int32_t *dst, intptr_t stride)
 {
-    const int shift_1st = 2;
+    const int shift_1st = 2 + X265_DEPTH - 8;
     const int shift_2nd = 9;
 
-    ALIGN_VAR_32(short, coef[8 * 8]);
-    ALIGN_VAR_32(short, block[8 * 8]);
+    ALIGN_VAR_32(int16_t, coef[8 * 8]);
+    ALIGN_VAR_32(int16_t, block[8 * 8]);
 
     for (int i = 0; i < 8; i++)
     {
-        memcpy(&block[i * 8], &src[i * stride], 8 * sizeof(short));
+        memcpy(&block[i * 8], &src[i * stride], 8 * sizeof(int16_t));
     }
 
     partialButterfly8(block, coef, shift_1st, 8);
@@ -524,17 +524,17 @@ void dct8_c(short *src, int *dst, intptr_t stride)
 #undef N
 }
 
-void dct16_c(short *src, int *dst, intptr_t stride)
+void dct16_c(int16_t *src, int32_t *dst, intptr_t stride)
 {
-    const int shift_1st = 3;
+    const int shift_1st = 3 + X265_DEPTH - 8;
     const int shift_2nd = 10;
 
-    ALIGN_VAR_32(short, coef[16 * 16]);
-    ALIGN_VAR_32(short, block[16 * 16]);
+    ALIGN_VAR_32(int16_t, coef[16 * 16]);
+    ALIGN_VAR_32(int16_t, block[16 * 16]);
 
     for (int i = 0; i < 16; i++)
     {
-        memcpy(&block[i * 16], &src[i * stride], 16 * sizeof(short));
+        memcpy(&block[i * 16], &src[i * stride], 16 * sizeof(int16_t));
     }
 
     partialButterfly16(block, coef, shift_1st, 16);
@@ -552,17 +552,17 @@ void dct16_c(short *src, int *dst, intptr_t stride)
 #undef N
 }
 
-void dct32_c(short *src, int *dst, intptr_t stride)
+void dct32_c(int16_t *src, int32_t *dst, intptr_t stride)
 {
-    const int shift_1st = 4;
+    const int shift_1st = 4 + X265_DEPTH - 8;
     const int shift_2nd = 11;
 
-    ALIGN_VAR_32(short, coef[32 * 32]);
-    ALIGN_VAR_32(short, block[32 * 32]);
+    ALIGN_VAR_32(int16_t, coef[32 * 32]);
+    ALIGN_VAR_32(int16_t, block[32 * 32]);
 
     for (int i = 0; i < 32; i++)
     {
-        memcpy(&block[i * 32], &src[i * stride], 32 * sizeof(short));
+        memcpy(&block[i * 32], &src[i * stride], 32 * sizeof(int16_t));
     }
 
     partialButterfly32(block, coef, shift_1st, 32);
@@ -580,20 +580,20 @@ void dct32_c(short *src, int *dst, intptr_t stride)
 #undef N
 }
 
-void idst4_c(int *src, short *dst, intptr_t stride)
+void idst4_c(int32_t *src, int16_t *dst, intptr_t stride)
 {
     const int shift_1st = 7;
-    const int shift_2nd = 12;
+    const int shift_2nd = 12 - (X265_DEPTH - 8);
 
-    ALIGN_VAR_32(short, coef[4 * 4]);
-    ALIGN_VAR_32(short, block[4 * 4]);
+    ALIGN_VAR_32(int16_t, coef[4 * 4]);
+    ALIGN_VAR_32(int16_t, block[4 * 4]);
 
 #define N (4)
     for (int i = 0; i < N; i++)
     {
         for (int j = 0; j < N; j++)
         {
-            block[i * N + j] = (short)src[i * N + j];
+            block[i * N + j] = (int16_t)src[i * N + j];
         }
     }
 
@@ -604,24 +604,24 @@ void idst4_c(int *src, short *dst, intptr_t stride)
 
     for (int i = 0; i < 4; i++)
     {
-        memcpy(&dst[i * stride], &block[i * 4], 4 * sizeof(short));
+        memcpy(&dst[i * stride], &block[i * 4], 4 * sizeof(int16_t));
     }
 }
 
-void idct4_c(int *src, short *dst, intptr_t stride)
+void idct4_c(int32_t *src, int16_t *dst, intptr_t stride)
 {
     const int shift_1st = 7;
-    const int shift_2nd = 12;
+    const int shift_2nd = 12 - (X265_DEPTH - 8);
 
-    ALIGN_VAR_32(short, coef[4 * 4]);
-    ALIGN_VAR_32(short, block[4 * 4]);
+    ALIGN_VAR_32(int16_t, coef[4 * 4]);
+    ALIGN_VAR_32(int16_t, block[4 * 4]);
 
 #define N (4)
     for (int i = 0; i < N; i++)
     {
         for (int j = 0; j < N; j++)
         {
-            block[i * N + j] = (short)src[i * N + j];
+            block[i * N + j] = (int16_t)src[i * N + j];
         }
     }
 
@@ -632,24 +632,24 @@ void idct4_c(int *src, short *dst, intptr_t stride)
 
     for (int i = 0; i < 4; i++)
     {
-        memcpy(&dst[i * stride], &block[i * 4], 4 * sizeof(short));
+        memcpy(&dst[i * stride], &block[i * 4], 4 * sizeof(int16_t));
     }
 }
 
-void idct8_c(int *src, short *dst, intptr_t stride)
+void idct8_c(int32_t *src, int16_t *dst, intptr_t stride)
 {
     const int shift_1st = 7;
-    const int shift_2nd = 12;
+    const int shift_2nd = 12 - (X265_DEPTH - 8);
 
-    ALIGN_VAR_32(short, coef[8 * 8]);
-    ALIGN_VAR_32(short, block[8 * 8]);
+    ALIGN_VAR_32(int16_t, coef[8 * 8]);
+    ALIGN_VAR_32(int16_t, block[8 * 8]);
 
 #define N (8)
     for (int i = 0; i < N; i++)
     {
         for (int j = 0; j < N; j++)
         {
-            block[i * N + j] = (short)src[i * N + j];
+            block[i * N + j] = (int16_t)src[i * N + j];
         }
     }
 
@@ -659,24 +659,24 @@ void idct8_c(int *src, short *dst, intptr_t stride)
     partialButterflyInverse8(coef, block, shift_2nd, 8);
     for (int i = 0; i < 8; i++)
     {
-        memcpy(&dst[i * stride], &block[i * 8], 8 * sizeof(short));
+        memcpy(&dst[i * stride], &block[i * 8], 8 * sizeof(int16_t));
     }
 }
 
-void idct16_c(int *src, short *dst, intptr_t stride)
+void idct16_c(int32_t *src, int16_t *dst, intptr_t stride)
 {
     const int shift_1st = 7;
-    const int shift_2nd = 12;
+    const int shift_2nd = 12 - (X265_DEPTH - 8);
 
-    ALIGN_VAR_32(short, coef[16 * 16]);
-    ALIGN_VAR_32(short, block[16 * 16]);
+    ALIGN_VAR_32(int16_t, coef[16 * 16]);
+    ALIGN_VAR_32(int16_t, block[16 * 16]);
 
 #define N (16)
     for (int i = 0; i < N; i++)
     {
         for (int j = 0; j < N; j++)
         {
-            block[i * N + j] = (short)src[i * N + j];
+            block[i * N + j] = (int16_t)src[i * N + j];
         }
     }
 
@@ -686,24 +686,24 @@ void idct16_c(int *src, short *dst, intptr_t stride)
     partialButterflyInverse16(coef, block, shift_2nd, 16);
     for (int i = 0; i < 16; i++)
     {
-        memcpy(&dst[i * stride], &block[i * 16], 16 * sizeof(short));
+        memcpy(&dst[i * stride], &block[i * 16], 16 * sizeof(int16_t));
     }
 }
 
-void idct32_c(int *src, short *dst, intptr_t stride)
+void idct32_c(int32_t *src, int16_t *dst, intptr_t stride)
 {
     const int shift_1st = 7;
-    const int shift_2nd = 12;
+    const int shift_2nd = 12 - (X265_DEPTH - 8);
 
-    ALIGN_VAR_32(short, coef[32 * 32]);
-    ALIGN_VAR_32(short, block[32 * 32]);
+    ALIGN_VAR_32(int16_t, coef[32 * 32]);
+    ALIGN_VAR_32(int16_t, block[32 * 32]);
 
 #define N (32)
     for (int i = 0; i < N; i++)
     {
         for (int j = 0; j < N; j++)
         {
-            block[i * N + j] = (short)src[i * N + j];
+            block[i * N + j] = (int16_t)src[i * N + j];
         }
     }
 
@@ -714,66 +714,64 @@ void idct32_c(int *src, short *dst, intptr_t stride)
 
     for (int i = 0; i < 32; i++)
     {
-        memcpy(&dst[i * stride], &block[i * 32], 32 * sizeof(short));
+        memcpy(&dst[i * stride], &block[i * 32], 32 * sizeof(int16_t));
     }
 }
 
-void dequant_c(const int* quantCoef, int* coef, int width, int height, int per, int rem, bool useScalingList, unsigned int log2TrSize, int *dequantCoef)
+void dequant_normal_c(const int32_t* quantCoef, int32_t* coef, int num, int scale, int shift)
 {
-    int invQuantScales[6] = { 40, 45, 51, 57, 64, 72 };
-
-    if (width > 32)
-    {
-        width  = 32;
-        height = 32;
-    }
+    assert(num <= 32 * 32);
+    // NOTE: maximum of scale is (72 * 256)
+    assert(scale < 32768);
+    assert((num % 8) == 0);
+    assert(shift <= 10);
 
     int add, coeffQ;
-    int transformShift = MAX_TR_DYNAMIC_RANGE - X265_DEPTH - log2TrSize;
-    int shift = QUANT_IQUANT_SHIFT - QUANT_SHIFT - transformShift;
 
     int clipQCoef;
 
-    if (useScalingList)
+    add = 1 << (shift - 1);
+
+    for (int n = 0; n < num; n++)
     {
-        shift += 4;
+        clipQCoef = Clip3(-32768, 32767, quantCoef[n]);
+        coeffQ = (clipQCoef * scale + add) >> shift;
+        coef[n] = Clip3(-32768, 32767, coeffQ);
+    }
+}
 
-        if (shift > per)
-        {
-            add = 1 << (shift - per - 1);
+void dequant_scaling_c(const int32_t* quantCoef, const int32_t *deQuantCoef, int32_t* coef, int num, int per, int shift)
+{
+    assert(num <= 32 * 32);
 
-            for (int n = 0; n < width * height; n++)
-            {
-                clipQCoef = Clip3(-32768, 32767, quantCoef[n]);
-                coeffQ = ((clipQCoef * dequantCoef[n]) + add) >> (shift - per);
-                coef[n] = Clip3(-32768, 32767, coeffQ);
-            }
-        }
-        else
+    int add, coeffQ;
+    int clipQCoef;
+
+    shift += 4;
+
+    if (shift > per)
+    {
+        add = 1 << (shift - per - 1);
+
+        for (int n = 0; n < num; n++)
         {
-            for (int n = 0; n < width * height; n++)
-            {
-                clipQCoef = Clip3(-32768, 32767, quantCoef[n]);
-                coeffQ   = Clip3(-32768, 32767, clipQCoef * dequantCoef[n]);
-                coef[n] = Clip3(-32768, 32767, coeffQ << (per - shift));
-            }
+            clipQCoef = Clip3(-32768, 32767, quantCoef[n]);
+            coeffQ = ((clipQCoef * deQuantCoef[n]) + add) >> (shift - per);
+            coef[n] = Clip3(-32768, 32767, coeffQ);
         }
     }
     else
     {
-        add = 1 << (shift - 1);
-        int scale = invQuantScales[rem] << per;
-
-        for (int n = 0; n < width * height; n++)
+        for (int n = 0; n < num; n++)
         {
             clipQCoef = Clip3(-32768, 32767, quantCoef[n]);
-            coeffQ = (clipQCoef * scale + add) >> shift;
-            coef[n] = Clip3(-32768, 32767, coeffQ);
+            coeffQ   = Clip3(-32768, 32767, clipQCoef * deQuantCoef[n]);
+            coef[n] = Clip3(-32768, 32767, coeffQ << (per - shift));
         }
     }
 }
 
-uint32_t quant_c(int* coef, int* quantCoeff, int* deltaU, int* qCoef, int qBits, int add, int numCoeff, int* lastPos)
+uint32_t quant_c(int32_t* coef, int32_t* quantCoeff, int32_t* deltaU, int32_t* qCoef, int qBits, int add, int numCoeff, int32_t* lastPos)
 {
     int qBits8 = qBits - 8;
     uint32_t acSum = 0;
@@ -804,7 +802,8 @@ namespace x265 {
 
 void Setup_C_DCTPrimitives(EncoderPrimitives& p)
 {
-    p.dequant = dequant_c;
+    p.dequant_scaling = dequant_scaling_c;
+    p.dequant_normal = dequant_normal_c;
     p.quant = quant_c;
     p.dct[DST_4x4] = dst4_c;
     p.dct[DCT_4x4] = dct4_c;

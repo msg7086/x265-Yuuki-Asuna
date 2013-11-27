@@ -27,10 +27,8 @@
 
 using namespace x265;
 
-void Lowres::create(TComPic *pic, int bframes)
+void Lowres::create(TComPicYuv *orig, int bframes, int32_t *aqMode)
 {
-    TComPicYuv *orig = pic->getPicYuvOrg();
-
     isLowres = true;
     width = orig->getWidth() / 2;
     lines = orig->getHeight() / 2;
@@ -45,6 +43,14 @@ void Lowres::create(TComPic *pic, int bframes)
     width = cuWidth * X265_LOWRES_CU_SIZE;
     lines = cuHeight * X265_LOWRES_CU_SIZE;
 
+    if (*aqMode)
+    {
+        qpAqOffset = (double*)x265_malloc(sizeof(double) * cuCount);
+        invQscaleFactor = (int*)x265_malloc(sizeof(int) * cuCount);
+        if (!qpAqOffset || !invQscaleFactor)
+            *aqMode = 0;
+    }
+
     /* allocate lowres buffers */
     for (int i = 0; i < 4; i++)
     {
@@ -57,13 +63,13 @@ void Lowres::create(TComPic *pic, int bframes)
     lowresPlane[2] = buffer[2] + padoffset;
     lowresPlane[3] = buffer[3] + padoffset;
 
-    intraCost = (int*)X265_MALLOC(int, cuCount);
+    intraCost = (int32_t*)X265_MALLOC(int, cuCount);
 
     for (int i = 0; i < bframes + 2; i++)
     {
         for (int j = 0; j < bframes + 2; j++)
         {
-            rowSatds[i][j] = (int*)X265_MALLOC(int, cuHeight);
+            rowSatds[i][j] = (int32_t*)X265_MALLOC(int, cuHeight);
             lowresCosts[i][j] = (uint16_t*)X265_MALLOC(uint16_t, cuCount);
         }
     }
@@ -72,8 +78,8 @@ void Lowres::create(TComPic *pic, int bframes)
     {
         lowresMvs[0][i] = (MV*)X265_MALLOC(MV, cuCount);
         lowresMvs[1][i] = (MV*)X265_MALLOC(MV, cuCount);
-        lowresMvCosts[0][i] = (int*)X265_MALLOC(int, cuCount);
-        lowresMvCosts[1][i] = (int*)X265_MALLOC(int, cuCount);
+        lowresMvCosts[0][i] = (int32_t*)X265_MALLOC(int, cuCount);
+        lowresMvCosts[1][i] = (int32_t*)X265_MALLOC(int, cuCount);
     }
 }
 
@@ -102,6 +108,9 @@ void Lowres::destroy(int bframes)
         X265_FREE(lowresMvCosts[0][i]);
         X265_FREE(lowresMvCosts[1][i]);
     }
+
+    X265_FREE(qpAqOffset);
+    X265_FREE(invQscaleFactor);
 }
 
 // (re) initialize lowres state
@@ -114,7 +123,12 @@ void Lowres::init(TComPicYuv *orig, int poc, int type, int bframes)
     sliceType = type;
     frameNum = poc;
     leadingBframes = 0;
+    satdCost = -1;
     memset(costEst, -1, sizeof(costEst));
+
+    if (qpAqOffset && invQscaleFactor)
+        memset(costEstAq, -1, sizeof(costEstAq));
+
     for (int y = 0; y < bframes + 2; y++)
     {
         for (int x = 0; x < bframes + 2; x++)
@@ -134,31 +148,6 @@ void Lowres::init(TComPicYuv *orig, int poc, int type, int bframes)
         intraMbs[i] = 0;
     }
 
-    int y, extWidth = (orig->getWidth() + X265_LOWRES_CU_SIZE - 1);
-    int srcStride = orig->getStride();
-    int srcHeight = orig->getHeight();
-    int srcWidth  = orig->getWidth();
-    Pel *src;
-    src = orig->getLumaAddr();
-
-    /* extending right margin */
-    if (2 * width > srcWidth)
-    {
-        for (y = 0; y < srcHeight; y++)
-        {
-            ::memset(src + srcWidth, src[srcWidth - 1], sizeof(Pel) * (X265_LOWRES_CU_SIZE - 1));
-            src += srcStride;
-        }
-    }
-
-    /* extending bottom margin */
-    src = orig->getLumaAddr() + (srcHeight - 1) * srcStride;
-
-    for (y = 1; y <= 2 * lines - srcHeight; y++)
-    {
-        ::memcpy(src + y * srcStride, src, sizeof(Pel) * (extWidth));
-    }
-    
     /* downscale and generate 4 HPEL planes for lookahead */
     primitives.frame_init_lowres_core(orig->getLumaAddr(),
                                       lowresPlane[0], lowresPlane[1], lowresPlane[2], lowresPlane[3],

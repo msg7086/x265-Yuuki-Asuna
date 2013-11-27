@@ -68,6 +68,7 @@ int sad_4(pixel * fenc, intptr_t fencstride, pixel * fref, intptr_t frefstride)
         T21 = _mm_add_epi16(T20, T21);
         sum1 = _mm_add_epi16(sum1, T21);
     }
+
     sum1 = _mm_hadd_epi16(sum1, sum1);
     sum1 = _mm_unpacklo_epi16(sum1, _mm_setzero_si128());
     sum1 = _mm_hadd_epi32(_mm_hadd_epi32(sum1, sum1), sum1);
@@ -478,7 +479,7 @@ int sad_64(pixel * fenc, intptr_t fencstride, pixel * fref, intptr_t frefstride)
 }
 
 template<int ly>
-void sad_x3_4(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int *res)
+void sad_x3_4(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3;
 
@@ -541,7 +542,7 @@ void sad_x3_4(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefs
 }
 
 template<int ly>
-void sad_x3_8(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int *res)
+void sad_x3_8(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3;
 
@@ -604,7 +605,7 @@ void sad_x3_8(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefs
 }
 
 template<int ly>
-void sad_x3_12(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int *res)
+void sad_x3_12(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3;
 
@@ -693,7 +694,7 @@ void sad_x3_12(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t fref
 }
 
 template<int ly>
-void sad_x3_16(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int *res)
+void sad_x3_16(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3;
 
@@ -774,7 +775,7 @@ void sad_x3_16(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t fref
 }
 
 template<int ly>
-void sad_x3_24(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int *res)
+void sad_x3_24(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3;
 
@@ -833,7 +834,7 @@ void sad_x3_24(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t fref
 }
 
 template<int ly>
-void sad_x3_32(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int *res)
+void sad_x3_32(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3;
 
@@ -901,7 +902,7 @@ void sad_x3_32(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t fref
 }
 
 template<int ly>
-void sad_x3_48(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int *res)
+void sad_x3_48(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3;
 
@@ -987,7 +988,7 @@ void sad_x3_48(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t fref
 }
 
 template<int ly>
-void sad_x3_64(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int *res)
+void sad_x3_64(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3;
 
@@ -1091,7 +1092,7 @@ void sad_x3_64(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, intptr_t fref
 }
 
 template<int ly>
-void sad_x4_4(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int *res)
+void sad_x4_4(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3, n4;
 
@@ -1164,7 +1165,7 @@ void sad_x4_4(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, i
 }
 
 template<int ly>
-void sad_x4_8(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int *res)
+void sad_x4_8(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3, n4;
 
@@ -1237,7 +1238,7 @@ void sad_x4_8(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, i
 }
 
 template<int ly>
-void sad_x4_12(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int *res)
+void sad_x4_12(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3, n4;
 
@@ -1342,7 +1343,7 @@ void sad_x4_12(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, 
 }
 
 template<int ly>
-void sad_x4_16(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int *res)
+void sad_x4_16(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3, n4;
 
@@ -1437,7 +1438,7 @@ void sad_x4_16(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, 
 }
 
 template<int ly>
-void sad_x4_24(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int *res)
+void sad_x4_24(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3, n4;
 
@@ -1506,7 +1507,7 @@ void sad_x4_24(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, 
 }
 
 template<int ly>
-void sad_x4_32(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int *res)
+void sad_x4_32(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3, n4;
 
@@ -1586,7 +1587,7 @@ void sad_x4_32(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, 
 }
 
 template<int ly>
-void sad_x4_48(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int *res)
+void sad_x4_48(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3, n4;
 
@@ -1688,7 +1689,7 @@ void sad_x4_48(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, 
 }
 
 template<int ly>
-void sad_x4_64(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int *res)
+void sad_x4_64(pixel *fenc, pixel *Cur1, pixel *Cur2, pixel *Cur3, pixel *Cur4, intptr_t frefstride, int32_t *res)
 {
     Vec8s m1, n1, n2, n3, n4;
 

@@ -63,9 +63,9 @@ TComPicSym::TComPicSym()
     , m_cuData(NULL)
 {}
 
-void TComPicSym::create(int picWidth, int picHeight, UInt maxWidth, UInt maxHeight, UInt maxDepth)
+void TComPicSym::create(int picWidth, int picHeight, int picCsp, uint32_t maxWidth, uint32_t maxHeight, uint32_t maxDepth)
 {
-    UInt i;
+    uint32_t i;
 
     m_totalDepth      = maxDepth;
     m_numPartitions   = 1 << (m_totalDepth << 1);
@@ -89,7 +89,7 @@ void TComPicSym::create(int picWidth, int picHeight, UInt maxWidth, UInt maxHeig
     for (i = 0; i < m_numCUsInFrame; i++)
     {
         m_cuData[i] = new TComDataCU;
-        m_cuData[i]->create(m_numPartitions, m_maxCUWidth, m_maxCUHeight, m_maxCUWidth >> m_totalDepth);
+        m_cuData[i]->create(m_numPartitions, m_maxCUWidth, m_maxCUHeight, m_maxCUWidth >> m_totalDepth, picCsp);
     }
 
     m_saoParam = NULL;

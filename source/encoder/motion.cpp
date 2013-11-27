@@ -21,11 +21,12 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
+#include "TLibCommon/TComRom.h"
 #include "primitives.h"
 #include "common.h"
+#include "lowres.h"
 #include "motion.h"
 #include "x265.h"
-#include "TLibCommon/TComRom.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -103,25 +104,16 @@ MotionEstimate::MotionEstimate()
         init_scales();
 
     fenc = (pixel*)X265_MALLOC(pixel, MAX_CU_SIZE * MAX_CU_SIZE);
-    subpelbuf = (pixel*)X265_MALLOC(pixel, (MAX_CU_SIZE + 1) * (MAX_CU_SIZE + 1));
-    immedVal = (short*)X265_MALLOC(short, (MAX_CU_SIZE + 1) * (MAX_CU_SIZE + 1 + NTAPS_LUMA - 1));
-    immedVal2 = (int16_t*)X265_MALLOC(int16_t, (MAX_CU_SIZE + 1) * (MAX_CU_SIZE + 1 + NTAPS_LUMA - 1));
 }
 
 MotionEstimate::~MotionEstimate()
 {
     X265_FREE(fenc);
-    X265_FREE(subpelbuf);
-    X265_FREE(immedVal);
-    X265_FREE(immedVal2);
 }
 
 void MotionEstimate::setSourcePU(int offset, int width, int height)
 {
-    /* copy PU block into cache */
-    primitives.blockcpy_pp(width, height, fenc, FENC_STRIDE, fencplane + offset, fencLumaStride);
-
-    partEnum = PartitionFromSizes(width, height);
+    partEnum = partitionFromSizes(width, height);
     assert(LUMA_4x4 != partEnum);
     sad = primitives.sad[partEnum];
     satd = primitives.satd[partEnum];
@@ -132,6 +124,9 @@ void MotionEstimate::setSourcePU(int offset, int width, int height)
     blockwidth = width;
     blockheight = height;
     blockOffset = offset;
+
+    /* copy PU block into cache */
+    primitives.luma_copy_pp[partEnum](fenc, FENC_STRIDE, fencplane + offset, fencLumaStride);
 }
 
 /* radius 2 hexagon. repeated entries are to avoid having to compute mod6 every time. */
@@ -290,6 +285,248 @@ static inline int x265_predictor_difference(const MV *mvc, intptr_t numCandidate
         } \
     }
 
+void MotionEstimate::StarPatternSearch(ReferencePlanes *ref,
+                                       const MV &       mvmin,
+                                       const MV &       mvmax,
+                                       MV &             bmv,
+                                       int &            bcost,
+                                       int &            bPointNr,
+                                       int &            bDistance,
+                                       int              earlyExitIters,
+                                       int              merange)
+{
+    ALIGN_VAR_16(int, costs[16]);
+    pixel *fref = ref->fpelPlane + blockOffset;
+    size_t stride = ref->lumaStride;
+
+    MV omv = bmv;
+    int saved = bcost;
+    int rounds = 0;
+
+    {
+        int16_t dist = 1;
+
+        /* bPointNr
+              2
+            4 * 5
+              7
+         */
+        const int16_t top    = omv.y - dist;
+        const int16_t bottom = omv.y + dist;
+        const int16_t left   = omv.x - dist;
+        const int16_t right  = omv.x + dist;
+
+        if (top >= mvmin.y && left >= mvmin.x && right <= mvmax.x && bottom <= mvmax.y)
+        {
+            COST_MV_PT_DIST_X4(omv.x,  top,    2, dist,
+                               left,  omv.y,   4, dist,
+                               right, omv.y,   5, dist,
+                               omv.x,  bottom, 7, dist);
+        }
+        else
+        {
+            if (top >= mvmin.y) // check top
+            {
+                COST_MV_PT_DIST(omv.x, top, 2, dist);
+            }
+            if (left >= mvmin.x) // check middle left
+            {
+                COST_MV_PT_DIST(left, omv.y, 4, dist);
+            }
+            if (right <= mvmax.x) // check middle right
+            {
+                COST_MV_PT_DIST(right, omv.y, 5, dist);
+            }
+            if (bottom <= mvmax.y) // check bottom
+            {
+                COST_MV_PT_DIST(omv.x, bottom, 7, dist);
+            }
+        }
+        if (bcost < saved)
+            rounds = 0;
+        else if (++rounds >= earlyExitIters)
+            return;
+    }
+
+    for (int16_t dist = 2; dist <= 8; dist <<= 1)
+    {
+        /* bPointNr
+              2
+             1 3
+            4 * 5
+             6 8
+              7
+         Points 2, 4, 5, 7 are dist
+         Points 1, 3, 6, 8 are dist>>1
+         */
+        const int16_t top     = omv.y - dist;
+        const int16_t bottom  = omv.y + dist;
+        const int16_t left    = omv.x - dist;
+        const int16_t right   = omv.x + dist;
+        const int16_t top2    = omv.y - (dist >> 1);
+        const int16_t bottom2 = omv.y + (dist >> 1);
+        const int16_t left2   = omv.x - (dist >> 1);
+        const int16_t right2  = omv.x + (dist >> 1);
+        saved = bcost;
+
+        if (top >= mvmin.y && left >= mvmin.x &&
+            right <= mvmax.x && bottom <= mvmax.y) // check border
+        {
+            COST_MV_PT_DIST_X4(omv.x,  top,   2, dist,
+                               left2,  top2,  1, dist >> 1,
+                               right2, top2,  3, dist >> 1,
+                               left,   omv.y, 4, dist);
+            COST_MV_PT_DIST_X4(right,  omv.y,   5, dist,
+                               left2,  bottom2, 6, dist >> 1,
+                               right2, bottom2, 8, dist >> 1,
+                               omv.x,  bottom,  7, dist);
+        }
+        else // check border for each mv
+        {
+            if (top >= mvmin.y) // check top
+            {
+                COST_MV_PT_DIST(omv.x, top, 2, dist);
+            }
+            if (top2 >= mvmin.y) // check half top
+            {
+                if (left2 >= mvmin.x) // check half left
+                {
+                    COST_MV_PT_DIST(left2, top2, 1, (dist >> 1));
+                }
+                if (right2 <= mvmax.x) // check half right
+                {
+                    COST_MV_PT_DIST(right2, top2, 3, (dist >> 1));
+                }
+            }
+            if (left >= mvmin.x) // check left
+            {
+                COST_MV_PT_DIST(left, omv.y, 4, dist);
+            }
+            if (right <= mvmax.x) // check right
+            {
+                COST_MV_PT_DIST(right, omv.y, 5, dist);
+            }
+            if (bottom2 <= mvmax.y) // check half bottom
+            {
+                if (left2 >= mvmin.x) // check half left
+                {
+                    COST_MV_PT_DIST(left2, bottom2, 6, (dist >> 1));
+                }
+                if (right2 <= mvmax.x) // check half right
+                {
+                    COST_MV_PT_DIST(right2, bottom2, 8, (dist >> 1));
+                }
+            }
+            if (bottom <= mvmax.y) // check bottom
+            {
+                COST_MV_PT_DIST(omv.x, bottom, 7, dist);
+            }
+        }
+
+        if (bcost < saved)
+            rounds = 0;
+        else if (++rounds >= earlyExitIters)
+            return;
+    }
+
+    for (int16_t dist = 16; dist <= (int16_t)merange; dist <<= 1)
+    {
+        const int16_t top    = omv.y - dist;
+        const int16_t bottom = omv.y + dist;
+        const int16_t left   = omv.x - dist;
+        const int16_t right  = omv.x + dist;
+
+        saved = bcost;
+        if (top >= mvmin.y && left >= mvmin.x &&
+            right <= mvmax.x && bottom <= mvmax.y) // check border
+        {
+            /* index
+                  0
+                  3
+                  2
+                  1
+          0 3 2 1 * 1 2 3 0
+                  1
+                  2
+                  3
+                  0
+            */
+
+            COST_MV_PT_DIST_X4(omv.x,  top,    0, dist,
+                               left,   omv.y,  0, dist,
+                               right,  omv.y,  0, dist,
+                               omv.x,  bottom, 0, dist);
+
+            for (int16_t index = 1; index < 4; index++)
+            {
+                int16_t posYT = top    + ((dist >> 2) * index);
+                int16_t posYB = bottom - ((dist >> 2) * index);
+                int16_t posXL = omv.x  - ((dist >> 2) * index);
+                int16_t posXR = omv.x  + ((dist >> 2) * index);
+
+                COST_MV_PT_DIST_X4(posXL, posYT, 0, dist,
+                                   posXR, posYT, 0, dist,
+                                   posXL, posYB, 0, dist,
+                                   posXR, posYB, 0, dist);
+            }
+        }
+        else // check border for each mv
+        {
+            if (top >= mvmin.y) // check top
+            {
+                COST_MV_PT_DIST(omv.x, top, 0, dist);
+            }
+            if (left >= mvmin.x) // check left
+            {
+                COST_MV_PT_DIST(left, omv.y, 0, dist);
+            }
+            if (right <= mvmax.x) // check right
+            {
+                COST_MV_PT_DIST(right, omv.y, 0, dist);
+            }
+            if (bottom <= mvmax.y) // check bottom
+            {
+                COST_MV_PT_DIST(omv.x, bottom, 0, dist);
+            }
+            for (int16_t index = 1; index < 4; index++)
+            {
+                int16_t posYT = top    + ((dist >> 2) * index);
+                int16_t posYB = bottom - ((dist >> 2) * index);
+                int16_t posXL = omv.x - ((dist >> 2) * index);
+                int16_t posXR = omv.x + ((dist >> 2) * index);
+
+                if (posYT >= mvmin.y) // check top
+                {
+                    if (posXL >= mvmin.x) // check left
+                    {
+                        COST_MV_PT_DIST(posXL, posYT, 0, dist);
+                    }
+                    if (posXR <= mvmax.x) // check right
+                    {
+                        COST_MV_PT_DIST(posXR, posYT, 0, dist);
+                    }
+                }
+                if (posYB <= mvmax.y) // check bottom
+                {
+                    if (posXL >= mvmin.x) // check left
+                    {
+                        COST_MV_PT_DIST(posXL, posYB, 0, dist);
+                    }
+                    if (posXR <= mvmax.x) // check right
+                    {
+                        COST_MV_PT_DIST(posXR, posYB, 0, dist);
+                    }
+                }
+            }
+        }
+
+        if (bcost < saved)
+            rounds = 0;
+        else if (++rounds >= earlyExitIters)
+            return;
+    }
+}
+
 int MotionEstimate::motionEstimate(ReferencePlanes *ref,
                                    const MV &       mvmin,
                                    const MV &       mvmax,
@@ -318,7 +555,12 @@ int MotionEstimate::motionEstimate(ReferencePlanes *ref,
     // measure SAD cost at clipped QPEL MVP
     MV pmv = qmvp.clipped(qmvmin, qmvmax);
     MV bestpre = pmv;
-    int bprecost = subpelCompare(ref, pmv, sad);
+    int bprecost;
+
+    if (ref->isLowres)
+        bprecost = ref->lowresQPelCost(fenc, blockOffset, pmv, sad);
+    else
+        bprecost = subpelCompare(ref, pmv, sad);
 
     /* re-measure full pel rounded MVP with SAD as search start point */
     MV bmv = pmv.roundToFPel();
@@ -345,7 +587,12 @@ int MotionEstimate::motionEstimate(ReferencePlanes *ref,
         MV m = mvc[i].clipped(qmvmin, qmvmax);
         if (m.notZero() && m != pmv && m != bestpre) // check already measured
         {
-            int cost = subpelCompare(ref, m, sad) + mvcost(m);
+            int cost;
+            if (ref->isLowres)
+                cost = ref->lowresQPelCost(fenc, blockOffset, m, sad) + mvcost(m);
+            else
+                cost = subpelCompare(ref, m, sad) + mvcost(m);
+
             if (cost < bprecost)
             {
                 bprecost = cost;
@@ -405,14 +652,14 @@ me_hex2:
 #else // if 0
       /* equivalent to the above, but eliminates duplicate candidates */
         COST_MV_X3_DIR(-2, 0, -1, 2,  1, 2, costs);
-        COST_MV_X3_DIR(2, 0,  1, -2, -1, -2, costs + 3);
         bcost <<= 3;
         COPY1_IF_LT(bcost, (costs[0] << 3) + 2);
         COPY1_IF_LT(bcost, (costs[1] << 3) + 3);
         COPY1_IF_LT(bcost, (costs[2] << 3) + 4);
-        COPY1_IF_LT(bcost, (costs[3] << 3) + 5);
-        COPY1_IF_LT(bcost, (costs[4] << 3) + 6);
-        COPY1_IF_LT(bcost, (costs[5] << 3) + 7);
+        COST_MV_X3_DIR(2, 0,  1, -2, -1, -2, costs);
+        COPY1_IF_LT(bcost, (costs[0] << 3) + 5);
+        COPY1_IF_LT(bcost, (costs[1] << 3) + 6);
+        COPY1_IF_LT(bcost, (costs[2] << 3) + 7);
 
         if (bcost & 7)
         {
@@ -561,7 +808,7 @@ me_hex2:
         omv = bmv;
         const uint16_t *p_cost_omvx = m_cost_mvx + omv.x * 4;
         const uint16_t *p_cost_omvy = m_cost_mvy + omv.y * 4;
-        int16_t i = 1;
+        uint16_t i = 1;
         do
         {
             if (4 * i > X265_MIN4(mvmax.x - omv.x, omv.x - mvmin.x,
@@ -803,18 +1050,40 @@ me_hex2:
         bmv = bmv.toQPel(); // promote search bmv to qpel
 
     SubpelWorkload& wl = workload[this->subpelRefine];
-    pixelcmp_t hpelcomp;
-
-    if (wl.hpel_satd)
-    {
-        bcost = subpelCompare(ref, bmv, satd) + mvcost(bmv);
-        hpelcomp = satd;
-    }
-    else
-        hpelcomp = sad;
 
     if (ref->isLowres)
     {
+        int bdir = 0, cost;
+        for (int i = 1; i <= wl.hpel_dirs; i++)
+        {
+            MV qmv = bmv + square1[i] * 2;
+            cost = ref->lowresQPelCost(fenc, blockOffset, qmv, sad) + mvcost(qmv);
+            COPY2_IF_LT(bcost, cost, bdir, i);
+        }
+        bmv += square1[bdir] * 2;
+        bcost = ref->lowresQPelCost(fenc, blockOffset, bmv, satd) + mvcost(bmv);
+
+        bdir = 0;
+        for (int i = 1; i <= wl.qpel_dirs; i++)
+        {
+            MV qmv = bmv + square1[i];
+            cost = ref->lowresQPelCost(fenc, blockOffset, qmv, satd) + mvcost(qmv);
+            COPY2_IF_LT(bcost, cost, bdir, i);
+        }
+        bmv += square1[bdir];
+    }
+    else
+    {
+        pixelcmp_t hpelcomp;
+
+        if (wl.hpel_satd)
+        {
+            bcost = subpelCompare(ref, bmv, satd) + mvcost(bmv);
+            hpelcomp = satd;
+        }
+        else
+            hpelcomp = sad;
+
         for (int iter = 0; iter < wl.hpel_iters; iter++)
         {
             int bdir = 0, cost;
@@ -822,64 +1091,27 @@ me_hex2:
             {
                 MV qmv = bmv + square1[i] * 2;
                 cost = subpelCompare(ref, qmv, hpelcomp) + mvcost(qmv);
-                COPY2_IF_LT(bcost, cost, bdir, i + 0);
+                COPY2_IF_LT(bcost, cost, bdir, i);
             }
 
             bmv += square1[bdir] * 2;
         }
-    }
-    else
-    {
-        for (int iter = 0; iter < wl.hpel_iters; iter++)
+        /* if HPEL search used SAD, remeasure with SATD before QPEL */
+        if (!wl.hpel_satd)
+            bcost = subpelCompare(ref, bmv, satd) + mvcost(bmv);
+
+        for (int iter = 0; iter < wl.qpel_iters; iter++)
         {
-            int bdir = 0, cost0, cost1;
-            for (int i = 1; i <= wl.hpel_dirs; i += 2)
+            int bdir = 0, cost;
+            for (int i = 1; i <= wl.qpel_dirs; i++)
             {
-                MV qmv0 = bmv + square1[i] * 2;
-                MV qmv1 = bmv + square1[i + 1] * 2;
-                int mvcost0 = mvcost(qmv0);
-                int mvcost1 = mvcost(qmv1);
-                int dir = square1_dir[i];
-
-                pixel *fqref = ref->fpelPlane + blockOffset + (qmv0.x >> 2) + (qmv0.y >> 2) * ref->lumaStride;
-                int xFrac = qmv0.x & 0x3;
-                int yFrac = qmv0.y & 0x3;
-
-                // TODO: sad_x2
-                if (xFrac == 0 && yFrac == 0)
-                {
-                    intptr_t offset = (dir == 2) + (dir == 1 ? ref->lumaStride : 0);
-                    cost0 = hpelcomp(fenc, FENC_STRIDE, fqref, ref->lumaStride) + mvcost0;
-                    cost1 = hpelcomp(fenc, FENC_STRIDE, fqref + offset, ref->lumaStride) + mvcost1;
-                }
-                else
-                {
-                    subpelInterpolate(ref, qmv0, dir);
-                    cost0 = hpelcomp(fenc, FENC_STRIDE, subpelbuf, FENC_STRIDE + (dir == 2)) + mvcost0;
-                    cost1 = hpelcomp(fenc, FENC_STRIDE, subpelbuf + (dir == 2) + (dir == 1 ? FENC_STRIDE : 0), FENC_STRIDE + (dir == 2)) + mvcost1;
-                }
-                COPY2_IF_LT(bcost, cost0, bdir, i + 0);
-                COPY2_IF_LT(bcost, cost1, bdir, i + 1);
+                MV qmv = bmv + square1[i];
+                cost = subpelCompare(ref, qmv, satd) + mvcost(qmv);
+                COPY2_IF_LT(bcost, cost, bdir, i);
             }
 
-            bmv += square1[bdir] * 2;
+            bmv += square1[bdir];
         }
-    }
-    /* if HPEL search used SAD, remeasure with SATD before QPEL */
-    if (!wl.hpel_satd)
-        bcost = subpelCompare(ref, bmv, satd) + mvcost(bmv);
-
-    for (int iter = 0; iter < wl.qpel_iters; iter++)
-    {
-        int bdir = 0, cost;
-        for (int i = 1; i <= wl.qpel_dirs; i++)
-        {
-            MV qmv = bmv + square1[i];
-            cost = subpelCompare(ref, qmv, satd) + mvcost(qmv);
-            COPY2_IF_LT(bcost, cost, bdir, i);
-        }
-
-        bmv += square1[bdir];
     }
 
     x265_emms();
@@ -887,342 +1119,45 @@ me_hex2:
     return bcost;
 }
 
-void MotionEstimate::StarPatternSearch(ReferencePlanes *ref,
-                                       const MV &       mvmin,
-                                       const MV &       mvmax,
-                                       MV &             bmv,
-                                       int &            bcost,
-                                       int &            bPointNr,
-                                       int &            bDistance,
-                                       int              earlyExitIters,
-                                       int              merange)
-{
-    ALIGN_VAR_16(int, costs[16]);
-    pixel *fref = ref->fpelPlane + blockOffset;
-    size_t stride = ref->lumaStride;
-
-    MV omv = bmv;
-    int saved = bcost;
-    int rounds = 0;
-
-    {
-        int16_t dist = 1;
-
-        /* bPointNr
-              2
-            4 * 5
-              7
-         */
-        const int16_t top    = omv.y - dist;
-        const int16_t bottom = omv.y + dist;
-        const int16_t left   = omv.x - dist;
-        const int16_t right  = omv.x + dist;
-
-        if (top >= mvmin.y && left >= mvmin.x && right <= mvmax.x && bottom <= mvmax.y)
-        {
-            COST_MV_PT_DIST_X4(omv.x,  top,    2, dist,
-                               left,  omv.y,   4, dist,
-                               right, omv.y,   5, dist,
-                               omv.x,  bottom, 7, dist);
-        }
-        else
-        {
-            if (top >= mvmin.y) // check top
-            {
-                COST_MV_PT_DIST(omv.x, top, 2, dist);
-            }
-            if (left >= mvmin.x) // check middle left
-            {
-                COST_MV_PT_DIST(left, omv.y, 4, dist);
-            }
-            if (right <= mvmax.x) // check middle right
-            {
-                COST_MV_PT_DIST(right, omv.y, 5, dist);
-            }
-            if (bottom <= mvmax.y) // check bottom
-            {
-                COST_MV_PT_DIST(omv.x, bottom, 7, dist);
-            }
-        }
-        if (bcost < saved)
-            rounds = 0;
-        else if (++rounds >= earlyExitIters)
-            return;
-    }
-
-    for (int16_t dist = 2; dist <= 8; dist <<= 1)
-    {
-        /* bPointNr
-              2
-             1 3
-            4 * 5
-             6 8
-              7
-         Points 2, 4, 5, 7 are dist
-         Points 1, 3, 6, 8 are dist>>1
-         */
-        const int16_t top     = omv.y - dist;
-        const int16_t bottom  = omv.y + dist;
-        const int16_t left    = omv.x - dist;
-        const int16_t right   = omv.x + dist;
-        const int16_t top2    = omv.y - (dist >> 1);
-        const int16_t bottom2 = omv.y + (dist >> 1);
-        const int16_t left2   = omv.x - (dist >> 1);
-        const int16_t right2  = omv.x + (dist >> 1);
-        saved = bcost;
-
-        if (top >= mvmin.y && left >= mvmin.x &&
-            right <= mvmax.x && bottom <= mvmax.y) // check border
-        {
-            COST_MV_PT_DIST_X4(omv.x,  top,   2, dist,
-                               left2,  top2,  1, dist >> 1,
-                               right2, top2,  3, dist >> 1,
-                               left,   omv.y, 4, dist);
-            COST_MV_PT_DIST_X4(right,  omv.y,   5, dist,
-                               left2,  bottom2, 6, dist >> 1,
-                               right2, bottom2, 8, dist >> 1,
-                               omv.x,  bottom,  7, dist);
-        }
-        else // check border for each mv
-        {
-            if (top >= mvmin.y) // check top
-            {
-                COST_MV_PT_DIST(omv.x, top, 2, dist);
-            }
-            if (top2 >= mvmin.y) // check half top
-            {
-                if (left2 >= mvmin.x) // check half left
-                {
-                    COST_MV_PT_DIST(left2, top2, 1, (dist >> 1));
-                }
-                if (right2 <= mvmax.x) // check half right
-                {
-                    COST_MV_PT_DIST(right2, top2, 3, (dist >> 1));
-                }
-            } // check half top
-            if (left >= mvmin.x) // check left
-            {
-                COST_MV_PT_DIST(left, omv.y, 4, dist);
-            }
-            if (right <= mvmax.x) // check right
-            {
-                COST_MV_PT_DIST(right, omv.y, 5, dist);
-            }
-            if (bottom2 <= mvmax.y) // check half bottom
-            {
-                if (left2 >= mvmin.x) // check half left
-                {
-                    COST_MV_PT_DIST(left2, bottom2, 6, (dist >> 1));
-                }
-                if (right2 <= mvmax.x) // check half right
-                {
-                    COST_MV_PT_DIST(right2, bottom2, 8, (dist >> 1));
-                }
-            } // check half bottom
-            if (bottom <= mvmax.y) // check bottom
-            {
-                COST_MV_PT_DIST(omv.x, bottom, 7, dist);
-            }
-        } // check border for each mv
-
-        if (bcost < saved)
-            rounds = 0;
-        else if (++rounds >= earlyExitIters)
-            return;
-    }
-
-    for (int16_t dist = 16; dist <= (int16_t)merange; dist <<= 1)
-    {
-        const int16_t top    = omv.y - dist;
-        const int16_t bottom = omv.y + dist;
-        const int16_t left   = omv.x - dist;
-        const int16_t right  = omv.x + dist;
-
-        saved = bcost;
-        if (top >= mvmin.y && left >= mvmin.x &&
-            right <= mvmax.x && bottom <= mvmax.y) // check border
-        {
-            /* index
-                  0
-                  3
-                  2
-                  1
-          0 3 2 1 * 1 2 3 0
-                  1
-                  2
-                  3
-                  0
-            */
-
-            COST_MV_PT_DIST_X4(omv.x,  top,    0, dist,
-                               left,   omv.y,  0, dist,
-                               right,  omv.y,  0, dist,
-                               omv.x,  bottom, 0, dist);
-
-            for (int16_t index = 1; index < 4; index++)
-            {
-                int16_t posYT = top    + ((dist >> 2) * index);
-                int16_t posYB = bottom - ((dist >> 2) * index);
-                int16_t posXL = omv.x  - ((dist >> 2) * index);
-                int16_t posXR = omv.x  + ((dist >> 2) * index);
-
-                COST_MV_PT_DIST_X4(posXL, posYT, 0, dist,
-                                   posXR, posYT, 0, dist,
-                                   posXL, posYB, 0, dist,
-                                   posXR, posYB, 0, dist);
-            }
-        }
-        else // check border for each mv
-        {
-            if (top >= mvmin.y) // check top
-            {
-                COST_MV_PT_DIST(omv.x, top, 0, dist);
-            }
-            if (left >= mvmin.x) // check left
-            {
-                COST_MV_PT_DIST(left, omv.y, 0, dist);
-            }
-            if (right <= mvmax.x) // check right
-            {
-                COST_MV_PT_DIST(right, omv.y, 0, dist);
-            }
-            if (bottom <= mvmax.y) // check bottom
-            {
-                COST_MV_PT_DIST(omv.x, bottom, 0, dist);
-            }
-            for (int16_t index = 1; index < 4; index++)
-            {
-                int16_t posYT = top    + ((dist >> 2) * index);
-                int16_t posYB = bottom - ((dist >> 2) * index);
-                int16_t posXL = omv.x - ((dist >> 2) * index);
-                int16_t posXR = omv.x + ((dist >> 2) * index);
-
-                if (posYT >= mvmin.y) // check top
-                {
-                    if (posXL >= mvmin.x) // check left
-                    {
-                        COST_MV_PT_DIST(posXL, posYT, 0, dist);
-                    }
-                    if (posXR <= mvmax.x) // check right
-                    {
-                        COST_MV_PT_DIST(posXR, posYT, 0, dist);
-                    }
-                } // check top
-                if (posYB <= mvmax.y) // check bottom
-                {
-                    if (posXL >= mvmin.x) // check left
-                    {
-                        COST_MV_PT_DIST(posXL, posYB, 0, dist);
-                    }
-                    if (posXR <= mvmax.x) // check right
-                    {
-                        COST_MV_PT_DIST(posXR, posYB, 0, dist);
-                    }
-                } // check bottom
-            } // for ...
-        } // check border for each mv
-
-        if (bcost < saved)
-            rounds = 0;
-        else if (++rounds >= earlyExitIters)
-            return;
-    } // dist > 8
-}
-
 int MotionEstimate::subpelCompare(ReferencePlanes *ref, const MV& qmv, pixelcmp_t cmp)
-{
-    if (ref->isLowres)
-    {
-        if ((qmv.x | qmv.y) & 1)
-        {
-            /* QPel: use H.264's simple QPEL generation from averaged HPEL pixels */
-            int hpelA = (qmv.y & 2) | ((qmv.x & 2) >> 1);
-            pixel *frefA = ref->lowresPlane[hpelA] + blockOffset + (qmv.x >> 2) + (qmv.y >> 2) * ref->lumaStride;
-
-            MV qmvB = qmv + MV((qmv.x & 1) * 2, (qmv.y & 1) * 2);
-            int hpelB = (qmvB.y & 2) | ((qmvB.x & 2) >> 1);
-            pixel *frefB = ref->lowresPlane[hpelB] + blockOffset + (qmvB.x >> 2) + (qmvB.y >> 2) * ref->lumaStride;
-
-            // average nearest two HPEL pixels to generate H.264 style QPEL pixels
-            primitives.pixelavg_pp[LUMA_8x8](subpelbuf, FENC_STRIDE, frefA, ref->lumaStride, frefB, ref->lumaStride, 32);
-            return cmp(fenc, FENC_STRIDE, subpelbuf, FENC_STRIDE);
-        }
-        else
-        {
-            /* FPEL/HPEL */
-            int hpel = (qmv.y & 2) | ((qmv.x & 2) >> 1);
-            pixel *fref = ref->lowresPlane[hpel] + blockOffset + (qmv.x >> 2) + (qmv.y >> 2) * ref->lumaStride;
-            return cmp(fenc, FENC_STRIDE, fref, ref->lumaStride);
-        }
-    }
-    else
-    {
-        pixel *fref = ref->fpelPlane + blockOffset + (qmv.x >> 2) + (qmv.y >> 2) * ref->lumaStride;
-        int xFrac = qmv.x & 0x3;
-        int yFrac = qmv.y & 0x3;
-
-        if ((yFrac | xFrac) == 0)
-        {
-            return cmp(fenc, FENC_STRIDE, fref, ref->lumaStride);
-        }
-        else
-        {
-            subpelInterpolate(ref, qmv, 0);
-        }
-        return cmp(fenc, FENC_STRIDE, subpelbuf, FENC_STRIDE);
-    }
-}
-
-void MotionEstimate::subpelInterpolate(ReferencePlanes *ref, MV qmv, int dir)
 {
     int xFrac = qmv.x & 0x3;
     int yFrac = qmv.y & 0x3;
 
-    assert(yFrac | xFrac);
-    int realWidth = blockwidth + (dir == 2);
-    int realHeight = blockheight + (dir == 1);
-    intptr_t realStride = FENC_STRIDE + (dir == 2);
-    pixel *fref = ref->unweightedFPelPlane + blockOffset + (qmv.x >> 2) + (qmv.y >> 2) * ref->lumaStride;
-    int shiftNum = IF_INTERNAL_PREC - X265_DEPTH;
-    int local_shift = ref->shift + shiftNum;
-    int local_round = local_shift ? (1 << (local_shift - 1)) : 0;
-    if (ref->isWeighted)
+    if ((yFrac | xFrac) == 0)
     {
-        if (yFrac == 0)
-        {
-            primitives.ipfilter_ps[FILTER_H_P_S_8](fref, ref->lumaStride, immedVal, realStride, realWidth, realHeight, g_lumaFilter[xFrac]);
-            primitives.weightpUni(immedVal, subpelbuf, realStride, realStride, realWidth, realHeight, ref->weight, local_round, local_shift, ref->offset);
-        }
-        else if (xFrac == 0)
-        {
-            primitives.ipfilter_ps[FILTER_V_P_S_8](fref, ref->lumaStride, immedVal, realStride, realWidth, realHeight, g_lumaFilter[yFrac]);
-            primitives.weightpUni(immedVal, subpelbuf, realStride, realStride, realWidth, realHeight, ref->weight, local_round, local_shift, ref->offset);
-        }
-        else
-        {
-            int filterSize = NTAPS_LUMA;
-            int halfFilterSize = (filterSize >> 1);
-            primitives.ipfilter_ps[FILTER_H_P_S_8](fref - (halfFilterSize - 1) * ref->lumaStride, ref->lumaStride, immedVal, realWidth, realWidth, realHeight + filterSize - 1, g_lumaFilter[xFrac]);
-            primitives.ipfilter_ss[FILTER_V_S_S_8](immedVal + (halfFilterSize - 1) * realWidth, realWidth, immedVal2, realStride, realWidth, realHeight, g_lumaFilter[yFrac]);
-            primitives.weightpUni(immedVal2, subpelbuf, realStride, realStride, realWidth, realHeight, ref->weight, local_round, local_shift, ref->offset);
-        }
+        pixel *fref = ref->fpelPlane + blockOffset + (qmv.x >> 2) + (qmv.y >> 2) * ref->lumaStride;
+        return cmp(fenc, FENC_STRIDE, fref, ref->lumaStride);
     }
     else
     {
+        /* We are taking a short-cut here if the reference is weighted. To be
+         * accurate we should be interpolating unweighted pixels and weighting
+         * the final 16bit values prior to rounding and downshifting. Instead we
+         * are simply interpolating the weighted full-pel pixels. Not 100%
+         * accurate but good enough for fast qpel ME */
+        ALIGN_VAR_32(pixel, subpelbuf[64 * 64]);
+        pixel *fref = ref->fpelPlane + blockOffset + (qmv.x >> 2) + (qmv.y >> 2) * ref->lumaStride;
         if (yFrac == 0)
         {
-            primitives.ipfilter_pp[FILTER_H_P_P_8](fref, ref->lumaStride, subpelbuf, realStride, realWidth, realHeight, g_lumaFilter[xFrac]);
+            primitives.luma_hpp[partEnum](fref, ref->lumaStride, subpelbuf, FENC_STRIDE, xFrac);
         }
         else if (xFrac == 0)
         {
-            primitives.ipfilter_pp[FILTER_V_P_P_8](fref, ref->lumaStride, subpelbuf, realStride, realWidth, realHeight, g_lumaFilter[yFrac]);
+            primitives.luma_vpp[partEnum](fref, ref->lumaStride, subpelbuf, FENC_STRIDE, yFrac);
         }
         else
         {
+            ALIGN_VAR_32(int16_t, immed[64 * (64 + 8)]);
+
             int filterSize = NTAPS_LUMA;
-            int halfFilterSize = (filterSize >> 1);
-            primitives.ipfilter_ps[FILTER_H_P_S_8](fref - (halfFilterSize - 1) * ref->lumaStride, ref->lumaStride, immedVal, realWidth, realWidth, realHeight + filterSize - 1, g_lumaFilter[xFrac]);
-            primitives.ipfilter_sp[FILTER_V_S_P_8](immedVal + (halfFilterSize - 1) * realWidth, realWidth, subpelbuf, realStride, realWidth, realHeight, g_lumaFilter[yFrac]);
+            int halfFilterSize = filterSize >> 1;
+            primitives.ipfilter_ps[FILTER_H_P_S_8](fref - (halfFilterSize - 1) * ref->lumaStride, ref->lumaStride,
+                                                   immed, blockwidth,
+                                                   blockwidth, blockheight + filterSize - 1,
+                                                   g_lumaFilter[xFrac]);
+            primitives.luma_vsp[partEnum](immed + (halfFilterSize - 1) * blockwidth, blockwidth, subpelbuf, FENC_STRIDE, yFrac);
         }
+        return cmp(fenc, FENC_STRIDE, subpelbuf, FENC_STRIDE);
     }
 }

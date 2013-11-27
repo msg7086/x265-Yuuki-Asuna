@@ -21,23 +21,47 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
+#include "common.h"
 #include "PPA/ppa.h"
+#include "common.h"
 #include "output.h"
 #include "y4m.h"
 
 using namespace x265;
 using namespace std;
 
-Y4MOutput::Y4MOutput(const char *filename, int w, int h, int rate)
+Y4MOutput::Y4MOutput(const char *filename, int w, int h, int rate, uint32_t depth, int csp)
     : width(w)
     , height(h)
+    , colorSpace(csp)
+    , frameSize(0)
 {
     ofs.open(filename, ios::binary | ios::out);
     buf = new char[width];
+
+    const char *cf = (csp >= X265_CSP_I444) ? "444" : (csp >= X265_CSP_I422) ? "422" : "420";
+
+#if HIGH_BIT_DEPTH
+    if (depth > 8)
+    {
+        x265_log(NULL, X265_LOG_WARNING, "y4m: down-shifting reconstructed pixels to 8 bits\n");
+    }
+#else
+    if (depth > 8)
+    {
+        x265_log(NULL, X265_LOG_WARNING, "y4m: forcing reconstructed pixels to 8 bits\n");
+    }
+#endif
+
     if (ofs)
     {
-        ofs << "YUV4MPEG2 W" << width << " H" << height << " F" << rate << ":1 Ip C420\n";
+        ofs << "YUV4MPEG2 W" << width << " H" << height << " F" << rate << ":1 Ip" << " C" << cf << "\n";
         header = ofs.tellp();
+    }
+
+    for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
+    {
+        frameSize += (uint32_t)((width >> x265_cli_csps[colorSpace].width[i]) * (height >> x265_cli_csps[colorSpace].height[i]));
     }
 }
 
@@ -50,72 +74,39 @@ Y4MOutput::~Y4MOutput()
 bool Y4MOutput::writePicture(const x265_picture& pic)
 {
     PPAStartCpuEventFunc(write_yuv);
-    std::ofstream::pos_type frameSize = (6 + 3 * (width * height) / 2);
-    ofs.seekp(header + frameSize * pic.poc); 
+    std::ofstream::pos_type outPicPos = header;
+    outPicPos += pic.poc * (6 + frameSize);
+    ofs.seekp(outPicPos);
     ofs << "FRAME\n";
 
-    if (pic.bitDepth > 8)
+#if HIGH_BIT_DEPTH
+    // encoder gave us short pixels, downshift, then write
+    int shift = pic.bitDepth - 8;
+    for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
     {
-        // encoder gave us short pixels, downscale, then write
-        short *Y = (short*)pic.planes[0];
-        for (int i = 0; i < height; i++)
+        uint16_t *src = (uint16_t*)pic.planes[i];
+        for (int h = 0; h < height >> x265_cli_csps[colorSpace].height[i]; h++)
         {
-            for (int j = 0; j < width; j++)
+            for (int w = 0; w < width >> x265_cli_csps[colorSpace].width[i]; w++)
             {
-                buf[j] = (char)Y[j];
+                buf[w] = (char)(src[w] >> shift);
             }
 
-            ofs.write(buf, width);
-            Y += pic.stride[0];
-        }
-
-        short *U = (short*)pic.planes[1];
-        for (int i = 0; i < height >> 1; i++)
-        {
-            for (int j = 0; j < width >> 1; j++)
-            {
-                buf[j] = (char)U[j];
-            }
-
-            ofs.write(buf, width >> 1);
-            U += pic.stride[1];
-        }
-
-        short *V = (short*)pic.planes[2];
-        for (int i = 0; i < height >> 1; i++)
-        {
-            for (int j = 0; j < width >> 1; j++)
-            {
-                buf[j] = (char)V[j];
-            }
-
-            ofs.write(buf, width >> 1);
-            V += pic.stride[2];
+            ofs.write(buf, width >> x265_cli_csps[colorSpace].width[i]);
+            src += pic.stride[i];
         }
     }
-    else
+#else
+    for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
     {
-        char *Y = (char*)pic.planes[0];
-        for (int i = 0; i < height; i++)
+        char *src = (char*)pic.planes[i];
+        for (int h = 0; h < height >> x265_cli_csps[colorSpace].height[i]; h++)
         {
-            ofs.write(Y, width);
-            Y += pic.stride[0];
-        }
-
-        char *U = (char*)pic.planes[1];
-        for (int i = 0; i < height >> 1; i++)
-        {
-            ofs.write(U, width >> 1);
-            U += pic.stride[1];
-        }
-
-        char *V = (char*)pic.planes[2];
-        for (int i = 0; i < height >> 1; i++)
-        {
-            ofs.write(V, width >> 1);
-            V += pic.stride[2];
+            ofs.write(src, width >> x265_cli_csps[colorSpace].width[i]);
+            src += pic.stride[i];
         }
     }
+#endif
 
     PPAStopCpuEventFunc(write_yuv);
     return true;
