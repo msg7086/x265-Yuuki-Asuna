@@ -123,9 +123,9 @@ void Encoder::create()
             if (m_csvfpt)
             {
                 if (param.logLevel >= X265_LOG_DEBUG)
-                    fprintf(m_csvfpt, "Encode Order, Type, POC, nQP, QP, Bits, PSNR Y, PSNR U, PSNR V, PSNR, SSIM, Encoding time, Elapsed time, List 0, List 1\n");
+                    fprintf(m_csvfpt, "Encode Order, Type, POC, nQP, QP, Bits, Y PSNR, U PSNR, V PSNR, YUV PSNR, SSIM, Encoding time, Elapsed time, List 0, List 1\n");
                 else
-                    fprintf(m_csvfpt, "CLI arguments, date/time, elapsed time, fps, bitrate, global PSNR Y, global PSNR U, global PSNR V, global PSNR, global SSIM, version\n");
+                    fprintf(m_csvfpt, "Command, Date/Time, Elapsed Time, FPS, Bitrate, Y PSNR, U PSNR, V PSNR, Global PSNR, Global SSIM, Version\n");
             }
         }
     }
@@ -1232,9 +1232,9 @@ void Encoder::configure(x265_param *_param)
     {
         _param->bEnableRDOQTS = 0;
     }
-    if (_param->bpyramid && !_param->bframes)
+    if (_param->bBPyramid && !_param->bframes)
     {
-        _param->bpyramid = 0;
+        _param->bBPyramid = 0;
     }
     /* Set flags according to RDLevel specified - check_params has verified that RDLevel is within range */
     switch (_param->rdLevel)
@@ -1273,7 +1273,7 @@ void Encoder::configure(x265_param *_param)
     for (int i = 0; i < MAX_TLAYER; i++)
     {
         /* Increase the DPB size and reorderpicture if enabled the bpyramid */
-        m_numReorderPics[i] = (_param->bpyramid && _param->bframes > 1) ? 2 : 1;
+        m_numReorderPics[i] = (_param->bBPyramid && _param->bframes > 1) ? 2 : 1;
         m_maxDecPicBuffering[i] = X265_MIN(MAX_NUM_REF, X265_MAX(m_numReorderPics[i] + 1, _param->maxNumReferences) + m_numReorderPics[i]);
 
         vps.setNumReorderPics(m_numReorderPics[i], i);
@@ -1437,6 +1437,30 @@ int Encoder::extractNalData(NALUnitEBSP **nalunits)
 
 fail:
     return nalcount;
+}
+
+extern "C"
+x265_param *x265_param_alloc()
+{
+    return (x265_param*)x265_malloc(sizeof(x265_param));
+}
+
+extern "C"
+void x265_param_free(x265_param *p)
+{
+    return x265_free(p);
+}
+
+extern "C"
+x265_picture *x265_picture_alloc()
+{
+    return (x265_picture*)x265_malloc(sizeof(x265_picture));
+}
+
+extern "C"
+void x265_picture_free(x265_picture *p)
+{
+    return x265_free(p);
 }
 
 extern "C"

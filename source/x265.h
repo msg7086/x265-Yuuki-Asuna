@@ -87,6 +87,9 @@ typedef struct x265_picture
     int     colorSpace;
     int64_t pts;
     void*   userData;
+
+    /* new data members to this structure must be added to the end so that
+     * users of x265_picture_alloc/free() can be assured of future safety */
 } x265_picture;
 
 typedef enum
@@ -136,7 +139,6 @@ typedef enum
 #define X265_CPU_SLOW_PALIGNR    0x4000000  /* such as on the AMD Bobcat */
 
 static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star", "full", 0 };
-static const char * const x265_b_pyramid_names[] = { "none", "normal", 0 };
 
 #define X265_MAX_SUBPEL_LEVEL   7
 
@@ -156,7 +158,6 @@ static const char * const x265_b_pyramid_names[] = { "none", "normal", 0 };
 #define X265_TYPE_I             0x0002
 #define X265_TYPE_P             0x0003
 #define X265_TYPE_BREF          0x0004  /* Non-disposable B-frame */
-#define X265_B_PYRAMID_NORMAL   0x0001
 #define X265_TYPE_B             0x0005
 #define X265_TYPE_KEYFRAME      0x0006  /* IDR or I depending on b_open_gop option */
 #define X265_AQ_NONE                 0
@@ -237,7 +238,12 @@ typedef struct x265_stats
     /* new statistic member variables must be added below this line */
 } x265_stats;
 
-/* encoder input parameters */
+/* x265 input parameters
+ * 
+ * For version safety you may use x265_param_alloc/free() to manage the
+ * allocation of x265_param instances, and x265_param_parse() to assign values
+ * by name.  By never dereferencing param fields in your own code you can treat
+ * x265_param as an opaque data structure */
 typedef struct x265_param
 {
     /*== Encoder Environment ==*/
@@ -387,13 +393,12 @@ typedef struct x265_param
      * maximum is 16 */
     int       bframes;
 
-    /* 0 - none, 1 - normal.  When enabled, the encoder will use the B frame
-     * in the middle of each mini-GOP larger than 2 B frames as a motion
-     * reference for the surrounding B frames.  This improves compression
-     * efficiency for a performance penalty.  Referenced B frames are treated
-     * somewhere between a B and a P frame by rate control.  Default is
-     * enabled. */
-    int       bpyramid;
+    /* When enabled, the encoder will use the B frame in the middle of each
+     * mini-GOP larger than 2 B frames as a motion reference for the surrounding
+     * B frames.  This improves compression efficiency for a small performance
+     * penalty.  Referenced B frames are treated somewhere between a B and a P
+     * frame by rate control.  Default is enabled. */
+    int       bBPyramid;
 
     /* The number of frames that must be queued in the lookahead before it may
      * make slice decisions. Increasing this value directly increases the encode
@@ -608,6 +613,18 @@ typedef struct x265_param
  * initialize performance primitives, which are process global */
 void x265_setup_primitives(x265_param *param, int cpu);
 
+/* x265_param_alloc:
+ *  Allocates an x265_param instance. The returned param structure is not
+ *  special in any way, but using this method together with x265_param_free()
+ *  and x265_param_parse() to set values by name allows the application to treat
+ *  x265_param as an opaque data struct for version safety */
+x265_param *x265_param_alloc();
+
+/* x265_param_free:
+ *  Use x265_param_free() to release storage for an x265_param instance
+ *  allocated by x26_param_alloc() */
+void x265_param_free(x265_param *);
+
 /***
  * Initialize an x265_param_t structure to default values
  */
@@ -654,6 +671,18 @@ static const char * const x265_tune_names[] = { "psnr", "ssim", "zero-latency", 
 
 /*      returns 0 on success, negative on failure (e.g. invalid preset/tune name). */
 int x265_param_default_preset(x265_param *, const char *preset, const char *tune);
+
+/* x265_picture_alloc:
+ *  Allocates an x265_picture instance. The returned picture structure is not
+ *  special in any way, but using this method together with x265_picture_free()
+ *  and x265_picture_init() allows some version safety. New picture fields will
+ *  always be added to the end of x265_picture */
+x265_picture *x265_picture_alloc();
+
+/* x265_picture_free:
+ *  Use x265_picture_free() to release storage for an x265_picture instance
+ *  allocated by x26_picture_alloc() */
+void x265_picture_free(x265_picture *);
 
 /***
  * Initialize an x265_picture structure to default values
