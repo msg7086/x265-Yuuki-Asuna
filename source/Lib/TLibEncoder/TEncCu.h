@@ -60,16 +60,16 @@ struct StatisticLog
 {
     uint64_t cntInter[4];
     uint64_t cntIntra[4];
-    uint64_t cntSplit[4];
     uint64_t cuInterDistribution[4][INTER_MODES];
     uint64_t cuIntraDistribution[4][INTRA_MODES];
     uint64_t cntIntraNxN;
     uint64_t cntSkipCu[4];
     uint64_t cntTotalCu[4];
+    uint64_t totalCu;
 
     StatisticLog()
     {
-         memset(this, 0, sizeof(StatisticLog));
+        memset(this, 0, sizeof(StatisticLog));
     }
 };
 
@@ -131,9 +131,10 @@ private:
     bool         m_abortFlag; // aborts recursion when the child CU costs more than parent CU
 
 public:
-
+#if LOG_CU_STATISTICS
     StatisticLog  m_sliceTypeLog[3];
     StatisticLog* m_log;
+#endif
     TEncCu();
 
     void init(Encoder* top);
@@ -171,8 +172,9 @@ protected:
     void xComputeCostIntraInInter(TComDataCU* cu, PartSize partSize);
     void xCheckRDCostInter(TComDataCU*& outBestCU, TComDataCU*& outTempCU, PartSize partSize, bool bUseMRG = false);
     void xComputeCostInter(TComDataCU* outTempCU, TComYuv* outPredYUV, PartSize partSize, bool bUseMRG = false);
-    void xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTempCU, bool* earlyDetectionSkip, TComYuv*& bestPredYuv, TComYuv*& tmpPredYuv);
+    void xComputeCostMerge2Nx2N(TComDataCU*& outBestCU, TComDataCU*& outTempCU, TComYuv*& bestPredYuv, TComYuv*& tmpPredYuv);
     void xEncodeIntraInInter(TComDataCU* cu, TComYuv* fencYuv, TComYuv* predYuv, TShortYUV* outResiYuv, TComYuv* outReconYuv);
+    void encodeResidue(TComDataCU* lcu, TComDataCU* cu, uint32_t absPartIdx, UChar depth);
     void xCheckRDCostIntra(TComDataCU*& outBestCU, TComDataCU*& outTempCU, PartSize partSize);
     void xCheckRDCostIntraInInter(TComDataCU*& outBestCU, TComDataCU*& outTempCU, PartSize partSize);
     void xCheckDQP(TComDataCU* cu);

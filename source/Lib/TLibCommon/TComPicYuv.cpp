@@ -209,8 +209,9 @@ void TComPicYuv::copyFromPicture(const x265_picture& pic, int32_t *pad)
 
     /* internal pad to multiple of 16x16 blocks */
     uint8_t rem = width & 15;
+
     padx = rem ? 16 - rem : padx;
-    rem = width & 15;
+    rem = height & 15;
     pady = rem ? 16 - rem : pady;
 
 #if HIGH_BIT_DEPTH
@@ -232,6 +233,7 @@ void TComPicYuv::copyFromPicture(const x265_picture& pic, int32_t *pad)
             {
                 Y[width + x] = Y[width - 1];
             }
+
             Y += getStride();
             y += pic.stride[0];
         }
@@ -249,6 +251,7 @@ void TComPicYuv::copyFromPicture(const x265_picture& pic, int32_t *pad)
                 U[(width >> m_hChromaShift) + x] = U[(width >> m_hChromaShift) - 1];
                 V[(width >> m_hChromaShift) + x] = V[(width >> m_hChromaShift) - 1];
             }
+
             U += getCStride();
             V += getCStride();
             u += pic.stride[1];
@@ -292,6 +295,7 @@ void TComPicYuv::copyFromPicture(const x265_picture& pic, int32_t *pad)
             {
                 Y[width + x] = Y[width - 1];
             }
+
             Y += getStride();
             y += pic.stride[0];
         }
