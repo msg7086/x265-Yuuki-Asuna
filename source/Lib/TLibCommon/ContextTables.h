@@ -56,7 +56,7 @@
 #define NUM_MERGE_FLAG_EXT_CTX        1       ///< number of context models for merge flag of merge extended
 #define NUM_MERGE_IDX_EXT_CTX         1       ///< number of context models for merge index of merge extended
 
-#define NUM_PART_SIZE_CTX             4       ///< number of context models for partition size
+#define NUM_PART_SIZE_CTX             3       ///< number of context models for partition size
 #define NUM_CU_AMP_CTX                1       ///< number of context models for partition size (AMP)
 #define NUM_PRED_MODE_CTX             1       ///< number of context models for prediction mode
 
@@ -68,7 +68,7 @@
 
 #define NUM_REF_NO_CTX                2       ///< number of context models for reference index
 #define NUM_TRANS_SUBDIV_FLAG_CTX     3       ///< number of context models for transform subdivision flags
-#define NUM_QT_CBF_CTX                5       ///< number of context models for QT CBF
+#define NUM_QT_CBF_CTX                4       ///< number of context models for QT CBF
 #define NUM_QT_ROOT_CBF_CTX           1       ///< number of context models for QT ROOT CBF
 #define NUM_DELTA_QP_CTX              3       ///< number of context models for dQP
 
@@ -203,9 +203,9 @@ static const uint8_t
 static const uint8_t
     INIT_PART_SIZE[3][NUM_PART_SIZE_CTX] =
 {
-    { 154,  139,  CNU,  CNU, },
-    { 154,  139,  CNU,  CNU, },
-    { 184,  CNU,  CNU,  CNU, },
+    { 154,  139,  CNU, },
+    { 154,  139,  CNU, },
+    { 184,  CNU,  CNU, },
 };
 
 static const uint8_t
@@ -275,9 +275,9 @@ static const uint8_t
 static const uint8_t
     INIT_QT_CBF[3][2 * NUM_QT_CBF_CTX] =
 {
-    { 153,  111,  CNU,  CNU,  CNU,  149,   92,  167,  CNU,  CNU, },
-    { 153,  111,  CNU,  CNU,  CNU,  149,  107,  167,  CNU,  CNU, },
-    { 111,  141,  CNU,  CNU,  CNU,   94,  138,  182,  CNU,  CNU, },
+    { 153,  111,  CNU,  CNU,  149,   92,  167,  CNU, },
+    { 153,  111,  CNU,  CNU,  149,  107,  167,  CNU, },
+    { 111,  141,  CNU,  CNU,   94,  138,  182,  CNU, },
 };
 
 static const uint8_t
