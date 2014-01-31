@@ -1137,16 +1137,16 @@ int64_t CostEstimate::estimateFrameCost(Lowres **frames, int p0, int p1, int b, 
     return score;
 }
 
-uint32_t CostEstimate::weightCostLuma(Lowres **frames, int b, pixel *src, wpScalingParam *w)
+uint32_t CostEstimate::weightCostLuma(Lowres **frames, int b, pixel *src, wpScalingParam *wp)
 {
     Lowres *fenc = frames[b];
     int stride = fenc->lumaStride;
 
-    if (w)
+    if (wp)
     {
-        int offset = w->inputOffset << (X265_DEPTH - 8);
-        int scale = w->inputWeight;
-        int denom = w->log2WeightDenom;
+        int offset = wp->inputOffset << (X265_DEPTH - 8);
+        int scale = wp->inputWeight;
+        int denom = wp->log2WeightDenom;
         int correction = IF_INTERNAL_PREC - X265_DEPTH;
 
         // Adding (IF_INTERNAL_PREC - X265_DEPTH) to cancel effect of pixel to short conversion inside the primitive
@@ -1174,18 +1174,19 @@ uint32_t CostEstimate::weightCostLuma(Lowres **frames, int b, pixel *src, wpScal
 
 void CostEstimate::weightsAnalyse(Lowres **frames, int b, int p0)
 {
-    wpScalingParam w;
-
+    static const float epsilon = 1.f / 128.f;
     Lowres *fenc, *ref;
-
     fenc = frames[b];
     ref  = frames[p0];
     int deltaIndex = fenc->frameNum - ref->frameNum;
 
     /* epsilon is chosen to require at least a numerator of 127 (with denominator = 128) */
-    const float epsilon = 1.f / 128.f;
     float guessScale, fencMean, refMean;
-    guessScale = sqrtf((float)fenc->wp_ssd[0] / ref->wp_ssd[0]);
+    x265_emms();
+    if (fenc->wp_ssd[0] && ref->wp_ssd[0])
+        guessScale = sqrtf((float)fenc->wp_ssd[0] / ref->wp_ssd[0]);
+    else
+        guessScale = 1.0f;
     fencMean = (float)fenc->wp_sum[0] / (fenc->lines * fenc->width) / (1 << (X265_DEPTH - 8));
     refMean  = (float)ref->wp_sum[0] / (fenc->lines * fenc->width) / (1 << (X265_DEPTH - 8));
 
@@ -1193,12 +1194,11 @@ void CostEstimate::weightsAnalyse(Lowres **frames, int b, int p0)
     if (fabsf(refMean - fencMean) < 0.5f && fabsf(1.f - guessScale) < epsilon)
         return;
 
-    /* Don't check chroma in lookahead, or if there wasn't a luma weight. */
     int minoff = 0, minscale, mindenom;
     unsigned int minscore = 0, origscore = 1;
     int found = 0;
 
-    w.setFromWeightAndOffset((int)(guessScale * 128 + 0.5), 0);
+    w.setFromWeightAndOffset((int)(guessScale * 128 + 0.5f), 0);
     mindenom = w.log2WeightDenom;
     minscale = w.inputWeight;
 
@@ -1214,8 +1214,8 @@ void CostEstimate::weightsAnalyse(Lowres **frames, int b, int p0)
     if (curOffset < -128 || curOffset > 127)
     {
         /* Rescale considering the constraints on curOffset. We do it in this order
-            * because scale has a much wider range than offset (because of denom), so
-            * it should almost never need to be clamped. */
+         * because scale has a much wider range than offset (because of denom), so
+         * it should almost never need to be clamped. */
         curOffset = Clip3(-128, 127, curOffset);
         curScale = (int)((1 << mindenom) * (fencMean - curOffset) / refMean + 0.5f);
         curScale = Clip3(0, 127, curScale);
