@@ -76,6 +76,8 @@ protected:
     int16_t*    m_immedVals;
     Pel*      m_lumaRecBuffer; ///< array for down-sampled reconstructed luma sample
     int       m_lumaRecStride; ///< stride of m_lumaRecBuffer
+    int m_hChromaShift;
+    int m_vChromaShift;
 
     // motion compensation functions
     void xPredInterUni(TComDataCU* cu, uint32_t partAddr, int width, int height, int picList, TComYuv* outPredYuv, bool bLuma = true, bool bChroma = true);
@@ -106,8 +108,8 @@ public:
 
     // Angular Intra
     void predIntraLumaAng(uint32_t dirMode, Pel* pred, intptr_t stride, int width);
-    void predIntraChromaAng(Pel* src, uint32_t dirMode, Pel* pred, intptr_t stride, int width);
-
+    void predIntraChromaAng(Pel* src, uint32_t dirMode, Pel* pred, intptr_t stride, int width, int height, int chFmt);
+    bool filteringIntraReferenceSamples(uint32_t dirMode, uint32_t width);
     Pel* getPredicBuf()             { return m_predBuf; }
 
     int  getPredicBufWidth()        { return m_predBufStride; }

@@ -43,53 +43,176 @@
 namespace x265 {
 //! \ingroup TLibCommon
 //! \{
+// scanning order table
+uint32_t* g_scanOrder[SCAN_NUMBER_OF_GROUP_TYPES][SCAN_NUMBER_OF_TYPES][ MAX_CU_DEPTH ][ MAX_CU_DEPTH ];
+
+class ScanGenerator
+{
+private:
+    uint32_t m_line, m_column;
+    uint32_t m_blockWidth, m_blockHeight;
+    uint32_t m_stride;
+    COEFF_SCAN_TYPE m_scanType;
+
+public:
+    ScanGenerator(uint32_t blockWidth, uint32_t blockHeight, uint32_t stride, COEFF_SCAN_TYPE scanType)
+        : m_line(0), m_column(0), m_blockWidth(blockWidth), m_blockHeight(blockHeight), m_stride(stride), m_scanType(scanType)
+    { }
+
+    uint32_t GetCurrentX() const { return m_column; }
+    uint32_t GetCurrentY() const { return m_line; }
+
+    uint32_t GetNextIndex(uint32_t blockOffsetX, uint32_t blockOffsetY)
+    {
+        int rtn=((m_line + blockOffsetY) * m_stride) + m_column + blockOffsetX;
+
+        //advance line and column to the next position
+        switch (m_scanType)
+        {
+        case SCAN_DIAG:
+            {
+                if ((m_column == (m_blockWidth - 1)) || (m_line == 0)) //if we reach the end of a rank, go diagonally down to the next one
+                {
+                    m_line   += m_column + 1;
+                    m_column  = 0;
+
+                    if (m_line >= m_blockHeight) //if that takes us outside the block, adjust so that we are back on the bottom row
+                    {
+                        m_column += m_line - (m_blockHeight - 1);
+                        m_line    = m_blockHeight - 1;
+                    }
+                }
+                else
+                {
+                    m_column++;
+                    m_line--;
+                }
+            }
+            break;
+
+        case SCAN_HOR:
+            {
+                if (m_column == (m_blockWidth - 1))
+                {
+                    m_line++;
+                    m_column = 0;
+                }
+                else m_column++;
+            }
+            break;
+
+        case SCAN_VER:
+            {
+                if (m_line == (m_blockHeight - 1))
+                {
+                    m_column++;
+                    m_line = 0;
+                }
+                else m_line++;
+            }
+            break;
+
+        default:
+            {
+                std::cerr << "ERROR: Unknown scan type \"" << m_scanType << "\"in ScanGenerator::GetNextIndex" << std::endl;
+                exit(1);
+            }
+            break;
+        }
+        return rtn;
+    }
+};
 
 // initialize ROM variables
 void initROM()
 {
-    if (g_sigLastScan[0][0] == 0)
+    int i, c;
+
+    // g_aucConvertToBit[ x ]: log2(x/4), if x=4 -> 0, x=8 -> 1, x=16 -> 2, ...
+    ::memset(g_convertToBit, -1, sizeof( g_convertToBit));
+    c=0;
+    for ( i=4; i<=MAX_CU_SIZE; i*=2 )
     {
-        int i, c;
-
-        // g_convertToBit[ x ]: log2(x/4), if x=4 -> 0, x=8 -> 1, x=16 -> 2, ...
-        ::memset(g_convertToBit, -1, sizeof(g_convertToBit));
-        c = 0;
-        for (i = 4; i < MAX_CU_SIZE; i *= 2)
-        {
-            g_convertToBit[i] = c;
-            c++;
-        }
-
         g_convertToBit[i] = c;
-
-        c = 2;
-        for (i = 0; i < MAX_CU_DEPTH; i++)
+        c++;
+    }
+    // initialise scan orders
+    for (uint32_t log2BlockHeight = 0; log2BlockHeight < MAX_CU_DEPTH; log2BlockHeight++)
+    {
+        for (uint32_t log2BlockWidth = 0; log2BlockWidth < MAX_CU_DEPTH; log2BlockWidth++)
         {
-            g_sigLastScan[0][i] = new uint32_t[c * c];
-            g_sigLastScan[1][i] = new uint32_t[c * c];
-            g_sigLastScan[2][i] = new uint32_t[c * c];
-            initSigLastScan(g_sigLastScan[0][i], g_sigLastScan[1][i], g_sigLastScan[2][i], c, c);
+            const uint32_t blockWidth  = 1 << log2BlockWidth;
+            const uint32_t blockHeight = 1 << log2BlockHeight;
+            const uint32_t totalValues = blockWidth * blockHeight;
+            //non-grouped scan orders
+            for (uint32_t scanTypeIndex = 0; scanTypeIndex < SCAN_NUMBER_OF_TYPES; scanTypeIndex++)
+            {
+                const COEFF_SCAN_TYPE scanType = COEFF_SCAN_TYPE(scanTypeIndex);
+                g_scanOrder[SCAN_UNGROUPED][scanType][log2BlockWidth][log2BlockHeight] = new uint32_t[totalValues];
+                ScanGenerator fullBlockScan(blockWidth, blockHeight, blockWidth, scanType);
 
-            c <<= 1;
+                for (uint32_t scanPosition = 0; scanPosition < totalValues; scanPosition++)
+                {
+                    g_scanOrder[SCAN_UNGROUPED][scanType][log2BlockWidth][log2BlockHeight][scanPosition] = fullBlockScan.GetNextIndex(0, 0);
+                }
+            }
+
+            //grouped scan orders
+            const uint32_t  groupWidth           = 1           << MLS_CG_LOG2_WIDTH;
+            const uint32_t  groupHeight          = 1           << MLS_CG_LOG2_HEIGHT;
+            const uint32_t  widthInGroups        = blockWidth  >> MLS_CG_LOG2_WIDTH;
+            const uint32_t  heightInGroups       = blockHeight >> MLS_CG_LOG2_HEIGHT;
+
+            const uint32_t  groupSize            = groupWidth    * groupHeight;
+            const uint32_t  totalGroups          = widthInGroups * heightInGroups;
+
+            for (uint32_t scanTypeIndex = 0; scanTypeIndex < SCAN_NUMBER_OF_TYPES; scanTypeIndex++)
+            {
+                const COEFF_SCAN_TYPE scanType = COEFF_SCAN_TYPE(scanTypeIndex);
+
+                g_scanOrder[SCAN_GROUPED_4x4][scanType][log2BlockWidth][log2BlockHeight] = new uint32_t[totalValues];
+
+                ScanGenerator fullBlockScan(widthInGroups, heightInGroups, groupWidth, scanType);
+
+                for (uint32_t groupIndex = 0; groupIndex < totalGroups; groupIndex++)
+                {
+                    const uint32_t groupPositionY  = fullBlockScan.GetCurrentY();
+                    const uint32_t groupPositionX  = fullBlockScan.GetCurrentX();
+                    const uint32_t groupOffsetX    = groupPositionX * groupWidth;
+                    const uint32_t groupOffsetY    = groupPositionY * groupHeight;
+                    const uint32_t groupOffsetScan = groupIndex     * groupSize;
+
+                    ScanGenerator groupScan(groupWidth, groupHeight, blockWidth, scanType);
+
+                    for (uint32_t scanPosition = 0; scanPosition < groupSize; scanPosition++)
+                    {
+                        g_scanOrder[SCAN_GROUPED_4x4][scanType][log2BlockWidth][log2BlockHeight][groupOffsetScan + scanPosition] = groupScan.GetNextIndex(groupOffsetX, groupOffsetY);
+                    }
+
+                    fullBlockScan.GetNextIndex(0,0);
+                }
+            }
+
+            //--------------------------------------------------------------------------------------------------
         }
     }
 }
-
 void destroyROM()
 {
-    if (g_sigLastScan[0][0])
+    for (uint32_t groupTypeIndex = 0; groupTypeIndex < SCAN_NUMBER_OF_GROUP_TYPES; groupTypeIndex++)
     {
-        for (int i = 0; i < MAX_CU_DEPTH; i++)
+        for (uint32_t scanOrderIndex = 0; scanOrderIndex < SCAN_NUMBER_OF_TYPES; scanOrderIndex++)
         {
-            delete[] g_sigLastScan[0][i];
-            delete[] g_sigLastScan[1][i];
-            delete[] g_sigLastScan[2][i];
+            for (uint32_t log2BlockWidth = 0; log2BlockWidth < MAX_CU_DEPTH; log2BlockWidth++)
+            {
+                for (uint32_t log2BlockHeight = 0; log2BlockHeight < MAX_CU_DEPTH; log2BlockHeight++)
+                {
+                    delete [] g_scanOrder[groupTypeIndex][scanOrderIndex][log2BlockWidth][log2BlockHeight];
+                }
+            }
         }
-
-        g_sigLastScan[0][0] = NULL;
     }
 }
-
 // ====================================================================================================================
 // Data structure related table & variable
 // ====================================================================================================================
@@ -277,14 +400,12 @@ const int16_t g_t32[32][32] =
     {  9, -25, 43, -57, 70, -80, 87, -90, 90, -87, 80, -70, 57, -43, 25, -9, -9, 25, -43, 57, -70, 80, -87, 90, -90, 87, -80, 70, -57, 43, -25,  9 },
     {  4, -13, 22, -31, 38, -46, 54, -61, 67, -73, 78, -82, 85, -88, 90, -90, 90, -90, 88, -85, 82, -78, 73, -67, 61, -54, 46, -38, 31, -22, 13, -4 }
 };
-
-const UChar g_chromaScale[70] =
+const UChar g_chromaScale[NUM_CHROMA_FORMAT][chromaQPMappingTableSize]=
 {
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 29, 30, 31, 32,
-    33, 33, 34, 34, 35, 35, 36, 36, 37, 37, 38, 39, 40, 41, 42, 43, 44,
-    45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61,
-    62, 63
+    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,29,30,31,32,33,33,34,34,35,35,36,36,37,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51 },
+    { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,32,33,34,35,36,37,37,38,39,40,40,41,42,42,43,44,44,45,45,46,47,48,49,50,51 },
+    { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,51,51,51,51,51,51 }
 };
 
 // ====================================================================================================================
@@ -508,7 +629,7 @@ int g_quantInterDefault8x8[64] =
 };
 const uint32_t g_scalingListSize[4] = { 16, 64, 256, 1024 };
 const uint32_t g_scalingListSizeX[4] = { 4, 8, 16,  32 };
-const uint32_t g_scalingListNum[SCALING_LIST_SIZE_NUM] = { 6, 6, 6, 2 };
+const uint32_t g_scalingListNum[SCALING_LIST_SIZE_NUM] = { 6, 6, 6, 6 };
 
 const int g_winUnitX[] = { 1, 2, 2, 1 };
 const int g_winUnitY[] = { 1, 2, 1, 1 };

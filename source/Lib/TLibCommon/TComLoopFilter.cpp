@@ -47,9 +47,7 @@ using namespace x265;
 // ====================================================================================================================
 // Constants
 // ====================================================================================================================
-
-#define   QpUV(iQpY)  (((iQpY) < 0) ? (iQpY) : (((iQpY) > 57) ? ((iQpY) - 6) : g_chromaScale[(iQpY)]))
-
+#define   QpUV(iQpY, chFmt)  (((iQpY) < 0) ? (iQpY) : (((iQpY) > 57) ? ((iQpY) - 6) : g_chromaScale[chFmt][(iQpY)]))
 #define DEFAULT_INTRA_TC_OFFSET 2 ///< Default intra TC offset
 
 // ====================================================================================================================
@@ -226,11 +224,11 @@ void TComLoopFilter::xDeblockCU(TComDataCU* cu, uint32_t absZOrderIdx, uint32_t 
     uint32_t partIdxIncr = DEBLOCK_SMALLEST_BLOCK / pelsInPart ? DEBLOCK_SMALLEST_BLOCK / pelsInPart : 1;
 
     uint32_t sizeInPU = pic->getNumPartInWidth() >> (depth);
-
+    const bool bAlwaysDoChroma = (cu->getChromaFormat() == CHROMA_444);
     for (uint32_t e = 0; e < sizeInPU; e += partIdxIncr)
     {
         xEdgeFilterLuma(cu, absZOrderIdx, depth, dir, e);
-        if ((pelsInPart > DEBLOCK_SMALLEST_BLOCK) || (e % ((DEBLOCK_SMALLEST_BLOCK << 1) / pelsInPart)) == 0)
+        if (bAlwaysDoChroma || (pelsInPart > DEBLOCK_SMALLEST_BLOCK) || (e % ((DEBLOCK_SMALLEST_BLOCK << 1) / pelsInPart)) == 0)
         {
             xEdgeFilterChroma(cu, absZOrderIdx, depth, dir, e);
         }
@@ -642,8 +640,7 @@ void TComLoopFilter::xEdgeFilterChroma(TComDataCU* cu, uint32_t absZOrderIdx, ui
     int qp = 0;
     int qpP = 0;
     int qpQ = 0;
-
-    uint32_t  pelsInPartChroma = g_maxCUWidth >> (g_maxCUDepth + 1);
+    uint32_t  pelsInPartChroma = g_maxCUWidth >> (g_maxCUDepth + cu->getHorzChromaShift());
     int   offset, srcStep;
 
     const uint32_t lcuWidthInBaseUnits = cu->getPic()->getNumPartInWidth();
@@ -727,8 +724,7 @@ void TComLoopFilter::xEdgeFilterChroma(TComDataCU* cu, uint32_t absZOrderIdx, ui
             {
                 int chromaQPOffset  = (chromaIdx == 0) ? cu->getSlice()->getPPS()->getChromaCbQpOffset() : cu->getSlice()->getPPS()->getChromaCrQpOffset();
                 Pel* piTmpSrcChroma = (chromaIdx == 0) ? tmpSrcCb : tmpSrcCr;
-
-                qp = QpUV(((qpP + qpQ + 1) >> 1) + chromaQPOffset);
+                qp = QpUV((((qpP + qpQ + 1) >> 1) + chromaQPOffset), cu->getChromaFormat());
                 int iBitdepthScale = 1 << (X265_DEPTH - 8);
 
                 int iIndexTC = Clip3(0, MAX_QP + DEFAULT_INTRA_TC_OFFSET, qp + DEFAULT_INTRA_TC_OFFSET * (bs - 1) + (tcOffsetDiv2 << 1));
