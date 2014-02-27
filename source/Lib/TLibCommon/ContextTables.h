@@ -48,16 +48,13 @@
 // Constants
 // ====================================================================================================================
 
-#define MAX_NUM_CTX_MOD             256       ///< maximum number of supported contexts
-
 #define NUM_SPLIT_FLAG_CTX            3       ///< number of context models for split flag
 #define NUM_SKIP_FLAG_CTX             3       ///< number of context models for skip flag
 
 #define NUM_MERGE_FLAG_EXT_CTX        1       ///< number of context models for merge flag of merge extended
 #define NUM_MERGE_IDX_EXT_CTX         1       ///< number of context models for merge index of merge extended
 
-#define NUM_PART_SIZE_CTX             3       ///< number of context models for partition size
-#define NUM_CU_AMP_CTX                1       ///< number of context models for partition size (AMP)
+#define NUM_PART_SIZE_CTX             4       ///< number of context models for partition size
 #define NUM_PRED_MODE_CTX             1       ///< number of context models for prediction mode
 
 #define NUM_ADI_CTX                   1       ///< number of context models for intra prediction
@@ -68,7 +65,7 @@
 
 #define NUM_REF_NO_CTX                2       ///< number of context models for reference index
 #define NUM_TRANS_SUBDIV_FLAG_CTX     3       ///< number of context models for transform subdivision flags
-#define NUM_QT_CBF_CTX                4       ///< number of context models for QT CBF
+#define NUM_QT_CBF_CTX                6       ///< number of context models for QT CBF
 #define NUM_QT_ROOT_CBF_CTX           1       ///< number of context models for QT ROOT CBF
 #define NUM_DELTA_QP_CTX              3       ///< number of context models for dQP
 
@@ -78,7 +75,9 @@
 #define NUM_SIG_FLAG_CTX_LUMA         27      ///< number of context models for luma sig flag
 #define NUM_SIG_FLAG_CTX_CHROMA       15      ///< number of context models for chroma sig flag
 
-#define NUM_CTX_LAST_FLAG_XY          15      ///< number of context models for last coefficient position
+#define NUM_CTX_LAST_FLAG_XY          18      ///< number of context models for last coefficient position
+#define NUM_CTX_LAST_FLAG_XY_LUMA     15      ///< number of context models for last coefficient position of luma
+#define NUM_CTX_LAST_FLAG_XY_CHROMA    3      ///< number of context models for last coefficient position of chroma
 
 #define NUM_ONE_FLAG_CTX              24      ///< number of context models for greater than 1 flag
 #define NUM_ONE_FLAG_CTX_LUMA         16      ///< number of context models for greater than 1 flag of luma
@@ -87,7 +86,7 @@
 #define NUM_ABS_FLAG_CTX_LUMA          4      ///< number of context models for greater than 2 flag of luma
 #define NUM_ABS_FLAG_CTX_CHROMA        2      ///< number of context models for greater than 2 flag of chroma
 
-#define NUM_MVP_IDX_CTX               2       ///< number of context models for MVP index
+#define NUM_MVP_IDX_CTX               1       ///< number of context models for MVP index
 
 #define NUM_SAO_MERGE_FLAG_CTX        1       ///< number of context models for SAO merge flags
 #define NUM_SAO_TYPE_IDX_CTX          1       ///< number of context models for SAO type index
@@ -110,17 +109,16 @@
 #define OFF_REF_NO_CTX                      (OFF_INTER_DIR_CTX          +     NUM_INTER_DIR_CTX)
 #define OFF_MV_RES_CTX                      (OFF_REF_NO_CTX             +     NUM_REF_NO_CTX)
 #define OFF_QT_CBF_CTX                      (OFF_MV_RES_CTX             +     NUM_MV_RES_CTX)
-#define OFF_TRANS_SUBDIV_FLAG_CTX           (OFF_QT_CBF_CTX             + 2 * NUM_QT_CBF_CTX)
+#define OFF_TRANS_SUBDIV_FLAG_CTX           (OFF_QT_CBF_CTX             +     NUM_QT_CBF_CTX)
 #define OFF_QT_ROOT_CBF_CTX                 (OFF_TRANS_SUBDIV_FLAG_CTX  +     NUM_TRANS_SUBDIV_FLAG_CTX)
 #define OFF_SIG_CG_FLAG_CTX                 (OFF_QT_ROOT_CBF_CTX        +     NUM_QT_ROOT_CBF_CTX)
 #define OFF_SIG_FLAG_CTX                    (OFF_SIG_CG_FLAG_CTX        + 2 * NUM_SIG_CG_FLAG_CTX)
 #define OFF_CTX_LAST_FLAG_X                 (OFF_SIG_FLAG_CTX           +     NUM_SIG_FLAG_CTX)
-#define OFF_CTX_LAST_FLAG_Y                 (OFF_CTX_LAST_FLAG_X        + 2 * NUM_CTX_LAST_FLAG_XY)
-#define OFF_ONE_FLAG_CTX                    (OFF_CTX_LAST_FLAG_Y        + 2 * NUM_CTX_LAST_FLAG_XY)
+#define OFF_CTX_LAST_FLAG_Y                 (OFF_CTX_LAST_FLAG_X        +     NUM_CTX_LAST_FLAG_XY)
+#define OFF_ONE_FLAG_CTX                    (OFF_CTX_LAST_FLAG_Y        +     NUM_CTX_LAST_FLAG_XY)
 #define OFF_ABS_FLAG_CTX                    (OFF_ONE_FLAG_CTX           +     NUM_ONE_FLAG_CTX)
 #define OFF_MVP_IDX_CTX                     (OFF_ABS_FLAG_CTX           +     NUM_ABS_FLAG_CTX)
-#define OFF_CU_AMP_CTX                      (OFF_MVP_IDX_CTX            +     NUM_MVP_IDX_CTX)
-#define OFF_SAO_MERGE_FLAG_CTX              (OFF_CU_AMP_CTX             +     NUM_CU_AMP_CTX)
+#define OFF_SAO_MERGE_FLAG_CTX              (OFF_MVP_IDX_CTX            +     NUM_MVP_IDX_CTX)
 #define OFF_SAO_TYPE_IDX_CTX                (OFF_SAO_MERGE_FLAG_CTX     +     NUM_SAO_MERGE_FLAG_CTX)
 #define OFF_TRANSFORMSKIP_FLAG_CTX          (OFF_SAO_TYPE_IDX_CTX       +     NUM_SAO_TYPE_IDX_CTX)
 #define OFF_CU_TRANSQUANT_BYPASS_FLAG_CTX   (OFF_TRANSFORMSKIP_FLAG_CTX + 2 * NUM_TRANSFORMSKIP_FLAG_CTX)
@@ -138,25 +136,29 @@ typedef struct ContextModel
     uint8_t bBinsCoded;
 } ContextModel;
 
-extern const uint8_t g_nextStateMPS[128];
-extern const uint8_t g_nextStateLPS[128];
 extern const int     g_entropyBits[128];
-extern       uint8_t g_nextState[128][2];
-void buildNextStateTable();
+extern const uint8_t g_nextState[128][2];
 uint8_t sbacInit(int qp, int initValue);   ///< initialize state with initial probability
 
 #define sbacGetMps(S)               ((S) & 1)
 #define sbacGetState(S)             ((S) >> 1)
-#define sbacNextLPS(S)              (g_nextStateLPS[(S)])
-#define sbacNextMPS(S)              (g_nextStateMPS[(S)])
 #define sbacNext(S, V)              (g_nextState[(S)][(V)])
 #define sbacGetEntropyBits(S, V)    (g_entropyBits[(S) ^ (V)])
 #define sbacGetEntropyBitsTrm(V)    (g_entropyBits[126 ^ (V)])
+#define  CHANNEL_TYPE_LUMA         0
+#define  CHANNEL_TYPE_CHROMA       1
+#define  MAX_NUM_CHANNEL_TYPE      2
 
 // ====================================================================================================================
 // Tables
 // ====================================================================================================================
+#define NEIGHBOURHOOD_00_CONTEXT_1_THRESHOLD_4x4  3
+#define NEIGHBOURHOOD_00_CONTEXT_2_THRESHOLD_4x4  1
 
+static const uint32_t significanceMapContextSetStart[MAX_NUM_CHANNEL_TYPE][3] = { { 0,  9, 21 }, { 0,  9, 12 } };
+static const uint32_t significanceMapContextSetSize[MAX_NUM_CHANNEL_TYPE][3]  = { { 9, 12,  6 }, { 9,  3,  3 } };
+static const uint32_t nonDiagonalScan8x8ContextOffset[MAX_NUM_CHANNEL_TYPE]   = {  6, 0  };
+static const uint32_t notFirstGroupNeighbourhoodContextOffset[MAX_NUM_CHANNEL_TYPE] = { 3, 0 };
 
 // initial probability for cu_transquant_bypass flag
 static const uint8_t
@@ -203,17 +205,9 @@ static const uint8_t
 static const uint8_t
     INIT_PART_SIZE[3][NUM_PART_SIZE_CTX] =
 {
-    { 154,  139,  CNU, },
-    { 154,  139,  CNU, },
-    { 184,  CNU,  CNU, },
-};
-
-static const uint8_t
-    INIT_CU_AMP_POS[3][NUM_CU_AMP_CTX] =
-{
-    { 154, },
-    { 154, },
-    { CNU, },
+    { 154,  139,  154, 154 },
+    { 154,  139,  154, 154 },
+    { 184,  CNU,  CNU, CNU },
 };
 
 static const uint8_t
@@ -273,11 +267,11 @@ static const uint8_t
 };
 
 static const uint8_t
-    INIT_QT_CBF[3][2 * NUM_QT_CBF_CTX] =
+    INIT_QT_CBF[3][NUM_QT_CBF_CTX] =
 {
-    { 153,  111,  CNU,  CNU,  149,   92,  167,  CNU, },
-    { 153,  111,  CNU,  CNU,  149,  107,  167,  CNU, },
-    { 111,  141,  CNU,  CNU,   94,  138,  182,  CNU, },
+    { 153,  111,  149,   92,  167,  154, },
+    { 153,  111,  149,  107,  167,  154, },
+    { 111,  141,   94,  138,  182,  154, },
 };
 
 static const uint8_t
@@ -289,14 +283,14 @@ static const uint8_t
 };
 
 static const uint8_t
-    INIT_LAST[3][2 * NUM_CTX_LAST_FLAG_XY] =
+    INIT_LAST[3][NUM_CTX_LAST_FLAG_XY] =
 {
     { 125,  110,  124,  110,   95,   94,  125,  111,  111,   79,  125,  126,  111,  111,   79,
-      108,  123,   93,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU, },
+      108,  123,   93 },
     { 125,  110,   94,  110,   95,   79,  125,  111,  110,   78,  110,  111,  111,   95,   94,
-      108,  123,  108,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU, },
+      108,  123,  108 },
     { 110,  110,  124,  125,  140,  153,  125,  127,  140,  109,  111,  143,  127,  111,   79,
-      108,  123,   63,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU,  CNU, },
+      108,  123,   63 },
 };
 
 static const uint8_t
@@ -337,9 +331,9 @@ static const uint8_t
 static const uint8_t
     INIT_MVP_IDX[3][NUM_MVP_IDX_CTX] =
 {
-    { 168,  CNU, },
-    { 168,  CNU, },
-    { CNU,  CNU, },
+    { 168 },
+    { 168 },
+    { CNU },
 };
 
 static const uint8_t

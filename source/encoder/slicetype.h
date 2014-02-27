@@ -61,14 +61,16 @@ struct EstimateRow
     int                 widthInCU;
     int                 heightInCU;
     int                 merange;
+    int                 lookAheadLambda;
 
     EstimateRow()
     {
         me.setQP(X265_LOOKAHEAD_QP);
         me.setSearchMethod(X265_HEX_SEARCH);
         me.setSubpelRefine(1);
-        predictions = (pixel*)X265_MALLOC(pixel, 35 * 8 * 8);
+        predictions = X265_MALLOC(pixel, 35 * 8 * 8);
         merange = 16;
+        lookAheadLambda = (int)x265_lambda2_non_I[X265_LOOKAHEAD_QP];
     }
 
     ~EstimateRow()
@@ -111,7 +113,7 @@ struct CostEstimate : public WaveFront
 protected:
 
     void     weightsAnalyse(Lowres **frames, int b, int p0);
-    uint32_t weightCostLuma(Lowres **frames, int b, pixel *src, wpScalingParam *w);
+    uint32_t weightCostLuma(Lowres **frames, int b, int p0, wpScalingParam *w);
 };
 
 struct Lookahead
@@ -131,9 +133,8 @@ struct Lookahead
 
     int              widthInCU;       // width of lowres frame in downscale CUs
     int              heightInCU;      // height of lowres frame in downscale CUs
-    int              numDecided;
     int              lastKeyframe;
-    
+
     void addPicture(TComPic*, int sliceType);
     void flush();
 
@@ -146,10 +147,12 @@ protected:
     void slicetypeAnalyse(Lowres **frames, bool bKeyframe);
 
     /* called by slicetypeAnalyse() to make slice decisions */
-    int64_t scenecut(Lowres **frames, int p0, int p1, bool bRealScenecut, int numFrames, int maxSearch);
-    int64_t scenecutInternal(Lowres **frames, int p0, int p1, bool bRealScenecut);
+    bool    scenecut(Lowres **frames, int p0, int p1, bool bRealScenecut, int numFrames, int maxSearch);
+    bool    scenecutInternal(Lowres **frames, int p0, int p1, bool bRealScenecut);
     void    slicetypePath(Lowres **frames, int length, char(*best_paths)[X265_LOOKAHEAD_MAX + 1]);
     int64_t slicetypePathCost(Lowres **frames, char *path, int64_t threshold);
+    int64_t vbvFrameCost(Lowres **frames, int p0, int p1, int b);
+    void    vbvLookahead(Lowres **frames, int numFrames, int keyframes);
 
     /* called by slicetypeAnalyse() to effect cuTree adjustments to adaptive
      * quant offsets */

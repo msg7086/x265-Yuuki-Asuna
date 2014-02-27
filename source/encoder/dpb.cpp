@@ -53,6 +53,7 @@ void DPB::recycleUnreferenced(PicList& freeList)
         if (pic->getSlice()->isReferenced() == false && pic->m_countRefEncoders == 0)
         {
             pic->m_reconRowCount = 0;
+            pic->m_bChromaPlanesExtended = false;
 
             // iterator is invalidated by remove, restart scan
             m_picList.remove(*pic);
@@ -379,11 +380,11 @@ NalUnitType DPB::getNalUnitType(int curPOC, int lastIDR, TComPic* pic)
     }
     if (pic->m_lowres.bKeyframe)
     {
-        if (m_cfg->param.decodingRefreshType == 1)
+        if (m_cfg->param.bOpenGOP)
         {
             return NAL_UNIT_CODED_SLICE_CRA;
         }
-        else if (m_cfg->param.decodingRefreshType == 2)
+        else
         {
             return NAL_UNIT_CODED_SLICE_IDR_W_RADL;
         }

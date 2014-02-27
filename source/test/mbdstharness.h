@@ -34,9 +34,8 @@ class MBDstHarness : public TestHarness
 {
 protected:
 
-    int16_t *mbuf1, *mbuf2, *mbuf3, *mbuf4, *mbufdct;
-    int *mbufidct;
-    int *mintbuf1, *mintbuf2, *mintbuf3, *mintbuf4, *mintbuf5, *mintbuf6, *mintbuf7, *mintbuf8;
+    int16_t *mbuf1, *mbuf2, *mbuf3, *mbuf4, *mbufdct, **short_test_buff;
+    int *mbufidct, *mintbuf1, *mintbuf2, *mintbuf3, *mintbuf4, *mintbuf5, *mintbuf6, *mintbuf7, *mintbuf8, **int_test_buff, **int_idct_test_buff;
     static const int mb_t_size = 6400;
     static const int mem_cmp_size = 32 * 32;
 
@@ -45,6 +44,7 @@ protected:
     bool check_quant_primitive(quant_t ref, quant_t opt);
     bool check_dct_primitive(dct_t ref, dct_t opt, int width);
     bool check_idct_primitive(idct_t ref, idct_t opt, int width);
+    bool check_count_nonzero_primitive(count_nonzero_t ref, count_nonzero_t opt);
 
 public:
 

@@ -5,6 +5,10 @@ if(NOT CMAKE_BUILD_TYPE)
         "Choose the type of build, options are: None(CMAKE_CXX_FLAGS or CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel."
         FORCE)
 endif()
+message(STATUS "cmake version ${CMAKE_VERSION}")
+if(NOT CMAKE_VERSION VERSION_LESS "2.8.12.20131121")
+    cmake_policy(SET CMP0025 OLD) # report Apple's Clang as just Clang
+endif()
 
 project (x265)
 cmake_minimum_required (VERSION 2.8.8) # OBJECT libraries require 2.8.8
@@ -13,7 +17,7 @@ include(CheckFunctionExists)
 include(CheckCXXCompilerFlag)
 
 # X265_BUILD must be incremented each time the public API is changed
-set(X265_BUILD 4)
+set(X265_BUILD 7)
 configure_file("${PROJECT_SOURCE_DIR}/x265.def.in"
                "${PROJECT_BINARY_DIR}/x265.def")
 configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
@@ -21,25 +25,49 @@ configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
 
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" "${CMAKE_MODULE_PATH}")
 
-if ("${CMAKE_SIZEOF_VOID_P}" MATCHES 8)
-    set(X64 1)
-    add_definitions(-DX86_64=1)
+# System architecture detection
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" SYSPROC)
+if("${SYSPROC}" STREQUAL "i386"   OR "${SYSPROC}" STREQUAL "amd64" OR
+   "${SYSPROC}" STREQUAL "x86_64" OR "${SYSPROC}" STREQUAL "x86"   OR
+   "${SYSPROC}" STREQUAL "")
+    message(STATUS "Detected x86 system processor")
+    set(X86 1)
+    add_definitions(-DX265_ARCH_X86=1)
+    if("${CMAKE_SIZEOF_VOID_P}" MATCHES 8)
+        set(X64 1)
+        add_definitions(-DX86_64=1)
+    endif()
+elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "armv6l")
+    message(STATUS "Detected ARM system processor")
+    set(ARM 1)
+    add_definitions(-DX265_ARCH_ARM=1 -DHAVE_ARMV6=1)
+else()
+    message(STATUS "CMAKE_SYSTEM_PROCESSOR value `${CMAKE_SYSTEM_PROCESSOR}` is unknown")
+    message(STATUS "Please add this value near ${CMAKE_CURRENT_LIST_FILE}:${CMAKE_CURRENT_LIST_LINE}")
 endif()
 
-if (CMAKE_GENERATOR STREQUAL "Xcode")
+if(UNIX)
+    SET(PLATFORM_LIBS pthread)
+    if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+        SET(PLATFORM_LIBS ${PLATFORM_LIBS} rt)
+    endif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+endif(UNIX)
+
+# Compiler detection
+if(CMAKE_GENERATOR STREQUAL "Xcode")
   set(XCODE 1)
 endif()
 if (APPLE)
   add_definitions(-DMACOS)
 endif()
 
-if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
+if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
     set(CLANG 1)
 endif()
-if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Intel")
+if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
     set(INTEL_CXX 1)
 endif()
-if(${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU")
+if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     set(GCC 1)
 endif()
 
@@ -55,11 +83,13 @@ if(MSVC)
             string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
         endforeach()
     endif (STATIC_LINK_CRT)
-    # Enforce coding standards.  Full warnings and warnings as errors
-    add_definitions(/W4 /WX /D_CRT_SECURE_NO_WARNINGS)
+    add_definitions(/W4)  # Full warnings
     add_definitions(/Ob2) # always inline
     add_definitions(/Oi)  # enable intrinsics
     add_definitions(/MP)  # multithreaded build
+
+    # disable Microsofts suggestions for proprietary secure APIs
+    add_definitions(/D_CRT_SECURE_NO_WARNINGS)
 
     check_include_files(stdint.h HAVE_STDINT_H)
     if(NOT HAVE_STDINT_H)
@@ -85,31 +115,19 @@ elseif(CMAKE_COMPILER_IS_GNUCXX)
     execute_process(COMMAND ${CMAKE_CXX_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
 endif()
 if (GCC)
-    option(WARNINGS_AS_ERRORS "Stop compiles on first warning" OFF)
-    if(WARNINGS_AS_ERRORS)
-        add_definitions(-Werror)
-    endif(WARNINGS_AS_ERRORS)
     if(X64 AND NOT WIN32)
         add_definitions(-fPIC)
     endif(X64 AND NOT WIN32)
+    if(X86 AND NOT X64)
+        add_definitions(-march=i686)
+    endif()
+    if(ARM)
+        add_definitions(-march=armv6 -mfloat-abi=hard -mfpu=vfp)
+    endif()
 endif(GCC)
 
-option(HIGH_BIT_DEPTH "Use 16bit pixels internally" OFF)
-if(HIGH_BIT_DEPTH)
-    add_definitions(-DHIGH_BIT_DEPTH=1)
-else(HIGH_BIT_DEPTH)
-    add_definitions(-DHIGH_BIT_DEPTH=0)
-endif(HIGH_BIT_DEPTH)
-
-option(LOG_CU_STATISTICS "Log Mode Decision Statistics at the CU Level" OFF)
-if(LOG_CU_STATISTICS)
-    add_definitions(-DLOG_CU_STATISTICS=1)
-else(LOG_CU_STATISTICS)
-    add_definitions(-DLOG_CU_STATISTICS=0)
-endif(LOG_CU_STATISTICS)
-
 find_package(Yasm)
-if(YASM_FOUND)
+if(YASM_FOUND AND X86)
     if (YASM_VERSION_STRING VERSION_LESS "1.2.0")
         message(STATUS "Yasm version ${YASM_VERSION_STRING} is too old. 1.2.0 or later required")
         option(ENABLE_ASSEMBLY "Enable use of assembly coded primitives" OFF)
@@ -117,14 +135,40 @@ if(YASM_FOUND)
         message(STATUS "Found Yasm ${YASM_VERSION_STRING} to build assembly primitives")
         option(ENABLE_ASSEMBLY "Enable use of assembly coded primitives" ON)
     endif()
-endif(YASM_FOUND)
+endif()
 
-if(UNIX)
-    SET(PLATFORM_LIBS pthread)
-    if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-        SET(PLATFORM_LIBS ${PLATFORM_LIBS} rt)
-    endif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-endif(UNIX)
+# Build options
+
+if(X64)
+    # NOTE: We only officially support 16bit-per-pixel compiles of x265
+    # on 64bit architectures. 16bpp plus large resolution plus slow
+    # preset plus 32bit address space usually means malloc failure.  You
+    # can disable this if(X64) check if you desparately need a 32bit
+    # build with 10bit/12bit support, but this violates the "shrink wrap
+    # license" so to speak.  If it breaks you get to keep both halves.
+    option(HIGH_BIT_DEPTH "Store pixels as 16bit values" OFF)
+endif(X64)
+if(HIGH_BIT_DEPTH)
+    add_definitions(-DHIGH_BIT_DEPTH=1)
+else(HIGH_BIT_DEPTH)
+    add_definitions(-DHIGH_BIT_DEPTH=0)
+endif(HIGH_BIT_DEPTH)
+
+option(WARNINGS_AS_ERRORS "Stop compiles on first warning" OFF)
+if(WARNINGS_AS_ERRORS)
+    if(GCC)
+        add_definitions(-Werror)
+    elseif(MSVC)
+        add_definitions(/WX)
+    endif()
+endif(WARNINGS_AS_ERRORS)
+
+option(LOG_CU_STATISTICS "Log Mode Decision Statistics at the CU Level" OFF)
+if(LOG_CU_STATISTICS)
+    add_definitions(-DLOG_CU_STATISTICS=1)
+else(LOG_CU_STATISTICS)
+    add_definitions(-DLOG_CU_STATISTICS=0)
+endif(LOG_CU_STATISTICS)
 
 option(ENABLE_PPA "Enable PPA profiling instrumentation" OFF)
 if(ENABLE_PPA)
@@ -138,7 +182,7 @@ endif(ENABLE_PPA)
 
 if (WIN32)
     # Visual leak detector
-    find_package(VLD)
+    find_package(VLD QUIET)
     if(VLD_FOUND)
         add_definitions(-DHAVE_VLD)
         include_directories(${VLD_INCLUDE_DIRS})
@@ -154,8 +198,8 @@ endif()
 
 include(version) # determine X265_VERSION and X265_LATEST_TAG
 include_directories(. Lib common encoder "${PROJECT_BINARY_DIR}")
-add_subdirectory(common)
 add_subdirectory(encoder)
+add_subdirectory(common)
 
 if((MSVC_IDE OR XCODE) AND ENABLE_ASSEMBLY)
     # this is horrible. ugly, and hacky, and it reproduces logic found
@@ -205,12 +249,32 @@ install(TARGETS x265-static
         ARCHIVE DESTINATION lib)
 install(FILES x265.h "${PROJECT_BINARY_DIR}/x265_config.h" DESTINATION include)
 
+if(CMAKE_RC_COMPILER)
+    # The resource compiler does not need CFLAGS or macro defines. It
+    # often breaks them
+    string(REPLACE "<FLAGS>" "" CMAKE_RC_COMPILE_OBJECT "${CMAKE_RC_COMPILE_OBJECT}")
+    string(REPLACE "<DEFINES>" "" CMAKE_RC_COMPILE_OBJECT "${CMAKE_RC_COMPILE_OBJECT}")
+
+    # convert X265_LATEST_TAG (ex: 0.7) and X265_TAG_DISTANCE (ex: 103) to
+    # @X265_VERSION_MAJOR@,@X265_VERSION_MINOR@,@X265_BRANCH_ID@,@X265_TAG_DISTANCE@
+    string(REPLACE "." ";" VERSION_LIST "${X265_LATEST_TAG}")
+    list(GET VERSION_LIST 0 X265_VERSION_MAJOR)
+    list(GET VERSION_LIST 1 X265_VERSION_MINOR)
+    set(X265_BRANCH_ID 0) # TODO: 0 - stable, 1 - default or other
+    set(X265_RC_FILE "${CMAKE_CURRENT_BINARY_DIR}/x265.rc")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/x265.rc.in" "${X265_RC_FILE}" @ONLY)
+endif()
+
 option(ENABLE_SHARED "Build shared library" ON)
 if(ENABLE_SHARED)
     add_library(x265-shared SHARED dllmain.cpp "${PROJECT_BINARY_DIR}/x265.def" ${YASM_OBJS}
-                                   $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common>)
+                ${X265_RC_FILE} $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common>)
     target_link_libraries(x265-shared ${PLATFORM_LIBS})
-    set_target_properties(x265-shared PROPERTIES OUTPUT_NAME x265)
+    if(MSVC)
+        set_target_properties(x265-shared PROPERTIES OUTPUT_NAME libx265)
+    else()
+        set_target_properties(x265-shared PROPERTIES OUTPUT_NAME x265)
+    endif()
     if(UNIX AND NOT APPLE)
         set_target_properties(x265-shared PROPERTIES LINK_FLAGS "-Wl,-Bsymbolic")
     endif()
@@ -227,8 +291,16 @@ endif()
 if(X265_LATEST_TAG)
     # convert lists of link libraries into -lstdc++ -lm etc..
     foreach(LIB ${CMAKE_CXX_IMPLICIT_LINK_LIBRARIES} ${PLATFORM_LIBS})
-        set(PRIVATE_LIBS "${PRIVATE_LIBS} -l${LIB}")
+        list(APPEND PLIBLIST "-l${LIB}")
     endforeach()
+    if(PLIBLIST)
+        # blacklist of libraries that should not be in Libs.private
+        list(REMOVE_ITEM PLIBLIST "-lc" "-lpthread")
+        string(REPLACE ";" " " PRIVATE_LIBS "${PLIBLIST}")
+    else()
+        set(PRIVATE_LIBS "")
+    endif(PLIBLIST)
+
     # Produce a pkg-config file
     configure_file("x265.pc.in" "x265.pc" @ONLY)
     install(FILES       "${CMAKE_CURRENT_BINARY_DIR}/x265.pc"
@@ -264,7 +336,8 @@ if(ENABLE_CLI)
         add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT} x265.cpp x265.h
                            $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> ${YASM_OBJS} ${YASM_SRCS})
     else()
-        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT} x265.cpp x265.h)
+        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT} ${X265_RC_FILE}
+                           x265.cpp x265.h)
         target_link_libraries(cli x265-static ${PLATFORM_LIBS})
     endif()
     set_target_properties(cli PROPERTIES OUTPUT_NAME x265)

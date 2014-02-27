@@ -21,8 +21,8 @@
  * For more information, contact us at licensing@multicorewareinc.com.
  *****************************************************************************/
 
-#ifndef X265_X265_H
-#define X265_X265_H
+#ifndef X265_H
+#define X265_H
 
 #include <stdint.h>
 #include "x265_config.h"
@@ -34,6 +34,17 @@ extern "C" {
 /* x265_encoder:
  *      opaque handler for encoder */
 typedef struct x265_encoder x265_encoder;
+
+/* Application developers planning to link against a shared library version of
+ * libx265 from a Microsoft Visual Studio or similar development environment
+ * will need to define X265_API_IMPORTS before including this header.
+ * This clause does not apply to MinGW, similar development environments, or non
+ * Windows platforms. */
+#ifdef X265_API_IMPORTS
+#define X265_API __declspec(dllimport)
+#else
+#define X265_API
+#endif
 
 typedef enum
 {
@@ -77,15 +88,45 @@ typedef struct x265_nal
     uint8_t* payload;
 } x265_nal;
 
+/* Used to pass pictures into the encoder, and to get picture data back out of
+ * the encoder.  The input and output semantics are different */
 typedef struct x265_picture
 {
+    /* Must be specified on input pictures, the number of planes is determined
+     * by the colorSpace value */
     void*   planes[3];
     int     stride[3];
+
+    /* Must be specified on input pictures. x265_picture_init() will set it to
+     * the encoder's internal bit depth, but this field must describe the depth
+     * of the input pictures. Must be between 8 and 16. Values larger than 8
+     * imply 16bits per input sample. If input bit depth is larger than the
+     * internal bit depth, the encoder will down-shift pixels. Input samples
+     * larger than 8bits will be masked to internal bit depth. On output the
+     * bitDepth will be the internal encoder bit depth */
     int     bitDepth;
+
+    /* Must be specified on input pictures: X265_TYPE_AUTO or other.
+     * x265_picture_init() sets this to auto, returned on output */
     int     sliceType;
+
+    /* Ignored on input, set to picture count, returned on output */
     int     poc;
+
+    /* Must be specified on input pictures: X265_CSP_I420 or other. It must
+     * match the internal color space of the encoder. x265_picture_init() will
+     * initialize this value to the internal color space */
     int     colorSpace;
+
+    /* presentation time stamp: user-specified, returned on output */
     int64_t pts;
+
+    /* display time stamp: ignored on input, copied from reordered pts. Returned
+     * on output */
+    int64_t dts;
+
+    /* The value provided on input is returned with the same picture (POC) on
+     * output */
     void*   userData;
 
     /* new data members to this structure must be added to the end so that
@@ -138,7 +179,10 @@ typedef enum
 #define X265_CPU_SLOW_PSHUFB     0x2000000  /* such as on the Intel Atom */
 #define X265_CPU_SLOW_PALIGNR    0x4000000  /* such as on the AMD Bobcat */
 
-static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star", "full", 0 };
+/* ARM */
+#define X265_CPU_ARMV6           0x0000001
+#define X265_CPU_NEON            0x0000002  /* ARM NEON */
+#define X265_CPU_FAST_NEON_MRC   0x0000004  /* Transfer from NEON to ARM register is fast (Cortex-A9) */
 
 #define X265_MAX_SUBPEL_LEVEL   7
 
@@ -159,14 +203,14 @@ static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star
 #define X265_TYPE_P             0x0003
 #define X265_TYPE_BREF          0x0004  /* Non-disposable B-frame */
 #define X265_TYPE_B             0x0005
-#define X265_TYPE_KEYFRAME      0x0006  /* IDR or I depending on b_open_gop option */
+
 #define X265_AQ_NONE                 0
 #define X265_AQ_VARIANCE             1
 #define X265_AQ_AUTO_VARIANCE        2
 #define IS_X265_TYPE_I(x) ((x) == X265_TYPE_I || (x) == X265_TYPE_IDR)
 #define IS_X265_TYPE_B(x) ((x) == X265_TYPE_B || (x) == X265_TYPE_BREF)
 
-/* NOTE! For this release only X265_CSP_I420 is supported */
+/* NOTE! For this release only X265_CSP_I420 and X265_CSP_I444 are supported */
 
 /* Supported internal color space types (according to semantics of chroma_format_idc) */
 #define X265_CSP_I400           0  /* yuv 4:0:0 planar */
@@ -186,7 +230,7 @@ static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star
 #define X265_CSP_RGB            8  /* packed rgb 24bits   */
 #define X265_CSP_MAX            9  /* end of list */
 
-static const char * const x265_source_csp_names[] = { "i400", "i420", "i422", "i444", "nv12", "nv16", 0 };
+#define X265_EXTENDED_SAR       255 /* aspect ratio explicitly specified as width:height */
 
 typedef struct
 {
@@ -230,6 +274,19 @@ typedef struct x265_stats
 
     /* new statistic member variables must be added below this line */
 } x265_stats;
+
+/* String values accepted by x265_param_parse() (and CLI) for various parameters */
+static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star", "full", 0 };
+static const char * const x265_source_csp_names[] = { "i400", "i420", "i422", "i444", "nv12", "nv16", 0 };
+static const char * const x265_video_format_names[] = { "component", "pal", "ntsc", "secam", "mac", "undef", 0 };
+static const char * const x265_fullrange_names[] = { "limited", "full", 0 };
+static const char * const x265_colorprim_names[] = { "", "bt709", "undef", "", "bt470m", "bt470bg", "smpte170m", "smpte240m", "film", "bt2020", 0 };
+static const char * const x265_transfer_names[] = { "", "bt709", "undef", "", "bt470m", "bt470bg", "smpte170m", "smpte240m", "linear", "log100",
+                                                    "log316", "iec61966-2-4", "bt1361e", "iec61966-2-1", "bt2020-10", "bt2020-12", 0 };
+static const char * const x265_colmatrix_names[] = { "GBR", "bt709", "undef", "", "fcc", "bt470bg", "smpte170m", "smpte240m",
+                                                     "YCgCo", "bt2020nc", "bt2020c", 0 };
+static const char * const x265_sar_names[] = { "undef", "1:1", "12:11", "10:11", "16:11", "40:33", "24:11", "20:11",
+                                               "32:11", "80:33", "18:11", "15:11", "64:33", "160:99", "4:3", "3:2", "2:1", 0 };
 
 /* x265 input parameters
  *
@@ -286,23 +343,163 @@ typedef struct x265_param
      * types are MD5(1), CRC(2), Checksum(3).  Default is 0, none */
     int       decodedPictureHashSEI;
 
-    /*== Source Picture Specification ==*/
+    /*== Video Usability Information ==*/
 
-    /* source pixel bit depth (and internal encoder bit depth). If x265 was
-     * compiled to use 8bit pixels (HIGH_BIT_DEPTH=0), this field must be 8 and
-     * x265_picture.bitDepth must also be 8. x265_max_bit_depth can be consulted
-     * at runtime to determine the maximum bit depth supported by your build of
-     * x265. A high bit depth build of x265 will support input bit depths of 8,
-     * 10, or 12 */
-    int       inputBitDepth;
+    /* Enable the generation of a VUI with all fields in the SPS.  VUI fields
+     * that are not specified on the command line will have default values. */
+    int       bEnableVuiParametersPresentFlag;
 
-    /* Color space of internal pictures. Only X265_CSP_I420 is currently supported.
-     * Eventually, i422 and i444 will be supported as internal color spaces and other
-     * packed formats will be supported in x265_picture.colorSpace */
+    /* Enable aspect ratio in VUI.  Causes the aspect_ratio_idc to be added
+     * to the VUI.  The default is false. */
+    int bEnableAspectRatioIdc;
+
+    /* Aspect ratio idc to be added to the VUI.  The default is 0 indicating
+     * the apsect ratio is unspecified.  If set to X265_EXTENDED_SAR then
+     * sarWidth and sarHeight must also be set. */
+    int       aspectRatioIdc;
+
+    /* Sample Aspect Ratio width in arbitrary units to be added to the VUI
+     * only if aspectRatioIdc is set to X265_EXTENDED_SAR.  This is the width
+     * of an individual pixel.  If this is set then sarHeight must also be set.
+     */
+    int       sarWidth;
+
+    /* Sample Aspect Ratio height in arbitrary units to be added to the VUI.
+     * only if aspectRatioIdc is set to X265_EXTENDED_SAR.  This is the width
+     * of an individual pixel.  If this is set then sarWidth must also be set.
+     */
+    int       sarHeight;
+
+    /* Enable overscan info present flag in the VUI.  If this is set then
+     * bEnabledOverscanAppropriateFlag will be added to the VUI. The default
+     * is false. */
+    int       bEnableOverscanInfoPresentFlag;
+
+    /* Enable overscan appropriate flag.  The status of this flag is added to
+     * the VUI only if bEnableOverscanInfoPresentFlag is set.  If this flag is
+     * set then cropped decoded pictures may be output for display. The default
+     * is false. */
+    int       bEnableOverscanAppropriateFlag;
+
+    /* Video signal type present flag of the VUI.  If this is set then
+     * videoFormat, bEnableVideoFullRangeFlag and
+     * bEnableColorDescriptionPresentFlag will be added to the VUI.  The default
+     * is false. */
+    int       bEnableVideoSignalTypePresentFlag;
+
+    /* Video format of the source video.  0 = component, 1 = PAL, 2 = NTSC,
+     * 3 = SECAM, 4 = MAC, 5 = unspecified video format is the default. */
+    int       videoFormat;
+
+    /* Video full range flag indicates the black level and range of the luma
+     * and chroma signals as derived from E′Y, E′PB, and E′PR or E′R, E′G, and
+     * E′B real-valued component signals.  False is the default. */
+    int       bEnableVideoFullRangeFlag;
+
+    /* Color description present flag in the VUI.  If this is set then
+     * color_primaries, transfer_characteristics and matrix_coeffs are to be added
+     * to the VUI.  The default is false. */
+    int       bEnableColorDescriptionPresentFlag;
+
+    /* Color primaries holds the chromacity coordinates of the source primaries.
+     * The default is 2. */
+    int       colorPrimaries;
+
+    /* Transfer characteristics indicates the opto-electronic transfer characteristic
+     * of the source picture.  The default is 2. */
+    int       transferCharacteristics;
+
+    /* Matrix coefficients used to derive the luma and chroma signals from the red,
+     * blue and green primaries.  The default is 2. */
+    int       matrixCoeffs;
+
+    /* Chroma location info present flag adds chroma_sample_loc_type_top_field and
+     * chroma_sample_loc_type_bottom_field to the VUI.  The default is false. */
+    int       bEnableChromaLocInfoPresentFlag;
+
+    /* Chroma sample location type top field holds the chroma location in the top
+     * field.  The default is 0. */
+    int       chromaSampleLocTypeTopField;
+
+    /* Chroma sample location type bottom field holds the chroma location in the bottom
+     * field.  The default is 0. */
+    int       chromaSampleLocTypeBottomField;
+
+    /* Field seq flag specifies that the pictures are fields and each one has a
+     * timing SEI message.  The default is false */
+    int       bEnableFieldSeqFlag;
+
+    /* Frame field info present flag indicates that each picture has a timing SEI
+     * message wich includes a pic_struct, source_scan_type and duplicate_flag
+     * elements.  If not set then the pic_struct element is not included.  The
+     * default is false. */
+    int       bEnableFrameFieldInfoPresentFlag;
+
+    /* Default display window flag adds def_disp_win_left_offset ,
+     * def_disp_win_right_offset, def_disp_win_top_offset and
+     * def_disp_win_bottom_offset to the VUI.  The default is false. */
+    int       bEnableDefaultDisplayWindowFlag;
+
+    /* Default display window left offset holds the left offset with the
+     * conformance cropping window to further crop the displayed window. */
+    int       defDispWinLeftOffset;
+
+    /* Default display window right offset holds the right offset with the
+     * conformance cropping window to further crop the displayed window. */
+    int       defDispWinRightOffset;
+
+    /* Default display window top offset holds the top offset with the
+     * conformance cropping window to further crop the displayed window. */
+    int       defDispWinTopOffset;
+
+    /* Default display window bottom offset holds the bottom offset with the
+     * conformance cropping window to further crop the displayed window. */
+    int       defDispWinBottomOffset;
+
+    /* VUI timing info present flag adds vui_num_units_in_tick, vui_time_scale,
+     * vui_poc_proportional_to_timing_flag and vui_hrd_parameters_present_flag
+     * to the VUI.  vui_num_units_in_tick, vui_time_scale and
+     * vui_poc_proportional_to_timing_flag are derived from processing the input
+     * video.  The default is false. */
+    int       bEnableVuiTimingInfoPresentFlag;
+
+    /* VUI hrd parameters present flag adds the HRD to the VUI */
+    int       bEnableVuiHrdParametersPresentFlag;
+
+    /* Bitstream restriction flag adds tiles_fixed_structure_flag,
+     * motion_vectors_over_pic_boundaries_flag, restricted_ref_pic_lists_flag,
+     * min_spatial_segmentation_idc, max_bytes_per_pic_denom,
+     * max_bit_per_min_cu_denom, log2_max_mv_length_horizontal and
+     * log2_max_mv_length_vertical to the VUI. All values are derived from
+     * processing the input video.  The default is false.  */
+    int       bEnableBitstreamRestrictionFlag;
+
+    /*== Hypothetical Reference Decoder Parameters ==*/
+
+    /* Sub pic HRD params present flag determines if tic_divisor_minus2,
+     * du_cpb_removal_delay_increment_length_minus1,
+     * sub_pic_cpb_params_in_pic_timing_sei_flag,
+     * dpb_output_delay_du_length_minus1 and cpb_size_du_scale
+     * are added to the HRD.  All are derived from processing the input video.
+     * The default is false. */
+    int       bEnableSubPicHrdParamsPresentFlag;
+
+    /*== Internal Picture Specification ==*/
+
+    /* Internal encoder bit depth. If x265 was compiled to use 8bit pixels
+     * (HIGH_BIT_DEPTH=0), this field must be 8, else this field must be 10.
+     * Future builds may support 12bit pixels. */
+    int       internalBitDepth;
+
+    /* Color space of internal pictures. Only X265_CSP_I420 and X265_CSP_I444
+     * are supported.  Eventually, i422 will also be supported as an internal
+     * color space and other packed formats will be supported in
+     * x265_picture.colorSpace */
     int       internalCsp;
 
-    /* Frame rate of source pictures */
-    int       frameRate;
+    /* Numerator and denominator of frame rate */
+    uint32_t  fpsNum;
+    uint32_t  fpsDenom;
 
     /* Width (in pixels) of the source pictures. If this width is not an even
      * multiple of 4, the encoder will pad the pictures internally to meet this
@@ -337,26 +534,19 @@ typedef struct x265_param
 
     /*== GOP Structure and Lokoahead ==*/
 
-    /* Determine the intra refresh style your decoder will use. (0:none, 1:CDR,
-     * 2:IDR). Defaults to CDR */
-    int       decodingRefreshType;
-
     /* Enable open GOP - meaning I slices are not necessariy IDR and thus frames
      * encoded after an I slice may reference frames encoded prior to the I
      * frame which have remained in the decoded picture buffer.  Open GOP
      * generally has better compression efficiency and negligable encoder
-     * performance impact, but the use case may preclude it.  Default false */
+     * performance impact, but the use case may preclude it.  Default true */
     int       bOpenGOP;
 
-    /* Minimum keyframe distance or intra period in number of frames. Can be
-     * between 1 and keyframeMax. When the lookahead is between the min and max
-     * thresholds, it will use an I slice if a scene cut is detected, or a
-     * P slice otherwise */
+    /* Scenecuts closer together than this are coded as I, not IDR. */
     int       keyframeMin;
 
-    /* Maximum keyframe distance or intra period in number of frames. If 0 or
-     * 1, all frames are I frames. -1 is casted to MAX_UINT internally which
-     * effectively makes frame 0 the only I frame. Default is 250 */
+    /* Maximum keyframe distance or intra period in number of frames. If 0 or 1,
+     * all frames are I frames. A negative value is casted to MAX_INT internally
+     * which effectively makes frame 0 the only I frame. Default is 250 */
     int       keyframeMax;
 
     /* The maximum number of L0 references a P or B slice may use. This
@@ -574,13 +764,13 @@ typedef struct x265_param
          * bitrate is specified on the command line, ABR is implied. Default 0 */
         int       bitrate;
 
-        /* The degree of rate fluctuation that x265 tolerates. Rate tolerance is used 
+        /* The degree of rate fluctuation that x265 tolerates. Rate tolerance is used
          * alongwith overflow (difference between actual and target bitrate), to adjust
            qp. Default is 1.0 */
         double    rateTolerance;
-        
-        /* qComp sets the quantizer curve compression factor. It weights the frame 
-         * quantizer based on the complexity of residual (measured by lookahead). 
+
+        /* qComp sets the quantizer curve compression factor. It weights the frame
+         * quantizer based on the complexity of residual (measured by lookahead).
          * Default value is 0.6. Increasing it to 1 will effectively generate CQP */
         double    qCompress;
 
@@ -591,13 +781,13 @@ typedef struct x265_param
 
         /* Max QP difference between frames. Default: 4 */
         int       qpStep;
-        
-        /* Ratefactor constant: targets a certain constant "quality". 
-         * Acceptable values between 0 and 51. Default value: 28 */
-        double    rfConstant;                  
 
-        /* Enable adaptive quantization. This mode distributes available bits between all 
-         * macroblocks of a frame, assigning more bits to low complexity areas. Turning 
+        /* Ratefactor constant: targets a certain constant "quality".
+         * Acceptable values between 0 and 51. Default value: 28 */
+        double    rfConstant;
+
+        /* Enable adaptive quantization. This mode distributes available bits between all
+         * macroblocks of a frame, assigning more bits to low complexity areas. Turning
          * this ON will usually affect PSNR negatively, however SSIM and visual quality
          * generally improves. Default: OFF (0) */
         int       aqMode;
@@ -606,22 +796,24 @@ typedef struct x265_param
          * AQ is enabled. Default value: 1.0. Acceptable values between 0.0 and 3.0 */
         double    aqStrength;
 
-        /* Sets the maximum rate the VBV buffer should be assumed to refill at 
+        /* Sets the maximum rate the VBV buffer should be assumed to refill at
          * Default is zero */
         int       vbvMaxBitrate;
 
         /* Sets the size of the VBV buffer in kilobits. Default is zero */
         int       vbvBufferSize;
 
-        /* Sets how full the VBV buffer must be before playback starts. If it is less than 
-         * 1, then the initial fill is vbv-init * vbvBufferSize. Otherwise, it is 
+        /* Sets how full the VBV buffer must be before playback starts. If it is less than
+         * 1, then the initial fill is vbv-init * vbvBufferSize. Otherwise, it is
          * interpreted as the initial fill in kbits. Default is 0.9 */
         double    vbvBufferInit;
 
-        /* Enable CUTree ratecontrol. This keeps track of the CUs that propagate temporally 
+        /* Enable CUTree ratecontrol. This keeps track of the CUs that propagate temporally
          * across frames and assigns more bits to these CUs. Improves encode efficiency.
          * Default: OFF (0) */
         int       cuTree;
+        /* In CRF mode, maximum CRF as caused by VBV */
+        double    rfConstantMax;
     } rc;
 } x265_param;
 
@@ -702,7 +894,9 @@ x265_picture *x265_picture_alloc();
 void x265_picture_free(x265_picture *);
 
 /***
- * Initialize an x265_picture structure to default values
+ * Initialize an x265_picture structure to default values. It sets the pixel
+ * depth and color space to the encoder's internal values and sets the slice
+ * type to auto - so the lookahead will determine slice type.
  */
 void x265_picture_init(x265_param *param, x265_picture *pic);
 
@@ -713,15 +907,15 @@ void x265_picture_init(x265_param *param, x265_picture *pic);
  *      x265_max_bit_depth is 12, the internal and input bit depths can be
  *      either 8, 10, or 12. Note that the internal bit depth must be the same
  *      for all encoders allocated in the same process. */
-extern const int x265_max_bit_depth;
+X265_API extern const int x265_max_bit_depth;
 
 /* x265_version_str:
  *      A static string containing the version of this compiled x265 library */
-extern const char *x265_version_str;
+X265_API extern const char *x265_version_str;
 
 /* x265_build_info:
  *      A static string describing the compiler and target architecture */
-extern const char *x265_build_info_str;
+X265_API extern const char *x265_build_info_str;
 
 /* Force a link error in the case of linking against an incompatible API version.
  * Glue #defines exist to force correct macro expansion; the final output of the macro
@@ -776,4 +970,4 @@ double x265_ssim(double ssim);
 }
 #endif
 
-#endif // X265_X265_H
+#endif // X265_H

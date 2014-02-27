@@ -57,6 +57,7 @@ namespace x265 {
 #define MAX_CU_DEPTH            6                           // log2(LCUSize)
 #define MAX_CU_SIZE             (1 << (MAX_CU_DEPTH))       // maximum allowable size of CU
 #define MIN_PU_SIZE             4
+#define MIN_TU_SIZE             4
 #define MAX_NUM_SPU_W           (MAX_CU_SIZE / MIN_PU_SIZE) // maximum number of SPU in horizontal line
 #define ADI_BUF_STRIDE          (2 * MAX_CU_SIZE + 1 + 15)  // alignment to 16 bytes
 
@@ -66,16 +67,18 @@ namespace x265 {
 
 void initROM();
 void destroyROM();
-void initSigLastScan(uint32_t* buffD, uint32_t* buffH, uint32_t* buffV, int width, int height);
 
 // ====================================================================================================================
+static const int chromaQPMappingTableSize = 58;
+
+extern const UChar  g_chromaScale[NUM_CHROMA_FORMAT][chromaQPMappingTableSize];
 // Data structure related table & variable
 // ====================================================================================================================
 
 // flexible conversion from relative to absolute index
 extern uint32_t g_zscanToRaster[MAX_NUM_SPU_W * MAX_NUM_SPU_W];
 extern uint32_t g_rasterToZscan[MAX_NUM_SPU_W * MAX_NUM_SPU_W];
-
+extern uint32_t*  g_scanOrder[SCAN_NUMBER_OF_GROUP_TYPES][SCAN_NUMBER_OF_TYPES][MAX_CU_DEPTH][MAX_CU_DEPTH];
 void initZscanToRaster(int maxDepth, int depth, uint32_t startVal, uint32_t*& curIdx);
 void initRasterToZscan(uint32_t maxCUWidth, uint32_t maxCUHeight, uint32_t maxCUDepth);
 
@@ -94,7 +97,7 @@ extern uint32_t g_addCUDepth;
 #define MAX_TS_WIDTH  4
 #define MAX_TS_HEIGHT 4
 
-extern uint32_t g_puOffset[8];
+extern const uint32_t g_puOffset[8];
 
 #define QUANT_IQUANT_SHIFT    20 // Q(QP%6) * IQ(QP%6) = 2^20
 #define QUANT_SHIFT           14 // Q(4) = 2^14
@@ -104,8 +107,8 @@ extern uint32_t g_puOffset[8];
 #define SHIFT_INV_1ST          7 // Shift after first inverse transform stage
 #define SHIFT_INV_2ND         12 // Shift after second inverse transform stage
 
-extern int g_quantScales[6];     // Q(QP%6)
-extern int g_invQuantScales[6];  // IQ(QP%6)
+extern const int g_quantScales[6];     // Q(QP%6)
+extern const int g_invQuantScales[6];  // IQ(QP%6)
 extern const int16_t g_t4[4][4];
 extern const int16_t g_t8[8][8];
 extern const int16_t g_t16[16][16];
@@ -125,16 +128,8 @@ extern const int16_t g_lumaFilter[4][NTAPS_LUMA];     ///< Luma filter taps
 extern const int16_t g_chromaFilter[8][NTAPS_CHROMA]; ///< Chroma filter taps
 
 // ====================================================================================================================
-// Luma QP to Chroma QP mapping
-// ====================================================================================================================
-
-extern const UChar g_chromaScale[70];
-
-// ====================================================================================================================
 // Scanning order & context mapping table
 // ====================================================================================================================
-
-extern uint32_t* g_sigLastScan[3][MAX_CU_DEPTH];  // raster index from scanning index (diag, hor, ver)
 
 extern const uint32_t g_groupIdx[32];
 extern const uint32_t g_minInGroup[10];
@@ -142,20 +137,9 @@ extern const uint32_t g_minInGroup[10];
 extern const uint32_t g_goRiceRange[5];      //!< maximum value coded with Rice codes
 extern const uint32_t g_goRicePrefixLen[5];  //!< prefix length for each maximum value
 
-extern const uint32_t g_sigLastScan8x8[3][4];   //!< coefficient group scan order for 8x8 TUs
-extern       uint32_t g_sigLastScanCG32x32[64];
-
-// ====================================================================================================================
-// ADI table
-// ====================================================================================================================
-
-extern const UChar g_intraModeNumFast[7];
-
 // ====================================================================================================================
 // Bit-depth
 // ====================================================================================================================
-
-extern int g_bitDepth;
 
 /** clip x, such that 0 <= x <= #g_maxLumaVal */
 template<typename T>
@@ -167,12 +151,6 @@ inline T ClipC(T x) { return std::min<T>(T((1 << X265_DEPTH) - 1), std::max<T>(T
 /** clip a, such that minVal <= a <= maxVal */
 template<typename T>
 inline T Clip3(T minVal, T maxVal, T a) { return std::min<T>(std::max<T>(minVal, a), maxVal); } ///< general min/max clip
-
-// ====================================================================================================================
-// Texture type to integer mapping
-// ====================================================================================================================
-
-extern const UChar g_convertTxtTypeToIdx[4];
 
 // ====================================================================================================================
 // Misc.
@@ -197,7 +175,7 @@ extern uint64_t g_nSymbolCounter;
 
 #define DTRACE_CABAC_F(x)     if ((g_nSymbolCounter >= COUNTER_START && g_nSymbolCounter <= COUNTER_END) || g_bJustDoIt) fprintf(g_hTrace, "%f", x);
 #define DTRACE_CABAC_V(x)     if ((g_nSymbolCounter >= COUNTER_START && g_nSymbolCounter <= COUNTER_END) || g_bJustDoIt) fprintf(g_hTrace, "%d", x);
-#define DTRACE_CABAC_VL(x)    if ((g_nSymbolCounter >= COUNTER_START && g_nSymbolCounter <= COUNTER_END) || g_bJustDoIt) fprintf(g_hTrace, "%lld", x);
+#define DTRACE_CABAC_VL(x)    if ((g_nSymbolCounter >= COUNTER_START && g_nSymbolCounter <= COUNTER_END) || g_bJustDoIt) fprintf(g_hTrace, "%ld", x);
 #define DTRACE_CABAC_T(x)     if ((g_nSymbolCounter >= COUNTER_START && g_nSymbolCounter <= COUNTER_END) || g_bJustDoIt) fprintf(g_hTrace, "%s", x);
 #define DTRACE_CABAC_X(x)     if ((g_nSymbolCounter >= COUNTER_START && g_nSymbolCounter <= COUNTER_END) || g_bJustDoIt) fprintf(g_hTrace, "%x", x);
 #define DTRACE_CABAC_R(x, y)  if ((g_nSymbolCounter >= COUNTER_START && g_nSymbolCounter <= COUNTER_END) || g_bJustDoIt) fprintf(g_hTrace, x,    y);
@@ -285,10 +263,9 @@ extern int g_quantInterDefault8x8[64];
 extern int g_quantInterDefault16x16[256];
 extern int g_quantInterDefault32x32[1024];
 extern int g_quantTSDefault4x4[16];
-extern uint32_t g_scalingListSize[SCALING_LIST_SIZE_NUM];
-extern uint32_t g_scalingListSizeX[SCALING_LIST_SIZE_NUM];
-extern uint32_t g_scalingListNum[SCALING_LIST_SIZE_NUM];
-extern int  g_eTTable[4];
+extern const uint32_t g_scalingListSize[SCALING_LIST_SIZE_NUM];
+extern const uint32_t g_scalingListSizeX[SCALING_LIST_SIZE_NUM];
+extern const uint32_t g_scalingListNum[SCALING_LIST_SIZE_NUM];
 //! \}
 
 // Map Luma samples to chroma samples

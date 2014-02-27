@@ -34,17 +34,12 @@
 #ifndef X265_NALWRITE_H
 #define X265_NALWRITE_H
 
-#include <ostream>
-
 #include "TLibCommon/TypeDef.h"
 #include "TLibCommon/TComBitStream.h"
 #include "TLibCommon/NAL.h"
 
 namespace x265 {
 // private namespace
-
-//! \ingroup TLibEncoder
-//! \{
 
 /**
  * A convenience wrapper to NALUnit that also provides a
@@ -57,35 +52,30 @@ struct OutputNALUnit : public NALUnit
      * storage for a bitstream.  Upon construction the NALunit header is
      * written to the bitstream.
      */
-    OutputNALUnit(NalUnitType nalUnitType,
-                  uint32_t    temporalID = 0,
-                  uint32_t    reserved_zero_6bits = 0)
-        : NALUnit(nalUnitType, temporalID, reserved_zero_6bits)
+    OutputNALUnit(NalUnitType nalUnitType)
+        : NALUnit(nalUnitType)
         , m_bitstream()
     {}
 
-    OutputNALUnit& operator =(const NALUnit& src)
+    void resetToType(NalUnitType nalUnitType)
     {
+        m_nalUnitType = nalUnitType;
         m_bitstream.clear();
-        static_cast<NALUnit*>(this)->operator =(src);
-        return *this;
     }
 
     TComOutputBitstream m_bitstream;
 };
 
-void write(uint8_t*& out, OutputNALUnit& nalu, uint32_t& packetSize);
+uint8_t *write(const OutputNALUnit& nalu, uint32_t& packetSize);
 void writeRBSPTrailingBits(TComOutputBitstream& bs);
 
-void inline NALUnitEBSP::init(OutputNALUnit& nalu)
+void inline NALUnitEBSP::init(const OutputNALUnit& nalu)
 {
     m_nalUnitType = nalu.m_nalUnitType;
     m_temporalId = nalu.m_temporalId;
     m_reservedZero6Bits = nalu.m_reservedZero6Bits;
-    write(m_nalUnitData, nalu, m_packetSize);
+    m_nalUnitData = write(nalu, m_packetSize);
 }
 }
-
-//! \}
 
 #endif // ifndef X265_NALWRITE_H

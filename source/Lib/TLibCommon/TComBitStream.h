@@ -85,7 +85,7 @@ class TComOutputBitstream : public TComBitIf
      */
     uint8_t *m_fifo;
     uint32_t m_fsize;
-    uint32_t buffsize;
+    uint32_t m_buffsize;
 
     uint32_t m_num_held_bits; /// number of bits not flushed to bytestream.
     UChar m_held_bits; /// the bits held and not flushed to bytestream.
@@ -128,7 +128,7 @@ public:
     /**
      * Return the number of valid bytes available from  getByteStream()
      */
-    uint32_t getByteStreamLength();
+    uint32_t getByteStreamLength() const;
 
     /**
      * Reset all internal state.

@@ -222,99 +222,183 @@ extern "C" {
     p.pixelavg_pp[LUMA_4x8]  = x265_pixel_avg_4x8_ ## cpu; \
     p.pixelavg_pp[LUMA_4x16] = x265_pixel_avg_4x16_ ## cpu;
 
-#define SETUP_CHROMA_FUNC_DEF(W, H, cpu) \
+#define SETUP_CHROMA_FUNC_DEF_420(W, H, cpu) \
     p.chroma[X265_CSP_I420].filter_hpp[CHROMA_ ## W ## x ## H] = x265_interp_4tap_horiz_pp_ ## W ## x ## H ## cpu; \
     p.chroma[X265_CSP_I420].filter_hps[CHROMA_ ## W ## x ## H] = x265_interp_4tap_horiz_ps_ ## W ## x ## H ## cpu; \
     p.chroma[X265_CSP_I420].filter_vpp[CHROMA_ ## W ## x ## H] = x265_interp_4tap_vert_pp_ ## W ## x ## H ## cpu; \
     p.chroma[X265_CSP_I420].filter_vps[CHROMA_ ## W ## x ## H] = x265_interp_4tap_vert_ps_ ## W ## x ## H ## cpu;
 
-#define SETUP_CHROMA_SP_FUNC_DEF(W, H, cpu) \
+#define SETUP_CHROMA_FUNC_DEF_444(W, H, cpu) \
+    p.chroma[X265_CSP_I444].filter_hpp[LUMA_ ## W ## x ## H] = x265_interp_4tap_horiz_pp_ ## W ## x ## H ## cpu; \
+    p.chroma[X265_CSP_I444].filter_hps[LUMA_ ## W ## x ## H] = x265_interp_4tap_horiz_ps_ ## W ## x ## H ## cpu; \
+    p.chroma[X265_CSP_I444].filter_vpp[LUMA_ ## W ## x ## H] = x265_interp_4tap_vert_pp_ ## W ## x ## H ## cpu; \
+    p.chroma[X265_CSP_I444].filter_vps[LUMA_ ## W ## x ## H] = x265_interp_4tap_vert_ps_ ## W ## x ## H ## cpu;
+
+#define SETUP_CHROMA_SP_FUNC_DEF_420(W, H, cpu) \
     p.chroma[X265_CSP_I420].filter_vsp[CHROMA_ ## W ## x ## H] = x265_interp_4tap_vert_sp_ ## W ## x ## H ## cpu;
 
-#define SETUP_CHROMA_SS_FUNC_DEF(W, H, cpu) \
+#define SETUP_CHROMA_SP_FUNC_DEF_444(W, H, cpu) \
+    p.chroma[X265_CSP_I444].filter_vsp[LUMA_ ## W ## x ## H] = x265_interp_4tap_vert_sp_ ## W ## x ## H ## cpu;
+
+#define SETUP_CHROMA_SS_FUNC_DEF_420(W, H, cpu) \
     p.chroma[X265_CSP_I420].filter_vss[CHROMA_ ## W ## x ## H] = x265_interp_4tap_vert_ss_ ## W ## x ## H ## cpu;
 
-#define CHROMA_FILTERS(cpu) \
-    SETUP_CHROMA_FUNC_DEF(4, 4, cpu); \
-    SETUP_CHROMA_FUNC_DEF(4, 2, cpu); \
-    SETUP_CHROMA_FUNC_DEF(2, 4, cpu); \
-    SETUP_CHROMA_FUNC_DEF(8, 8, cpu); \
-    SETUP_CHROMA_FUNC_DEF(8, 4, cpu); \
-    SETUP_CHROMA_FUNC_DEF(4, 8, cpu); \
-    SETUP_CHROMA_FUNC_DEF(8, 6, cpu); \
-    SETUP_CHROMA_FUNC_DEF(6, 8, cpu); \
-    SETUP_CHROMA_FUNC_DEF(8, 2, cpu); \
-    SETUP_CHROMA_FUNC_DEF(2, 8, cpu); \
-    SETUP_CHROMA_FUNC_DEF(16, 16, cpu); \
-    SETUP_CHROMA_FUNC_DEF(16, 8, cpu); \
-    SETUP_CHROMA_FUNC_DEF(8, 16, cpu); \
-    SETUP_CHROMA_FUNC_DEF(16, 12, cpu); \
-    SETUP_CHROMA_FUNC_DEF(12, 16, cpu); \
-    SETUP_CHROMA_FUNC_DEF(16, 4, cpu); \
-    SETUP_CHROMA_FUNC_DEF(4, 16, cpu); \
-    SETUP_CHROMA_FUNC_DEF(32, 32, cpu); \
-    SETUP_CHROMA_FUNC_DEF(32, 16, cpu); \
-    SETUP_CHROMA_FUNC_DEF(16, 32, cpu); \
-    SETUP_CHROMA_FUNC_DEF(32, 24, cpu); \
-    SETUP_CHROMA_FUNC_DEF(24, 32, cpu); \
-    SETUP_CHROMA_FUNC_DEF(32, 8, cpu); \
-    SETUP_CHROMA_FUNC_DEF(8, 32, cpu);
+#define SETUP_CHROMA_SS_FUNC_DEF_444(W, H, cpu) \
+    p.chroma[X265_CSP_I444].filter_vss[LUMA_ ## W ## x ## H] = x265_interp_4tap_vert_ss_ ## W ## x ## H ## cpu;
 
-#define CHROMA_SP_FILTERS(cpu) \
-    SETUP_CHROMA_SP_FUNC_DEF(4, 4, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(4, 2, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(8, 8, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(8, 4, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(4, 8, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(8, 6, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(8, 2, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(16, 16, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(16, 8, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(8, 16, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(16, 12, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(12, 16, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(16, 4, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(4, 16, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(32, 32, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(32, 16, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(16, 32, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(32, 24, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(24, 32, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(32, 8, cpu); \
-    SETUP_CHROMA_SP_FUNC_DEF(8, 32, cpu);
+#define CHROMA_FILTERS_420(cpu) \
+    SETUP_CHROMA_FUNC_DEF_420(4, 4, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(4, 2, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(2, 4, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(8, 8, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(8, 4, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(4, 8, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(8, 6, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(6, 8, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(8, 2, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(2, 8, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(16, 16, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(16, 8, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(8, 16, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(16, 12, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(12, 16, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(16, 4, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(4, 16, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(32, 32, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(32, 16, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(16, 32, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(32, 24, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(24, 32, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(32, 8, cpu); \
+    SETUP_CHROMA_FUNC_DEF_420(8, 32, cpu);
 
-#define CHROMA_SS_FILTERS(cpu) \
-    SETUP_CHROMA_SS_FUNC_DEF(4, 4, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(4, 2, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(2, 4, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(8, 8, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(8, 4, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(4, 8, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(8, 6, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(6, 8, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(8, 2, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(2, 8, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(16, 16, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(16, 8, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(8, 16, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(16, 12, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(12, 16, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(16, 4, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(4, 16, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(32, 32, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(32, 16, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(16, 32, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(32, 24, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(24, 32, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(32, 8, cpu); \
-    SETUP_CHROMA_SS_FUNC_DEF(8, 32, cpu);
+#define CHROMA_FILTERS_444(cpu) \
+    SETUP_CHROMA_FUNC_DEF_444(4, 4, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(8, 8, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(8, 4, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(4, 8, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(16, 16, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(16, 8, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(8, 16, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(16, 12, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(12, 16, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(16, 4, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(4, 16, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(32, 32, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(32, 16, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(16, 32, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(32, 24, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(24, 32, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(32, 8, cpu); \
+    SETUP_CHROMA_FUNC_DEF_444(8, 32, cpu);
 
+#define CHROMA_SP_FILTERS_SSE4_420(cpu) \
+    SETUP_CHROMA_SP_FUNC_DEF_420(4, 4, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(4, 2, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(4, 8, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(16, 16, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(16, 8, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(16, 12, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(12, 16, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(16, 4, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(4, 16, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(32, 32, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(32, 16, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(16, 32, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(32, 24, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(24, 32, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(32, 8, cpu);
+
+#define CHROMA_SP_FILTERS_420(cpu) \
+    SETUP_CHROMA_SP_FUNC_DEF_420(8, 2, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(8, 4, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(8, 6, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(8, 8, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(8, 16, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_420(8, 32, cpu);
+
+#define CHROMA_SP_FILTERS_SSE4_444(cpu) \
+    SETUP_CHROMA_SP_FUNC_DEF_444(4, 4, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(4, 8, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(16, 16, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(16, 8, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(16, 12, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(12, 16, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(16, 4, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(4, 16, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(32, 32, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(32, 16, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(16, 32, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(32, 24, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(24, 32, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(32, 8, cpu);
+
+#define CHROMA_SP_FILTERS_444(cpu) \
+    SETUP_CHROMA_SP_FUNC_DEF_444(8, 8, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(8, 4, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(8, 16, cpu); \
+    SETUP_CHROMA_SP_FUNC_DEF_444(8, 32, cpu);
+
+#define CHROMA_SS_FILTERS_420(cpu) \
+    SETUP_CHROMA_SS_FUNC_DEF_420(4, 4, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(4, 2, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(8, 8, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(8, 4, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(4, 8, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(8, 6, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(8, 2, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(16, 16, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(16, 8, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(8, 16, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(16, 12, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(12, 16, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(16, 4, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(4, 16, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(32, 32, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(32, 16, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(16, 32, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(32, 24, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(24, 32, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(32, 8, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(8, 32, cpu);
+
+#define CHROMA_SS_FILTERS_SSE4_420(cpu) \
+    SETUP_CHROMA_SS_FUNC_DEF_420(2, 4, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(2, 8, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_420(6, 8, cpu);
+
+#define CHROMA_SS_FILTERS_444(cpu) \
+    SETUP_CHROMA_SS_FUNC_DEF_444(4, 4, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(8, 8, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(8, 4, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(4, 8, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(16, 16, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(16, 8, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(8, 16, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(16, 12, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(12, 16, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(16, 4, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(4, 16, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(32, 32, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(32, 16, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(16, 32, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(32, 24, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(24, 32, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(32, 8, cpu); \
+    SETUP_CHROMA_SS_FUNC_DEF_444(8, 32, cpu);
+
+#if HIGH_BIT_DEPTH    // temporary, until all 10bit functions are completed
+#define SETUP_LUMA_FUNC_DEF(W, H, cpu) \
+    p.luma_hpp[LUMA_ ## W ## x ## H] = x265_interp_8tap_horiz_pp_ ## W ## x ## H ## cpu; \
+    p.luma_hps[LUMA_ ## W ## x ## H] = x265_interp_8tap_horiz_ps_ ## W ## x ## H ## cpu;
+#else
 #define SETUP_LUMA_FUNC_DEF(W, H, cpu) \
     p.luma_hpp[LUMA_ ## W ## x ## H] = x265_interp_8tap_horiz_pp_ ## W ## x ## H ## cpu; \
     p.luma_hps[LUMA_ ## W ## x ## H] = x265_interp_8tap_horiz_ps_ ## W ## x ## H ## cpu; \
     p.luma_vpp[LUMA_ ## W ## x ## H] = x265_interp_8tap_vert_pp_ ## W ## x ## H ## cpu; \
     p.luma_vps[LUMA_ ## W ## x ## H] = x265_interp_8tap_vert_ps_ ## W ## x ## H ## cpu; \
     p.luma_copy_ps[LUMA_ ## W ## x ## H] = x265_blockcopy_ps_ ## W ## x ## H ## cpu;
+#endif
 
 #define SETUP_LUMA_SUB_FUNC_DEF(W, H, cpu) \
     p.luma_sub_ps[LUMA_ ## W ## x ## H] = x265_pixel_sub_ps_ ## W ## x ## H ## cpu; \
@@ -330,7 +414,8 @@ extern "C" {
     p.luma_copy_pp[LUMA_ ## W ## x ## H] = x265_blockcopy_pp_ ## W ## x ## H ## cpu;
 
 #define SETUP_CHROMA_FROM_LUMA(W1, H1, W2, H2, cpu) \
-    p.chroma[X265_CSP_I420].copy_pp[LUMA_ ## W1 ## x ## H1] = x265_blockcopy_pp_ ## W2 ## x ## H2 ## cpu;
+    p.chroma[X265_CSP_I420].copy_pp[LUMA_ ## W1 ## x ## H1] = x265_blockcopy_pp_ ## W2 ## x ## H2 ## cpu; \
+    p.chroma[X265_CSP_I444].copy_pp[LUMA_ ## W1 ## x ## H1] = x265_blockcopy_pp_ ## W1 ## x ## H1 ## cpu;
 
 // For X265_CSP_I420 chroma width and height will be half of luma width and height
 #define CHROMA_BLOCKCOPY(cpu) \
@@ -361,7 +446,9 @@ extern "C" {
 
 #define SETUP_CHROMA_LUMA(W1, H1, W2, H2, cpu) \
     p.chroma[X265_CSP_I420].sub_ps[LUMA_ ## W1 ## x ## H1] = x265_pixel_sub_ps_ ## W2 ## x ## H2 ## cpu; \
-    p.chroma[X265_CSP_I420].add_ps[LUMA_ ## W1 ## x ## H1] = x265_pixel_add_ps_ ## W2 ## x ## H2 ## cpu;
+    p.chroma[X265_CSP_I420].add_ps[LUMA_ ## W1 ## x ## H1] = x265_pixel_add_ps_ ## W2 ## x ## H2 ## cpu; \
+    p.chroma[X265_CSP_I444].sub_ps[LUMA_ ## W1 ## x ## H1] = x265_pixel_sub_ps_ ## W1 ## x ## H1 ## cpu; \
+    p.chroma[X265_CSP_I444].add_ps[LUMA_ ## W1 ## x ## H1] = x265_pixel_add_ps_ ## W1 ## x ## H1 ## cpu;
 
 #define CHROMA_PIXELSUB_PS(cpu) \
     SETUP_CHROMA_LUMA(8,   8, 4,  4,  cpu); \
@@ -563,12 +650,138 @@ extern "C" {
     SETUP_PIXEL_SSE_SP_DEF(64, 16, cpu); \
     SETUP_PIXEL_SSE_SP_DEF(16, 64, cpu);
 
+#define SETUP_LUMA_ADDAVG_FUNC_DEF(W, H, cpu) \
+    p.luma_addAvg[LUMA_ ## W ## x ## H] = x265_addAvg_ ## W ## x ## H ## cpu;
+
+#define LUMA_ADDAVG(cpu) \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(4,  4,  cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(4,  8,  cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(4,  16, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(8,  4,  cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(8,  8,  cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(8,  16, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(8,  32, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(12, 16, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(16, 4,  cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(16, 8,  cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(16, 12, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(16, 16, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(16, 32, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(24, 32, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(16, 64, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(32, 8,  cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(32, 16, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(32, 24, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(32, 32, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(32, 64, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(48, 64, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(64, 16, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(64, 32, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(64, 48, cpu); \
+    SETUP_LUMA_ADDAVG_FUNC_DEF(64, 64, cpu); \
+
+#define SETUP_CHROMA_ADDAVG_FUNC_DEF(W, H, cpu) \
+    p.chroma[X265_CSP_I420].addAvg[CHROMA_ ## W ## x ## H] = x265_addAvg_ ## W ## x ## H ## cpu;
+
+#define CHROMA_ADDAVG(cpu) \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(2,  4,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(2,  8,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(4,  2,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(4,  4,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(4,  8,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(4,  16, cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(6,  8,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(8,  2,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(8,  4,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(8,  6,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(8,  8,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(8,  16, cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(8,  32, cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(12, 16, cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(16, 4,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(16, 8,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(16, 12, cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(16, 16, cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(16, 32, cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(24, 32, cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(32, 8,  cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(32, 16, cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(32, 24, cpu); \
+    SETUP_CHROMA_ADDAVG_FUNC_DEF(32, 32, cpu); \
+
 #define SETUP_INTRA_ANG4(mode, fno, cpu) \
     p.intra_pred[BLOCK_4x4][mode] = x265_intra_pred_ang4_ ## fno ## _ ## cpu;
+#define SETUP_INTRA_ANG8(mode, fno, cpu) \
+    p.intra_pred[BLOCK_8x8][mode] = x265_intra_pred_ang8_ ## fno ## _ ## cpu;
+#define SETUP_INTRA_ANG16(mode, fno, cpu) \
+    p.intra_pred[BLOCK_16x16][mode] = x265_intra_pred_ang16_ ## fno ## _ ## cpu;
+#define SETUP_INTRA_ANG32(mode, fno, cpu) \
+    p.intra_pred[BLOCK_32x32][mode] = x265_intra_pred_ang32_ ## fno ## _ ## cpu;
+
+#define SETUP_CHROMA_VERT_FUNC_DEF(W, H, cpu) \
+    p.chroma[X265_CSP_I420].filter_vss[CHROMA_ ## W ## x ## H] = x265_interp_4tap_vert_ss_ ## W ## x ## H ## cpu; \
+    p.chroma[X265_CSP_I420].filter_vsp[CHROMA_ ## W ## x ## H] = x265_interp_4tap_vert_sp_ ## W ## x ## H ## cpu;
+
+#define CHROMA_VERT_FILTERS(cpu) \
+    SETUP_CHROMA_VERT_FUNC_DEF(4, 4, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(4, 2, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(8, 8, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(8, 4, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(4, 8, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(8, 6, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(8, 2, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(16, 16, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(16, 8, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(8, 16, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(16, 12, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(12, 16, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(16, 4, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(4, 16, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(32, 32, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(32, 16, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(16, 32, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(32, 24, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(24, 32, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(32, 8, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(8, 32, cpu);
+
+#define CHROMA_VERT_FILTERS_SSE4(cpu) \
+    SETUP_CHROMA_VERT_FUNC_DEF(2, 4, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(2, 8, cpu); \
+    SETUP_CHROMA_VERT_FUNC_DEF(6, 8, cpu);
+
+#define SETUP_CHROMA_HORIZ_FUNC_DEF(W, H, cpu) \
+    p.chroma[X265_CSP_I420].filter_hpp[CHROMA_ ## W ## x ## H] = x265_interp_4tap_horiz_pp_ ## W ## x ## H ## cpu; \
+    p.chroma[X265_CSP_I420].filter_hps[CHROMA_ ## W ## x ## H] = x265_interp_4tap_horiz_ps_ ## W ## x ## H ## cpu;
+
+#define CHROMA_HORIZ_FILTERS(cpu) \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(4, 4, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(4, 2, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(2, 4, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(8, 8, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(8, 4, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(4, 8, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(8, 6, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(6, 8, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(8, 2, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(2, 8, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(16, 16, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(16, 8, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(8, 16, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(16, 12, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(12, 16, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(16, 4, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(4, 16, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(32, 32, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(32, 16, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(16, 32, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(32, 24, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(24, 32, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(32, 8, cpu); \
+    SETUP_CHROMA_HORIZ_FUNC_DEF(8, 32, cpu)
 
 namespace x265 {
 // private x265 namespace
-
 void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
 {
 #if HIGH_BIT_DEPTH
@@ -577,16 +790,6 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         INIT6(satd, _sse2);
         HEVC_SATD(sse2);
         p.satd[LUMA_4x4] = x265_pixel_satd_4x4_mmx2;
-        p.satd[LUMA_4x16] = x265_pixel_satd_4x16_sse2;
-        p.satd[LUMA_8x32] = x265_pixel_satd_8x32_sse2;
-        p.satd[LUMA_16x4] = x265_pixel_satd_16x4_sse2;
-        p.satd[LUMA_16x12] = x265_pixel_satd_16x12_sse2;
-        p.satd[LUMA_16x32] = x265_pixel_satd_16x32_sse2;
-        p.satd[LUMA_16x64] = x265_pixel_satd_16x64_sse2;
-        p.satd[LUMA_12x16] = x265_pixel_satd_12x16_sse2;
-        p.satd[LUMA_32x8] = x265_pixel_satd_32x8_sse2;
-        p.satd[LUMA_32x16] = x265_pixel_satd_32x16_sse2;
-        p.satd[LUMA_32x24] = x265_pixel_satd_32x24_sse2;
 
         p.sa8d_inter[LUMA_4x4]  = x265_pixel_satd_4x4_mmx2;
         SA8D_INTER_FROM_BLOCK(sse2);
@@ -631,27 +834,6 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         PIXEL_AVG_W4(mmx2);
         LUMA_VAR(_sse2);
 
-        INIT8(sad, _mmx2);
-        p.sad[LUMA_8x32]  = x265_pixel_sad_8x32_sse2;
-        p.sad[LUMA_16x4]  = x265_pixel_sad_16x4_sse2;
-        p.sad[LUMA_16x12] = x265_pixel_sad_16x12_sse2;
-        p.sad[LUMA_16x32] = x265_pixel_sad_16x32_sse2;
-
-        p.sad[LUMA_32x8]  = x265_pixel_sad_32x8_sse2;
-        p.sad[LUMA_32x16] = x265_pixel_sad_32x16_sse2;
-        p.sad[LUMA_32x24] = x265_pixel_sad_32x24_sse2;
-        p.sad[LUMA_32x32] = x265_pixel_sad_32x32_sse2;
-        p.sad[LUMA_32x64] = x265_pixel_sad_32x64_sse2;
-
-        p.sad[LUMA_64x16] = x265_pixel_sad_64x16_sse2;
-        p.sad[LUMA_64x32] = x265_pixel_sad_64x32_sse2;
-        p.sad[LUMA_64x48] = x265_pixel_sad_64x48_sse2;
-        p.sad[LUMA_64x64] = x265_pixel_sad_64x64_sse2;
-
-        p.sad[LUMA_48x64] = x265_pixel_sad_48x64_sse2;
-        p.sad[LUMA_24x32] = x265_pixel_sad_24x32_sse2;
-        p.sad[LUMA_12x16] = x265_pixel_sad_12x16_sse2;
-
         SAD_X3(sse2);
         p.sad_x3[LUMA_4x4] = x265_pixel_sad_x3_4x4_mmx2;
         p.sad_x3[LUMA_4x8] = x265_pixel_sad_x3_4x8_mmx2;
@@ -675,13 +857,15 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.sad_x4[LUMA_12x16] = x265_pixel_sad_x4_12x16_mmx2;
 
         p.cvt32to16_shr = x265_cvt32to16_shr_sse2;
-        p.cvt16to32_shl = x265_cvt16to32_shl_sse2;
 
         CHROMA_PIXELSUB_PS(_sse2);
         LUMA_PIXELSUB(_sse2);
 
         CHROMA_BLOCKCOPY(_sse2);
         LUMA_BLOCKCOPY(_sse2);
+
+        CHROMA_VERT_FILTERS(_sse2);
+        p.chroma_p2s[X265_CSP_I420] = x265_chroma_p2s_sse2;
 
         p.blockfill_s[BLOCK_4x4] = x265_blockfill_s_4x4_sse2;
         p.blockfill_s[BLOCK_8x8] = x265_blockfill_s_8x8_sse2;
@@ -697,6 +881,10 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.calcrecon[BLOCK_8x8] = x265_calcRecons8_sse2;
         p.calcrecon[BLOCK_16x16] = x265_calcRecons16_sse2;
         p.calcrecon[BLOCK_32x32] = x265_calcRecons32_sse2;
+
+        p.dct[DCT_4x4] = x265_dct4_sse2;
+        p.idct[IDCT_4x4] = x265_idct4_sse2;
+        p.idct[IDST_4x4] = x265_idst4_sse2;
     }
     if (cpuMask & X265_CPU_SSSE3)
     {
@@ -705,9 +893,30 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
 
         SETUP_INTRA_ANG4(2, 2, ssse3);
         SETUP_INTRA_ANG4(34, 2, ssse3);
+
+        SETUP_INTRA_ANG8(2, 2, ssse3);
+        SETUP_INTRA_ANG8(34, 2, ssse3);
+
+        SETUP_INTRA_ANG16(2, 2, ssse3);
+        SETUP_INTRA_ANG16(34, 2, ssse3);
+
+        SETUP_INTRA_ANG32(2, 2, ssse3);
+        SETUP_INTRA_ANG32(34, 2, ssse3);
+
+        p.dct[DST_4x4] = x265_dst4_ssse3;
     }
     if (cpuMask & X265_CPU_SSE4)
     {
+        LUMA_ADDAVG(_sse4);
+        CHROMA_ADDAVG(_sse4);
+        LUMA_FILTERS(_sse4);
+        CHROMA_HORIZ_FILTERS(_sse4);
+        CHROMA_VERT_FILTERS_SSE4(_sse4);
+
+        p.dct[DCT_8x8] = x265_dct8_sse4;
+        p.quant = x265_quant_sse4;
+        p.dequant_normal = x265_dequant_normal_sse4;
+        p.cvt16to32_shl = x265_cvt16to32_shl_sse4;
         p.intra_pred[BLOCK_4x4][0] = x265_intra_pred_planar4_sse4;
         p.intra_pred[BLOCK_8x8][0] = x265_intra_pred_planar8_sse4;
         p.intra_pred[BLOCK_16x16][0] = x265_intra_pred_planar16_sse4;
@@ -749,6 +958,102 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         SETUP_INTRA_ANG4(31, 5, sse4);
         SETUP_INTRA_ANG4(32, 4, sse4);
         SETUP_INTRA_ANG4(33, 3, sse4);
+
+        SETUP_INTRA_ANG8(3, 3, sse4);
+        SETUP_INTRA_ANG8(4, 4, sse4);
+        SETUP_INTRA_ANG8(5, 5, sse4);
+        SETUP_INTRA_ANG8(6, 6, sse4);
+        SETUP_INTRA_ANG8(7, 7, sse4);
+        SETUP_INTRA_ANG8(8, 8, sse4);
+        SETUP_INTRA_ANG8(9, 9, sse4);
+        SETUP_INTRA_ANG8(10, 10, sse4);
+        SETUP_INTRA_ANG8(11, 11, sse4);
+        SETUP_INTRA_ANG8(12, 12, sse4);
+        SETUP_INTRA_ANG8(13, 13, sse4);
+        SETUP_INTRA_ANG8(14, 14, sse4);
+        SETUP_INTRA_ANG8(15, 15, sse4);
+        SETUP_INTRA_ANG8(16, 16, sse4);
+        SETUP_INTRA_ANG8(17, 17, sse4);
+        SETUP_INTRA_ANG8(18, 18, sse4);
+        SETUP_INTRA_ANG8(19, 19, sse4);
+        SETUP_INTRA_ANG8(20, 20, sse4);
+        SETUP_INTRA_ANG8(21, 21, sse4);
+        SETUP_INTRA_ANG8(22, 22, sse4);
+        SETUP_INTRA_ANG8(23, 23, sse4);
+        SETUP_INTRA_ANG8(24, 24, sse4);
+        SETUP_INTRA_ANG8(25, 25, sse4);
+        SETUP_INTRA_ANG8(26, 26, sse4);
+        SETUP_INTRA_ANG8(27, 27, sse4);
+        SETUP_INTRA_ANG8(28, 28, sse4);
+        SETUP_INTRA_ANG8(29, 29, sse4);
+        SETUP_INTRA_ANG8(30, 30, sse4);
+        SETUP_INTRA_ANG8(31, 31, sse4);
+        SETUP_INTRA_ANG8(32, 32, sse4);
+        SETUP_INTRA_ANG8(33, 33, sse4);
+
+        SETUP_INTRA_ANG16(3,  3,  sse4);
+        SETUP_INTRA_ANG16(4,  4,  sse4);
+        SETUP_INTRA_ANG16(5,  5,  sse4);
+        SETUP_INTRA_ANG16(6,  6,  sse4);
+        SETUP_INTRA_ANG16(7,  7,  sse4);
+        SETUP_INTRA_ANG16(8,  8,  sse4);
+        SETUP_INTRA_ANG16(9,  9,  sse4);
+        SETUP_INTRA_ANG16(10, 10, sse4);
+        SETUP_INTRA_ANG16(11, 11, sse4);
+        SETUP_INTRA_ANG16(12, 12, sse4);
+        SETUP_INTRA_ANG16(13, 13, sse4);
+        SETUP_INTRA_ANG16(14, 14, sse4);
+        SETUP_INTRA_ANG16(15, 15, sse4);
+        SETUP_INTRA_ANG16(16, 16, sse4);
+        SETUP_INTRA_ANG16(17, 17, sse4);
+        SETUP_INTRA_ANG16(18, 18, sse4);
+        SETUP_INTRA_ANG16(19, 19, sse4);
+        SETUP_INTRA_ANG16(20, 20, sse4);
+        SETUP_INTRA_ANG16(21, 21, sse4);
+        SETUP_INTRA_ANG16(22, 22, sse4);
+        SETUP_INTRA_ANG16(23, 23, sse4);
+        SETUP_INTRA_ANG16(24, 24, sse4);
+        SETUP_INTRA_ANG16(25, 25, sse4);
+        SETUP_INTRA_ANG16(26, 26, sse4);
+        SETUP_INTRA_ANG16(27, 27, sse4);
+        SETUP_INTRA_ANG16(28, 28, sse4);
+        SETUP_INTRA_ANG16(29, 29, sse4);
+        SETUP_INTRA_ANG16(30, 30, sse4);
+        SETUP_INTRA_ANG16(31, 31, sse4);
+        SETUP_INTRA_ANG16(32, 32, sse4);
+        SETUP_INTRA_ANG16(33, 33, sse4);
+
+        SETUP_INTRA_ANG32(3,  3,  sse4);
+        SETUP_INTRA_ANG32(4,  4,  sse4);
+        SETUP_INTRA_ANG32(5,  5,  sse4);
+        SETUP_INTRA_ANG32(6,  6,  sse4);
+        SETUP_INTRA_ANG32(7,  7,  sse4);
+        SETUP_INTRA_ANG32(8,  8,  sse4);
+        SETUP_INTRA_ANG32(9,  9,  sse4);
+        SETUP_INTRA_ANG32(10, 10, sse4);
+        SETUP_INTRA_ANG32(11, 11, sse4);
+        SETUP_INTRA_ANG32(12, 12, sse4);
+        SETUP_INTRA_ANG32(13, 13, sse4);
+        SETUP_INTRA_ANG32(14, 14, sse4);
+        SETUP_INTRA_ANG32(15, 15, sse4);
+        SETUP_INTRA_ANG32(16, 16, sse4);
+        SETUP_INTRA_ANG32(17, 17, sse4);
+        SETUP_INTRA_ANG32(18, 18, sse4);
+        SETUP_INTRA_ANG32(19, 19, sse4);
+        SETUP_INTRA_ANG32(20, 20, sse4);
+        SETUP_INTRA_ANG32(21, 21, sse4);
+        SETUP_INTRA_ANG32(22, 22, sse4);
+        SETUP_INTRA_ANG32(23, 23, sse4);
+        SETUP_INTRA_ANG32(24, 24, sse4);
+        SETUP_INTRA_ANG32(25, 25, sse4);
+        SETUP_INTRA_ANG32(26, 26, sse4);
+        SETUP_INTRA_ANG32(27, 27, sse4);
+        SETUP_INTRA_ANG32(28, 28, sse4);
+        SETUP_INTRA_ANG32(29, 29, sse4);
+        SETUP_INTRA_ANG32(30, 30, sse4);
+        SETUP_INTRA_ANG32(31, 31, sse4);
+        SETUP_INTRA_ANG32(32, 32, sse4);
+        SETUP_INTRA_ANG32(33, 33, sse4);
     }
     if (cpuMask & X265_CPU_XOP)
     {
@@ -764,7 +1069,7 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.sse_sp[i] = (pixelcmp_sp_t)p.sse_ss[i];
     }
 
-  for (int i = 0; i < NUM_LUMA_PARTITIONS; i++)
+    for (int i = 0; i < NUM_LUMA_PARTITIONS; i++)
     {
         p.luma_copy_ps[i] = (copy_ps_t)p.luma_copy_pp[i];
         p.luma_copy_sp[i] = (copy_sp_t)p.luma_copy_pp[i];
@@ -822,7 +1127,10 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         CHROMA_BLOCKCOPY(_sse2);
         LUMA_BLOCKCOPY(_sse2);
 
-        CHROMA_SS_FILTERS(_sse2);
+        CHROMA_SS_FILTERS_420(_sse2);
+        CHROMA_SS_FILTERS_444(_sse2);
+        CHROMA_SP_FILTERS_420(_sse2);
+        CHROMA_SP_FILTERS_444(_sse2);
         LUMA_SS_FILTERS(_sse2);
 
         // This function pointer initialization is temporary will be removed
@@ -851,6 +1159,32 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.chroma[X265_CSP_I420].copy_sp[CHROMA_32x24] = x265_blockcopy_sp_32x24_sse2;
         p.chroma[X265_CSP_I420].copy_sp[CHROMA_32x32] = x265_blockcopy_sp_32x32_sse2;
 
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_4x4] = x265_blockcopy_sp_4x4_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_8x8] = x265_blockcopy_sp_8x8_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_8x4] = x265_blockcopy_sp_8x4_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_4x8] = x265_blockcopy_sp_4x8_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_16x16] = x265_blockcopy_sp_16x16_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_16x8] = x265_blockcopy_sp_16x8_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_8x16] = x265_blockcopy_sp_8x16_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_16x12] = x265_blockcopy_sp_16x12_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_12x16] = x265_blockcopy_sp_12x16_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_16x4] = x265_blockcopy_sp_16x4_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_4x16] = x265_blockcopy_sp_4x16_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_32x32] = x265_blockcopy_sp_32x32_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_32x16] = x265_blockcopy_sp_32x16_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_16x32] = x265_blockcopy_sp_16x32_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_32x24] = x265_blockcopy_sp_32x24_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_24x32] = x265_blockcopy_sp_24x32_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_32x8] = x265_blockcopy_sp_32x8_sse2;
+//        p.chroma[X265_CSP_I444].copy_sp[LUMA_8x32] = x265_blockcopy_sp_8x32_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_64x64] = x265_blockcopy_sp_64x64_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_64x32] = x265_blockcopy_sp_64x32_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_32x64] = x265_blockcopy_sp_32x64_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_64x48] = x265_blockcopy_sp_64x48_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_48x64] = x265_blockcopy_sp_48x64_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_64x16] = x265_blockcopy_sp_64x16_sse2;
+        p.chroma[X265_CSP_I444].copy_sp[LUMA_16x64] = x265_blockcopy_sp_16x64_sse2;
+
         p.luma_copy_sp[LUMA_32x64] = x265_blockcopy_sp_32x64_sse2;
         p.luma_copy_sp[LUMA_16x64] = x265_blockcopy_sp_16x64_sse2;
         p.luma_copy_sp[LUMA_48x64] = x265_blockcopy_sp_48x64_sse2;
@@ -867,8 +1201,6 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         SA8D_INTER_FROM_BLOCK(sse2);
 
         p.cvt32to16_shr = x265_cvt32to16_shr_sse2;
-        p.cvt16to32_shl = x265_cvt16to32_shl_sse2;
-        p.ipfilter_ss[FILTER_V_S_S_8] = x265_interp_8tap_v_ss_sse2;
         p.calcrecon[BLOCK_4x4] = x265_calcRecons4_sse2;
         p.calcrecon[BLOCK_8x8] = x265_calcRecons8_sse2;
         p.calcresidual[BLOCK_4x4] = x265_getResidual4_sse2;
@@ -883,6 +1215,7 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.dct[DCT_4x4] = x265_dct4_sse2;
         p.idct[IDCT_4x4] = x265_idct4_sse2;
         p.idct[IDST_4x4] = x265_idst4_sse2;
+        p.count_nonzero = x265_count_nonzero_sse2;
     }
     if (cpuMask & X265_CPU_SSSE3)
     {
@@ -895,10 +1228,15 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
 
         SETUP_INTRA_ANG4(2, 2, ssse3);
         SETUP_INTRA_ANG4(34, 2, ssse3);
+        SETUP_INTRA_ANG8(2, 2, ssse3);
+        SETUP_INTRA_ANG8(34, 2, ssse3);
+        SETUP_INTRA_ANG16(2, 2, ssse3);
+        SETUP_INTRA_ANG16(34, 2, ssse3);
+        SETUP_INTRA_ANG32(2, 2, ssse3);
+        SETUP_INTRA_ANG32(34, 2, ssse3);
 
         p.scale1D_128to64 = x265_scale1D_128to64_ssse3;
         p.scale2D_64to32 = x265_scale2D_64to32_ssse3;
-
         SAD_X3(ssse3);
         SAD_X4(ssse3);
         p.sad_x4[LUMA_8x4] = x265_pixel_sad_x4_8x4_ssse3;
@@ -913,15 +1251,17 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
 
         p.luma_hvpp[LUMA_8x8] = x265_interp_8tap_hv_pp_8x8_ssse3;
         p.luma_p2s = x265_luma_p2s_ssse3;
-        p.chroma_p2s = x265_chroma_p2s_ssse3;
-
-        CHROMA_SP_FILTERS(_ssse3);
-        LUMA_SP_FILTERS(_ssse3);
+        p.chroma_p2s[X265_CSP_I420] = x265_chroma_p2s_ssse3;
+        p.chroma_p2s[X265_CSP_I444] = x265_chroma_p2s_i444_ssse3;
 
         p.dct[DST_4x4] = x265_dst4_ssse3;
     }
     if (cpuMask & X265_CPU_SSE4)
     {
+        LUMA_ADDAVG(_sse4);
+        CHROMA_ADDAVG(_sse4);
+        p.cvt16to32_shl = x265_cvt16to32_shl_sse4;
+
         HEVC_SATD(sse4);
         SA8D_INTER_FROM_BLOCK(sse4);
 
@@ -938,7 +1278,12 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         CHROMA_PIXELSUB_PS(_sse4);
         LUMA_PIXELSUB(_sse4);
 
-        CHROMA_FILTERS(_sse4);
+        CHROMA_FILTERS_420(_sse4);
+        CHROMA_FILTERS_444(_sse4);
+        CHROMA_SS_FILTERS_SSE4_420(_sse4);
+        CHROMA_SP_FILTERS_SSE4_444(_sse4);
+        CHROMA_SP_FILTERS_SSE4_420(_sse4);
+        LUMA_SP_FILTERS(_sse4);
         LUMA_FILTERS(_sse4);
         ASSGN_SSE_SS(sse4);
         p.chroma[X265_CSP_I420].copy_sp[CHROMA_2x4] = x265_blockcopy_sp_2x4_sse4;
@@ -964,6 +1309,8 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
 
         p.intra_pred_allangs[BLOCK_4x4] = x265_all_angs_pred_4x4_sse4;
         p.intra_pred_allangs[BLOCK_8x8] = x265_all_angs_pred_8x8_sse4;
+        p.intra_pred_allangs[BLOCK_16x16] = x265_all_angs_pred_16x16_sse4;
+        p.intra_pred_allangs[BLOCK_32x32] = x265_all_angs_pred_32x32_sse4;
 
         p.intra_pred[BLOCK_4x4][1] = x265_intra_pred_dc4_sse4;
         p.intra_pred[BLOCK_8x8][1] = x265_intra_pred_dc8_sse4;
@@ -1001,6 +1348,102 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         SETUP_INTRA_ANG4(32, 4, sse4);
         SETUP_INTRA_ANG4(33, 3, sse4);
 
+        SETUP_INTRA_ANG16(3, 3, sse4);
+        SETUP_INTRA_ANG16(4, 4, sse4);
+        SETUP_INTRA_ANG16(5, 5, sse4);
+        SETUP_INTRA_ANG16(6, 6, sse4);
+        SETUP_INTRA_ANG16(7, 7, sse4);
+        SETUP_INTRA_ANG16(8, 8, sse4);
+        SETUP_INTRA_ANG16(9, 9, sse4);
+        SETUP_INTRA_ANG16(10, 10, sse4);
+        SETUP_INTRA_ANG16(11, 11, sse4);
+        SETUP_INTRA_ANG16(12, 12, sse4);
+        SETUP_INTRA_ANG16(13, 13, sse4);
+        SETUP_INTRA_ANG16(14, 14, sse4);
+        SETUP_INTRA_ANG16(15, 15, sse4);
+        SETUP_INTRA_ANG16(16, 16, sse4);
+        SETUP_INTRA_ANG16(17, 17, sse4);
+        SETUP_INTRA_ANG16(18, 18, sse4);
+        SETUP_INTRA_ANG16(19, 19, sse4);
+        SETUP_INTRA_ANG16(20, 20, sse4);
+        SETUP_INTRA_ANG16(21, 21, sse4);
+        SETUP_INTRA_ANG16(22, 22, sse4);
+        SETUP_INTRA_ANG16(23, 23, sse4);
+        SETUP_INTRA_ANG16(24, 24, sse4);
+        SETUP_INTRA_ANG16(25, 25, sse4);
+        SETUP_INTRA_ANG16(26, 26, sse4);
+        SETUP_INTRA_ANG16(27, 27, sse4);
+        SETUP_INTRA_ANG16(28, 28, sse4);
+        SETUP_INTRA_ANG16(29, 29, sse4);
+        SETUP_INTRA_ANG16(30, 30, sse4);
+        SETUP_INTRA_ANG16(31, 31, sse4);
+        SETUP_INTRA_ANG16(32, 32, sse4);
+        SETUP_INTRA_ANG16(33, 33, sse4);
+
+        SETUP_INTRA_ANG8(3, 3, sse4);
+        SETUP_INTRA_ANG8(4, 4, sse4);
+        SETUP_INTRA_ANG8(5, 5, sse4);
+        SETUP_INTRA_ANG8(6, 6, sse4);
+        SETUP_INTRA_ANG8(7, 7, sse4);
+        SETUP_INTRA_ANG8(8, 8, sse4);
+        SETUP_INTRA_ANG8(9, 9, sse4);
+        SETUP_INTRA_ANG8(10, 10, sse4);
+        SETUP_INTRA_ANG8(11, 11, sse4);
+        SETUP_INTRA_ANG8(12, 12, sse4);
+        SETUP_INTRA_ANG8(13, 13, sse4);
+        SETUP_INTRA_ANG8(14, 14, sse4);
+        SETUP_INTRA_ANG8(15, 15, sse4);
+        SETUP_INTRA_ANG8(16, 16, sse4);
+        SETUP_INTRA_ANG8(17, 17, sse4);
+        SETUP_INTRA_ANG8(18, 18, sse4);
+        SETUP_INTRA_ANG8(19, 17, sse4);
+        SETUP_INTRA_ANG8(20, 16, sse4);
+        SETUP_INTRA_ANG8(21, 15, sse4);
+        SETUP_INTRA_ANG8(22, 14, sse4);
+        SETUP_INTRA_ANG8(23, 13, sse4);
+        SETUP_INTRA_ANG8(24, 12, sse4);
+        SETUP_INTRA_ANG8(25, 11, sse4);
+        SETUP_INTRA_ANG8(26, 26, sse4);
+        SETUP_INTRA_ANG8(27, 9, sse4);
+        SETUP_INTRA_ANG8(28, 8, sse4);
+        SETUP_INTRA_ANG8(29, 7, sse4);
+        SETUP_INTRA_ANG8(30, 6, sse4);
+        SETUP_INTRA_ANG8(31, 5, sse4);
+        SETUP_INTRA_ANG8(32, 4, sse4);
+        SETUP_INTRA_ANG8(33, 3, sse4);
+
+        SETUP_INTRA_ANG32(3,  3,  sse4);
+        SETUP_INTRA_ANG32(4,  4,  sse4);
+        SETUP_INTRA_ANG32(5,  5,  sse4);
+        SETUP_INTRA_ANG32(6,  6,  sse4);
+        SETUP_INTRA_ANG32(7,  7,  sse4);
+        SETUP_INTRA_ANG32(8,  8,  sse4);
+        SETUP_INTRA_ANG32(9,  9,  sse4);
+        SETUP_INTRA_ANG32(10, 10, sse4);
+        SETUP_INTRA_ANG32(11, 11, sse4);
+        SETUP_INTRA_ANG32(12, 12, sse4);
+        SETUP_INTRA_ANG32(13, 13, sse4);
+        SETUP_INTRA_ANG32(14, 14, sse4);
+        SETUP_INTRA_ANG32(15, 15, sse4);
+        SETUP_INTRA_ANG32(16, 16, sse4);
+        SETUP_INTRA_ANG32(17, 17, sse4);
+        SETUP_INTRA_ANG32(18, 18, sse4);
+        SETUP_INTRA_ANG32(19, 19, sse4);
+        SETUP_INTRA_ANG32(20, 20, sse4);
+        SETUP_INTRA_ANG32(21, 21, sse4);
+        SETUP_INTRA_ANG32(22, 22, sse4);
+        SETUP_INTRA_ANG32(23, 23, sse4);
+        SETUP_INTRA_ANG32(24, 24, sse4);
+        SETUP_INTRA_ANG32(25, 25, sse4);
+        SETUP_INTRA_ANG32(26, 26, sse4);
+        SETUP_INTRA_ANG32(27, 27, sse4);
+        SETUP_INTRA_ANG32(28, 28, sse4);
+        SETUP_INTRA_ANG32(29, 29, sse4);
+        SETUP_INTRA_ANG32(30, 30, sse4);
+        SETUP_INTRA_ANG32(31, 31, sse4);
+        SETUP_INTRA_ANG32(32, 32, sse4);
+        SETUP_INTRA_ANG32(33, 33, sse4);
+
         p.dct[DCT_8x8] = x265_dct8_sse4;
     }
     if (cpuMask & X265_CPU_AVX)
@@ -1009,7 +1452,7 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         HEVC_SATD(avx);
         SA8D_INTER_FROM_BLOCK(avx);
         ASSGN_SSE(avx);
-        
+
         ASSGN_SSE_SS(avx);
         SAD_X3(avx);
         SAD_X4(avx);

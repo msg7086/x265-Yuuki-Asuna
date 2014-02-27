@@ -46,20 +46,22 @@ class TEncCfg;
 
 struct RateControlEntry
 {
-    int64_t texBits;
-    int64_t lastSatd;
+    int64_t texBits;  /* Required in 2-pass rate control */
+    int64_t lastSatd; /* Contains the picture cost of the previous frame, required for resetAbr and VBV */
 
     int sliceType;
     int mvBits;
     int bframes;
     int poc;
-
+    int64_t leadingNoBSatd;
     bool bLastMiniGopBFrame;
     double blurredComplexity;
     double qpaRc;
     double qRceq;
     double frameSizePlanned;
     double bufferRate;
+    double movingAvgSum;
+    double qpNoVbv;
 };
 
 struct Predictor
@@ -78,33 +80,36 @@ struct RateControl
     int ncu;                  /* number of CUs in a frame */
     int keyFrameInterval;     /* TODO: need to initialize in init */
     int qp;                   /* updated qp for current frame */
-    int baseQp;               /* CQP base QP */
+
     double frameDuration;     /* current frame duration in seconds */
     double bitrate;
     double rateFactorConstant;
     bool   isAbr;
-
     double bufferSize;
     double bufferFillFinal;  /* real buffer as of the last finished frame */
     double bufferFill;       /* planned buffer, if all in-progress frames hit their bit budget */
     double bufferRate;       /* # of bits added to buffer_fill after each frame */
     double vbvMaxRate;       /* in kbps */
+    double vbvMinRate;       /* in kbps */
     bool singleFrameVbv;
+    double rateFactorMaxIncrement; /* Don't allow RF above (CRF + this value). */
     bool isVbv;
-    double fps;
     Predictor pred[5];
     Predictor predBfromP;
+    Predictor rowPreds[4];
+    Predictor *rowPred[2];
     int bframes;
     int bframeBits;
-    double leadingNoBSatd;
-
-    int64_t lastSatd;
+    bool isAbrReset;
+    int lastAbrResetPoc;
+    int64_t currentSatd;
     int    qpConstant[3];
     double cplxrSum;          /* sum of bits*qscale/rceq */
     double wantedBitsWindow;  /* target bitrate * window */
     double ipOffset;
     double pbOffset;
     int lastNonBPictType;
+    int64_t leadingNoBSatd;
     double accumPQp;          /* for determining I-frame quant */
     double accumPNorm;
     double lastQScaleFor[3];  /* last qscale for a specific pict type, used for max_diff & ipb factor stuff */
@@ -117,26 +122,31 @@ struct RateControl
     double lastRceq;
     int framesDone;           /* framesDone keeps track of # of frames passed through RateCotrol already */
     double qCompress;
+    double qpNoVbv;             /* QP for the current frame if 1-pass VBV was disabled. */
+    double frameSizeEstimated;  /* hold synched frameSize, updated from cu level vbv rc */
     RateControl(TEncCfg * _cfg);
 
     // to be called for each frame to process RateControl and set QP
     void rateControlStart(TComPic* pic, Lookahead *, RateControlEntry* rce, Encoder* enc);
     void calcAdaptiveQuantFrame(TComPic *pic);
-    int rateControlEnd(int64_t bits, RateControlEntry* rce);
+    int rateControlEnd(TComPic* pic, int64_t bits, RateControlEntry* rce);
+    int rowDiagonalVbvRateControl(TComPic* pic, uint32_t row, RateControlEntry* rce, double& qpVbv);
 
 protected:
 
+    void reInit();
     double getQScale(RateControlEntry *rce, double rateFactor);
-    double rateEstimateQscale(RateControlEntry *rce); // main logic for calculating QP based on ABR
+    double rateEstimateQscale(TComPic* pic, RateControlEntry *rce); // main logic for calculating QP based on ABR
     void accumPQpUpdate();
     uint32_t acEnergyCu(TComPic* pic, uint32_t block_x, uint32_t block_y);
 
     void updateVbv(int64_t bits, RateControlEntry* rce);
     void updatePredictor(Predictor *p, double q, double var, double bits);
-    double clipQscale(double q);
+    double clipQscale(TComPic* pic, double q);
     void updateVbvPlan(Encoder* enc);
     double predictSize(Predictor *p, double q, double var);
+    void checkAndResetABR(RateControlEntry* rce, bool isFrameDone);
+    double predictRowsSizeSum(TComPic* pic, double qpm, int32_t& encodedBits);
 };
 }
-
 #endif // ifndef X265_RATECONTROL_H

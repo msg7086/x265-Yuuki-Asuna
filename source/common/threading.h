@@ -26,6 +26,9 @@
 #ifndef X265_THREADING_H
 #define X265_THREADING_H
 
+#include "common.h"
+#include "x265.h"
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -36,196 +39,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #endif
+
 #include <stdint.h>
-
-namespace x265 {
-// x265 private namespace
-
-#ifdef _WIN32
-
-typedef HANDLE ThreadHandle;
-
-class Lock
-{
-public:
-
-    Lock()
-    {
-        InitializeCriticalSection(&this->handle);
-    }
-
-    ~Lock()
-    {
-        DeleteCriticalSection(&this->handle);
-    }
-
-    void acquire()
-    {
-        EnterCriticalSection(&this->handle);
-    }
-
-    void release()
-    {
-        LeaveCriticalSection(&this->handle);
-    }
-
-protected:
-
-    CRITICAL_SECTION handle;
-};
-
-class Event
-{
-public:
-
-    Event()
-    {
-        this->handle = CreateEvent(NULL, FALSE, FALSE, NULL);
-    }
-
-    ~Event()
-    {
-        CloseHandle(this->handle);
-    }
-
-    void wait()
-    {
-        WaitForSingleObject(this->handle, INFINITE);
-    }
-
-    void trigger()
-    {
-        SetEvent(this->handle);
-    }
-
-protected:
-
-    HANDLE handle;
-};
-
-#else /* POSIX / pthreads */
-
-typedef pthread_t ThreadHandle;
-
-class Lock
-{
-public:
-
-    Lock()
-    {
-        pthread_mutex_init(&this->handle, NULL);
-    }
-
-    ~Lock()
-    {
-        pthread_mutex_destroy(&this->handle);
-    }
-
-    void acquire()
-    {
-        pthread_mutex_lock(&this->handle);
-    }
-
-    void release()
-    {
-        pthread_mutex_unlock(&this->handle);
-    }
-
-protected:
-
-    pthread_mutex_t handle;
-};
-
-class Event
-{
-public:
-
-    Event()
-    {
-        do
-        {
-            snprintf(name, sizeof(name), "/x265_%d", s_incr++);
-            this->semaphore = sem_open(name, O_CREAT | O_EXCL, 0777, 0);
-        }
-        while (this->semaphore == SEM_FAILED);
-    }
-
-    ~Event()
-    {
-        sem_close(this->semaphore);
-        sem_unlink(name);
-    }
-
-    void wait()
-    {
-        // keep waiting even if interrupted
-        while (sem_wait(this->semaphore) < 0)
-        {
-            if (errno != EINTR)
-                break;
-        }
-    }
-
-    void trigger()
-    {
-        sem_post(this->semaphore);
-    }
-
-protected:
-
-    static int s_incr;
-    char name[64];
-
-    /* the POSIX version uses a counting semaphore */
-    sem_t *semaphore;
-};
-
-#endif // ifdef _WIN32
-
-class ScopedLock
-{
-public:
-
-    ScopedLock(Lock &instance) : inst(instance)
-    {
-        this->inst.acquire();
-    }
-
-    ~ScopedLock()
-    {
-        this->inst.release();
-    }
-
-protected:
-
-    // do not allow assignments
-    ScopedLock &operator =(const ScopedLock &);
-
-    Lock &inst;
-};
-
-//< Simplistic portable thread class.  Shutdown signalling left to derived class
-class Thread
-{
-private:
-
-    ThreadHandle thread;
-
-public:
-
-    Thread();
-
-    virtual ~Thread();
-
-    //< Derived class must implement ThreadMain.
-    virtual void threadMain() = 0;
-
-    //< Returns true if thread was successfully created
-    bool start();
-
-    void stop();
-};
-} // end namespace x265
 
 #if MACOS
 #include <sys/param.h>
@@ -288,8 +103,8 @@ inline int _BitScanForward64(DWORD *id, uint64_t x64) // fake 64bit CLZ
 
 #if _WIN32_WINNT <= _WIN32_WINNT_WINXP
 /* Windows XP did not define this intrinsic */
-FORCEINLINE LONGLONG _InterlockedOr64(__inout LONGLONG volatile *Destination,
-                                      __in    LONGLONG           Value)
+FORCEINLINE LONGLONG x265_interlocked_OR64(__inout LONGLONG volatile *Destination,
+                                           __in    LONGLONG           Value)
 {
     LONGLONG Old;
 
@@ -302,8 +117,8 @@ FORCEINLINE LONGLONG _InterlockedOr64(__inout LONGLONG volatile *Destination,
     return Old;
 }
 
-#define ATOMIC_OR(ptr, mask)            _InterlockedOr64((volatile LONG64*)ptr, mask)
-#if defined(__MSC_VER) && !defined(__INTEL_COMPILER)
+#define ATOMIC_OR(ptr, mask)            x265_interlocked_OR64((volatile LONG64*)ptr, mask)
+#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
 #pragma intrinsic(_InterlockedCompareExchange64)
 #endif
 #else // if _WIN32_WINNT <= _WIN32_WINNT_WINXP
@@ -318,5 +133,234 @@ FORCEINLINE LONGLONG _InterlockedOr64(__inout LONGLONG volatile *Destination,
 #define GIVE_UP_TIME()                      Sleep(0)
 
 #endif // ifdef __GNUC__
+
+
+namespace x265 {
+// x265 private namespace
+
+#ifdef _WIN32
+
+typedef HANDLE ThreadHandle;
+
+class Lock
+{
+public:
+
+    Lock()
+    {
+        InitializeCriticalSection(&this->handle);
+    }
+
+    ~Lock()
+    {
+        DeleteCriticalSection(&this->handle);
+    }
+
+    void acquire()
+    {
+        EnterCriticalSection(&this->handle);
+    }
+
+    void release()
+    {
+        LeaveCriticalSection(&this->handle);
+    }
+
+protected:
+
+    CRITICAL_SECTION handle;
+};
+
+class Event
+{
+public:
+
+    Event()
+    {
+        this->handle = CreateEvent(NULL, FALSE, FALSE, NULL);
+    }
+
+    ~Event()
+    {
+        CloseHandle(this->handle);
+    }
+
+    void wait()
+    {
+        WaitForSingleObject(this->handle, INFINITE);
+    }
+
+    bool timedWait(uint32_t milliseconds)
+    {
+        /* returns true if event was signaled */
+        return WaitForSingleObject(this->handle, milliseconds) == WAIT_OBJECT_0;
+    }
+
+    void trigger()
+    {
+        SetEvent(this->handle);
+    }
+
+protected:
+
+    HANDLE handle;
+};
+
+#else /* POSIX / pthreads */
+
+typedef pthread_t ThreadHandle;
+
+class Lock
+{
+public:
+
+    Lock()
+    {
+        pthread_mutex_init(&this->handle, NULL);
+    }
+
+    ~Lock()
+    {
+        pthread_mutex_destroy(&this->handle);
+    }
+
+    void acquire()
+    {
+        pthread_mutex_lock(&this->handle);
+    }
+
+    void release()
+    {
+        pthread_mutex_unlock(&this->handle);
+    }
+
+protected:
+
+    pthread_mutex_t handle;
+};
+
+class Event
+{
+public:
+
+    Event()
+    {
+        m_counter = 0;
+        if (pthread_mutex_init(&m_mutex, NULL) ||
+            pthread_cond_init(&m_cond, NULL))
+        {
+            x265_log(NULL, X265_LOG_ERROR, "fatal: unable to initialize conditional variable\n");
+        }
+    }
+
+    ~Event()
+    {
+        pthread_cond_destroy(&m_cond);
+        pthread_mutex_destroy(&m_mutex);
+    }
+
+    void wait()
+    {
+        pthread_mutex_lock(&m_mutex);
+        /* blocking wait on conditional variable, mutex is atomically released
+         * while blocked. When condition is signaled, mutex is re-acquired */
+        while (m_counter == 0)
+            pthread_cond_wait(&m_cond, &m_mutex);
+        m_counter--;
+        pthread_mutex_unlock(&m_mutex);
+    }
+
+    bool timedWait(uint32_t waitms)
+    {
+        bool bTimedOut = false;
+        pthread_mutex_lock(&m_mutex);
+        if (m_counter == 0)
+        {
+            struct timeval tv;
+            struct timespec ts;
+            gettimeofday(&tv, NULL);
+            /* convert current time from (sec, usec) to (sec, nsec) */
+            ts.tv_sec = tv.tv_sec;
+            ts.tv_nsec = tv.tv_usec * 1000;
+
+            ts.tv_nsec += 1000 * 1000 * (waitms % 1000);    /* add ms to tv_nsec */
+            ts.tv_sec += ts.tv_nsec / (1000 * 1000 * 1000); /* overflow tv_nsec */
+            ts.tv_nsec %= (1000 * 1000 * 1000);             /* clamp tv_nsec */
+            ts.tv_sec += waitms / 1000;                     /* add seconds */
+
+            /* blocking wait on conditional variable, mutex is atomically released
+             * while blocked. When condition is signaled, mutex is re-acquired.
+             * ts is absolute time to stop waiting */
+            bTimedOut = pthread_cond_timedwait(&m_cond, &m_mutex, &ts) == ETIMEDOUT;
+        }
+        if (m_counter > 0)
+            m_counter--;
+        pthread_mutex_unlock(&m_mutex);
+        return bTimedOut;
+    }
+
+    void trigger()
+    {
+        pthread_mutex_lock(&m_mutex);
+        if (m_counter < UINT32_MAX)
+            m_counter++;
+        /* Signal a single blocking thread */
+        pthread_cond_signal(&m_cond);
+        pthread_mutex_unlock(&m_mutex);
+    }
+
+protected:
+
+    pthread_mutex_t m_mutex;
+    pthread_cond_t  m_cond;
+    uint32_t        m_counter;
+};
+
+#endif // ifdef _WIN32
+
+class ScopedLock
+{
+public:
+
+    ScopedLock(Lock &instance) : inst(instance)
+    {
+        this->inst.acquire();
+    }
+
+    ~ScopedLock()
+    {
+        this->inst.release();
+    }
+
+protected:
+
+    // do not allow assignments
+    ScopedLock &operator =(const ScopedLock &);
+
+    Lock &inst;
+};
+
+//< Simplistic portable thread class.  Shutdown signalling left to derived class
+class Thread
+{
+private:
+
+    ThreadHandle thread;
+
+public:
+
+    Thread();
+
+    virtual ~Thread();
+
+    //< Derived class must implement ThreadMain.
+    virtual void threadMain() = 0;
+
+    //< Returns true if thread was successfully created
+    bool start();
+
+    void stop();
+};
+} // end namespace x265
 
 #endif // ifndef X265_THREADING_H

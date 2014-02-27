@@ -63,38 +63,38 @@ class TComPrediction : public TComWeightPrediction
 {
 protected:
 
-    Pel*      m_predBuf;
-    Pel*      m_predAllAngsBuf;
-    int       m_predBufStride;
-    int       m_predBufHeight;
-
     // references sample for IntraPrediction
     TComYuv   m_predYuv[2];
     TShortYUV m_predShortYuv[2];
     TComYuv   m_predTempYuv;
 
-    int16_t*    m_immedVals;
-    Pel*      m_lumaRecBuffer; ///< array for down-sampled reconstructed luma sample
-    int       m_lumaRecStride; ///< stride of m_lumaRecBuffer
+    int16_t*  m_immedVals;
+    int       m_hChromaShift;
+    int       m_vChromaShift;
 
     // motion compensation functions
-    void xPredInterUni(TComDataCU* cu, uint32_t partAddr, int width, int height, int picList, TComYuv* outPredYuv, bool bLuma = true, bool bChroma = true);
-    void xPredInterUni(TComDataCU* cu, uint32_t partAddr, int width, int height, int picList, TShortYUV* outPredYuv, bool bLuma = true, bool bChroma = true);
+    void xPredInterUni(TComDataCU* cu, uint32_t partAddr, int width, int height, int picList, TComYuv* outPredYuv, bool bLuma, bool bChroma);
+    void xPredInterUni(TComDataCU* cu, uint32_t partAddr, int width, int height, int picList, TShortYUV* outPredYuv, bool bLuma, bool bChroma);
     void xPredInterLumaBlk(TComDataCU *cu, TComPicYuv *refPic, uint32_t partAddr, MV *mv, int width, int height, TComYuv *dstPic);
     void xPredInterLumaBlk(TComDataCU *cu, TComPicYuv *refPic, uint32_t partAddr, MV *mv, int width, int height, TShortYUV *dstPic);
     void xPredInterChromaBlk(TComDataCU *cu, TComPicYuv *refPic, uint32_t partAddr, MV *mv, int width, int height, TComYuv *dstPic);
     void xPredInterChromaBlk(TComDataCU *cu, TComPicYuv *refPic, uint32_t partAddr, MV *mv, int width, int height, TShortYUV *dstPic);
 
-    void xPredInterBi(TComDataCU* cu, uint32_t partAddr, int width, int height, TComYuv*& outPredYuv, bool bLuma = true, bool bChroma = true);
-    void xWeightedAverage(TComYuv* srcYuv0, TComYuv* srcYuv1, int refIdx0, int refIdx1, uint32_t partAddr, int width, int height, TComYuv*& outDstYuv, bool bLuma = true, bool bChroma = true);
+    void xPredInterBi(TComDataCU* cu, uint32_t partAddr, int width, int height, TComYuv* outPredYuv, bool bLuma, bool bChroma);
 
-    void xGetLLSPrediction(TComPattern* pcPattern, int* src0, int srcstride, Pel* dst0, int dststride, uint32_t width, uint32_t height, uint32_t ext0);
+    void xGetLLSPrediction(TComPattern* pcPattern, int* src0, int srcstride, pixel* dst0, int dststride, uint32_t width, uint32_t height, uint32_t ext0);
 
     bool xCheckIdenticalMotion(TComDataCU* cu, uint32_t PartAddr);
 
 public:
 
-    Pel *refAbove, *refAboveFlt, *refLeft, *refLeftFlt;
+    pixel*    m_predBuf;
+    pixel*    m_refAbove;
+    pixel*    m_refAboveFlt;
+    pixel*    m_refLeft;
+    pixel*    m_refLeftFlt;
+    int       m_predBufStride;
+    int       m_predBufHeight;
 
     TComPrediction();
     virtual ~TComPrediction();
@@ -104,18 +104,10 @@ public:
     // inter
     void motionCompensation(TComDataCU* cu, TComYuv* predYuv, int picList = REF_PIC_LIST_X, int partIdx = -1, bool bLuma = true, bool bChroma = true);
 
-    // motion vector prediction
-    void getMvPredAMVP(TComDataCU* cu, uint32_t partIdx, uint32_t partAddr, int picList, MV& mvPred);
-
     // Angular Intra
-    void predIntraLumaAng(uint32_t dirMode, Pel* pred, intptr_t stride, int width);
-    void predIntraChromaAng(Pel* src, uint32_t dirMode, Pel* pred, intptr_t stride, int width);
-
-    Pel* getPredicBuf()             { return m_predBuf; }
-
-    int  getPredicBufWidth()        { return m_predBufStride; }
-
-    int  getPredicBufHeight()       { return m_predBufHeight; }
+    void predIntraLumaAng(uint32_t dirMode, pixel* pred, intptr_t stride, int width);
+    void predIntraChromaAng(pixel* src, uint32_t dirMode, pixel* pred, intptr_t stride, int width, int height, int chFmt);
+    bool filteringIntraReferenceSamples(uint32_t dirMode, uint32_t width);
 };
 }
 //! \}

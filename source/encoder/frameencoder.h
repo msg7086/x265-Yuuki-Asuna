@@ -33,7 +33,6 @@
 #include "TLibEncoder/TEncSearch.h"
 #include "TLibEncoder/TEncSbac.h"
 #include "TLibEncoder/TEncBinCoderCABAC.h"
-#include "TLibEncoder/WeightPredAnalysis.h"
 #include "TLibEncoder/TEncSampleAdaptiveOffset.h"
 #include "TLibEncoder/SEIwrite.h"
 
@@ -174,12 +173,11 @@ public:
 protected:
 
     void determineSliceBounds();
-    int calcQpForCu(TComPic *pic, uint32_t cuAddr);
+    int calcQpForCu(TComPic *pic, uint32_t cuAddr, double baseQp);
     Encoder*                 m_top;
     TEncCfg*                 m_cfg;
 
     MotionReference          m_mref[2][MAX_NUM_REF + 1];
-    WeightPredAnalysis       m_wp;
     TEncSbac                 m_sbacCoder;
     TEncBinCABAC             m_binCoderCABAC;
     FrameFilter              m_frameFilter;

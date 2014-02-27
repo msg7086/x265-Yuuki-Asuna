@@ -90,7 +90,6 @@ public:
     MV* m_mvd;
     char*     m_refIdx;
     uint32_t      m_numPartitions;
-    AMVPInfo  m_cAMVPInfo;
 
     template<typename T>
     void setAll(T *p, T const & val, PartSize cuMode, int partAddr, uint32_t depth, int partIdx);
@@ -126,16 +125,14 @@ public:
 
     int getRefIdx(int idx) const { return m_refIdx[idx]; }
 
-    AMVPInfo* getAMVPInfo() { return &m_cAMVPInfo; }
-
     // ------------------------------------------------------------------------------------------------------------------
     // set
     // ------------------------------------------------------------------------------------------------------------------
 
     void    setAllMv(const MV& mv,              PartSize cuMode, int partAddr, uint32_t depth, int partIdx = 0);
-    void    setAllMvd(const MV& mvd,            PartSize cuMode, int partAddr, uint32_t depth, int partIdx = 0);
     void    setAllRefIdx(int refIdx,                  PartSize mbMode, int partAddr, uint32_t depth, int partIdx = 0);
     void    setAllMvField(const TComMvField& mvField, PartSize mbMode, int partAddr, uint32_t depth, int partIdx = 0);
+    void    setMvd(int idx, const MV& mvd) { m_mvd[idx] = mvd; }
 
     void setNumPartition(int numPart)
     {

@@ -52,9 +52,11 @@ protected:
 
 public:
 
-    Y4MOutput(const char *filename, int width, int height, int rate, uint32_t depth, int csp);
+    Y4MOutput(const char *filename, int width, int height, uint32_t fpsNum, uint32_t fpsDenom, int csp);
 
     virtual ~Y4MOutput();
+
+    const char *getName() const                   { return "y4m"; }
 
     bool isFail() const                           { return ofs.fail(); }
 

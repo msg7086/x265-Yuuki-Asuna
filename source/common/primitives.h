@@ -32,6 +32,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include "cpu.h"
+#include "x265.h"
 
 #define FENC_STRIDE 64
 
@@ -75,7 +76,7 @@ enum LumaPartitions
 // 4:2:0 chroma partition sizes. These enums are just a convenience for indexing into the
 // chroma primitive arrays when instantiating templates. The function tables should always
 // be indexed by the luma partition enum
-enum Chroma420Partions
+enum Chroma420Partitions
 {
     CHROMA_2x2, // never used by HEVC
     CHROMA_4x4,   CHROMA_4x2,   CHROMA_2x4,
@@ -85,7 +86,7 @@ enum Chroma420Partions
     NUM_CHROMA_PARTITIONS
 };
 
-enum SquareBlocks   // Routines can be indexed using log2n(width)
+enum SquareBlocks   // Routines can be indexed using log2n(width)-2
 {
     BLOCK_4x4,
     BLOCK_8x8,
@@ -116,20 +117,6 @@ enum IDcts
     NUM_IDCTS
 };
 
-enum IPFilterConf_P_S
-{
-    FILTER_V_P_S_8,
-    FILTER_V_P_S_4,
-    NUM_IPFILTER_P_S
-};
-
-enum IPFilterConf_S_S
-{
-    FILTER_V_S_S_8,
-    FILTER_V_S_S_4,
-    NUM_IPFILTER_S_S
-};
-
 // Returns a LumaPartitions enum for the given size, always expected to return a valid enum
 inline int partitionFromSizes(int width, int height)
 {
@@ -147,11 +134,6 @@ typedef int  (*pixelcmp_ss_t)(int16_t *fenc, intptr_t fencstride, int16_t *fref,
 typedef int  (*pixelcmp_sp_t)(int16_t *fenc, intptr_t fencstride, pixel *fref, intptr_t frefstride);
 typedef void (*pixelcmp_x4_t)(pixel *fenc, pixel *fref0, pixel *fref1, pixel *fref2, pixel *fref3, intptr_t frefstride, int32_t *res);
 typedef void (*pixelcmp_x3_t)(pixel *fenc, pixel *fref0, pixel *fref1, pixel *fref2, intptr_t frefstride, int32_t *res);
-typedef void (*ipfilter_ps_t)(pixel *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int width, int height, const int16_t *coeff);
-typedef void (*ipfilter_sp_t)(int16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, const int coeffIdx);
-typedef void (*ipfilter_ss_t)(int16_t *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int width, int height, const int coeffIdx);
-typedef void (*ipfilter_p2s_t)(pixel *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int width, int height);
-typedef void (*ipfilter_s2p_t)(int16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height);
 typedef void (*blockcpy_pp_t)(int bx, int by, pixel *dst, intptr_t dstride, pixel *src, intptr_t sstride); // dst is aligned
 typedef void (*blockcpy_sp_t)(int bx, int by, int16_t *dst, intptr_t dstride, pixel *src, intptr_t sstride); // dst is aligned
 typedef void (*blockcpy_ps_t)(int bx, int by, pixel *dst, intptr_t dstride, int16_t *src, intptr_t sstride); // dst is aligned
@@ -176,6 +158,7 @@ typedef void (*transpose_t)(pixel* dst, pixel* src, intptr_t stride);
 typedef uint32_t (*quant_t)(int32_t *coef, int32_t *quantCoeff, int32_t *deltaU, int32_t *qCoef, int qBits, int add, int numCoeff, int32_t* lastPos);
 typedef void (*dequant_scaling_t)(const int32_t* src, const int32_t *dequantCoef, int32_t* dst, int num, int mcqp_miper, int shift);
 typedef void (*dequant_normal_t)(const int32_t* quantCoef, int32_t* coef, int num, int scale, int shift);
+typedef int  (*count_nonzero_t)(const int32_t *quantCoeff, int numCoeff);
 
 typedef void (*weightp_pp_t)(pixel *src, pixel *dst, intptr_t srcStride, intptr_t dstStride, int width, int height, int w0, int round, int shift, int offset);
 typedef void (*weightp_sp_t)(int16_t *src, pixel *dst, intptr_t srcStride, intptr_t dstStride, int width, int height, int w0, int round, int shift, int offset);
@@ -202,6 +185,8 @@ typedef void (*copy_ps_t)(int16_t *dst, intptr_t dstStride, pixel *src, intptr_t
 
 typedef void (*pixel_sub_ps_t)(int16_t *dst, intptr_t dstride, pixel *src0, pixel *src1, intptr_t sstride0, intptr_t sstride1);
 typedef void (*pixel_add_ps_t)(pixel *a, intptr_t dstride, pixel *b0, int16_t *b1, intptr_t sstride0, intptr_t sstride1);
+
+typedef void (*addAvg_t)(int16_t* src0, int16_t* src1, pixel* dst, intptr_t src0Stride, intptr_t src1Stride, intptr_t dstStride);
 
 /* Define a structure containing function pointers to optimized encoder
  * primitives.  Each pointer can reference either an assembly routine,
@@ -237,19 +222,17 @@ struct EncoderPrimitives
     filter_sp_t     luma_vsp[NUM_LUMA_PARTITIONS];
     filter_ss_t     luma_vss[NUM_LUMA_PARTITIONS];
     filter_hv_pp_t  luma_hvpp[NUM_LUMA_PARTITIONS];
-    ipfilter_ps_t   ipfilter_ps[NUM_IPFILTER_P_S];
-    ipfilter_ss_t   ipfilter_ss[NUM_IPFILTER_S_S];
     filter_p2s_t    luma_p2s;
-    filter_p2s_t    chroma_p2s;
-    ipfilter_sp_t   chroma_vsp;
+    filter_p2s_t    chroma_p2s[X265_CSP_COUNT];
 
     weightp_sp_t    weight_sp;
     weightp_pp_t    weight_pp;
     pixeladd_ss_t   pixeladd_ss;
     pixelavg_pp_t   pixelavg_pp[NUM_LUMA_PARTITIONS];
+    addAvg_t        luma_addAvg[NUM_LUMA_PARTITIONS];
 
     intra_pred_t    intra_pred[NUM_SQUARE_BLOCKS - 1][NUM_INTRA_MODE];
-    intra_allangs_t intra_pred_allangs[NUM_SQUARE_BLOCKS-1];
+    intra_allangs_t intra_pred_allangs[NUM_SQUARE_BLOCKS - 1];
     scale_t         scale1D_128to64;
     scale_t         scale2D_64to32;
 
@@ -258,6 +241,7 @@ struct EncoderPrimitives
     quant_t         quant;
     dequant_scaling_t dequant_scaling;
     dequant_normal_t dequant_normal;
+    count_nonzero_t count_nonzero;
 
     calcresidual_t  calcresidual[NUM_SQUARE_BLOCKS];
     calcrecon_t     calcrecon[NUM_SQUARE_BLOCKS];
@@ -284,8 +268,11 @@ struct EncoderPrimitives
         copy_ps_t       copy_ps[NUM_LUMA_PARTITIONS];
         pixel_sub_ps_t  sub_ps[NUM_LUMA_PARTITIONS];
         pixel_add_ps_t  add_ps[NUM_LUMA_PARTITIONS];
+        addAvg_t        addAvg[NUM_LUMA_PARTITIONS];
     } chroma[4]; // X265_CSP_COUNT - do not want to include x265.h here
 };
+
+void extendPicBorder(pixel* recon, int stride, int width, int height, int marginX, int marginY);
 
 /* This copy of the table is what gets used by the encoder.
  * It must be initialized before the encoder begins. */

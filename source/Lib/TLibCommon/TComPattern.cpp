@@ -45,119 +45,8 @@ using namespace x265;
 //! \{
 
 // ====================================================================================================================
-// Tables
-// ====================================================================================================================
-
-const UChar TComPattern::m_intraFilter[5] =
-{
-    10, //4x4
-    7, //8x8
-    1, //16x16
-    0, //32x32
-    10, //64x64
-};
-// ====================================================================================================================
-// Public member functions (TComPatternParam)
-// ====================================================================================================================
-
-/** \param  piTexture     pixel data
- \param  roiWidth     pattern width
- \param  roiHeight    pattern height
- \param  stride       buffer stride
- \param  offsetLeft   neighbor offset (left)
- \param  offsetAbove  neighbor offset (above)
- */
-void TComPatternParam::setPatternParamPel(Pel* texture, int roiWidth, int roiHeight,
-                                          int stride, int offsetLeft, int offsetAbove)
-{
-    m_patternOrigin  = texture;
-    m_roiWidth       = roiWidth;
-    m_roiHeight      = roiHeight;
-    m_patternStride  = stride;
-    m_offsetLeft     = offsetLeft;
-    m_offsetAbove    = offsetAbove;
-}
-
-/**
- \param  cu           CU data structure
- \param  comp         component index (0=Y, 1=Cb, 2=Cr)
- \param  roiWidth     pattern width
- \param  roiHeight    pattern height
- \param  stride       buffer stride
- \param  offsetLeft   neighbor offset (left)
- \param  offsetAbove  neighbor offset (above)
- \param  absPartIdx   part index
- */
-void TComPatternParam::setPatternParamCU(TComDataCU* cu, UChar comp, UChar roiWidth, UChar roiHeight,
-                                         int offsetLeft, int offsetAbove, uint32_t absPartIdx)
-{
-    m_offsetLeft   = offsetLeft;
-    m_offsetAbove  = offsetAbove;
-    m_roiWidth     = roiWidth;
-    m_roiHeight    = roiHeight;
-
-    uint32_t absZOrderIdx = cu->getZorderIdxInCU() + absPartIdx;
-
-    if (comp == 0)
-    {
-        m_patternStride  = cu->getPic()->getStride();
-        m_patternOrigin = cu->getPic()->getPicYuvRec()->getLumaAddr(cu->getAddr(), absZOrderIdx) - m_offsetAbove * m_patternStride - m_offsetLeft;
-    }
-    else
-    {
-        m_patternStride = cu->getPic()->getCStride();
-        if (comp == 1)
-        {
-            m_patternOrigin = cu->getPic()->getPicYuvRec()->getCbAddr(cu->getAddr(), absZOrderIdx) - m_offsetAbove * m_patternStride - m_offsetLeft;
-        }
-        else
-        {
-            m_patternOrigin = cu->getPic()->getPicYuvRec()->getCrAddr(cu->getAddr(), absZOrderIdx) - m_offsetAbove * m_patternStride - m_offsetLeft;
-        }
-    }
-}
-
-// ====================================================================================================================
 // Public member functions (TComPattern)
 // ====================================================================================================================
-
-void TComPattern::initPattern(Pel* y, Pel* cb, Pel* cr, int roiWidth, int roiHeight, int stride,
-                              int offsetLeft, int offsetAbove)
-{
-    m_patternY.setPatternParamPel(y,  roiWidth,      roiHeight,      stride,      offsetLeft,      offsetAbove);
-    m_patternCb.setPatternParamPel(cb, roiWidth >> 1, roiHeight >> 1, stride >> 1, offsetLeft >> 1, offsetAbove >> 1);
-    m_patternCr.setPatternParamPel(cr, roiWidth >> 1, roiHeight >> 1, stride >> 1, offsetLeft >> 1, offsetAbove >> 1);
-}
-
-void TComPattern::initPattern(TComDataCU* cu, uint32_t partDepth, uint32_t absPartIdx)
-{
-    int offsetLeft  = 0;
-    int offsetAbove = 0;
-
-    UChar width        = cu->getWidth(0) >> partDepth;
-    UChar height       = cu->getHeight(0) >> partDepth;
-
-    int hChromaShift = cu->getHorzChromaShift();
-    int vChromaShift = cu->getVertChromaShift();
-
-    uint32_t absZOrderIdx  = cu->getZorderIdxInCU() + absPartIdx;
-    uint32_t uiCurrPicPelX = cu->getCUPelX() + g_rasterToPelX[g_zscanToRaster[absZOrderIdx]];
-    uint32_t uiCurrPicPelY = cu->getCUPelY() + g_rasterToPelY[g_zscanToRaster[absZOrderIdx]];
-
-    if (uiCurrPicPelX != 0)
-    {
-        offsetLeft = 1;
-    }
-
-    if (uiCurrPicPelY != 0)
-    {
-        offsetAbove = 1;
-    }
-
-    m_patternY.setPatternParamCU(cu, 0, width,      height,      offsetLeft, offsetAbove, absPartIdx);
-    m_patternCb.setPatternParamCU(cu, 1, width >> hChromaShift, height >> vChromaShift, offsetLeft, offsetAbove, absPartIdx);
-    m_patternCr.setPatternParamCU(cu, 2, width >> hChromaShift, height >> vChromaShift, offsetLeft, offsetAbove, absPartIdx);
-}
 
 void TComPattern::initAdiPattern(TComDataCU* cu, uint32_t zOrderIdxInPart, uint32_t partDepth, Pel* adiBuf,
                                  int strideOrig, int heightOrig)
@@ -315,7 +204,7 @@ void TComPattern::initAdiPattern(TComDataCU* cu, uint32_t zOrderIdxInPart, uint3
     }
 }
 
-void TComPattern::initAdiPatternChroma(TComDataCU* cu, uint32_t zOrderIdxInPart, uint32_t partDepth, Pel* adiBuf, int strideOrig, int heightOrig)
+void TComPattern::initAdiPatternChroma(TComDataCU* cu, uint32_t zOrderIdxInPart, uint32_t partDepth, Pel* adiBuf, int strideOrig, int heightOrig, int chromaId)
 {
     Pel*  roiOrigin;
     Pel*  adiTemp;
@@ -357,18 +246,8 @@ void TComPattern::initAdiPatternChroma(TComDataCU* cu, uint32_t zOrderIdxInPart,
     {
         return;
     }
-
-    // get Cb pattern
-    roiOrigin = cu->getPic()->getPicYuvRec()->getCbAddr(cu->getAddr(), cu->getZorderIdxInCU() + zOrderIdxInPart);
-    adiTemp   = adiBuf;
-
-    fillReferenceSamples(roiOrigin, adiTemp, bNeighborFlags, numIntraNeighbor, unitSize, numUnitsInCU, totalUnits,
-                         cuWidth, cuHeight, width, height, picStride);
-
-    // get Cr pattern
-    roiOrigin = cu->getPic()->getPicYuvRec()->getCrAddr(cu->getAddr(), cu->getZorderIdxInCU() + zOrderIdxInPart);
-    adiTemp   = adiBuf + ADI_BUF_STRIDE * height;
-
+    roiOrigin = chromaId > 0 ? cu->getPic()->getPicYuvRec()->getCrAddr(cu->getAddr(), cu->getZorderIdxInCU() + zOrderIdxInPart) : cu->getPic()->getPicYuvRec()->getCbAddr(cu->getAddr(), cu->getZorderIdxInCU() + zOrderIdxInPart);
+    adiTemp   = chromaId > 0 ? (adiBuf + 2 * ADI_BUF_STRIDE * height) : adiBuf;
     fillReferenceSamples(roiOrigin, adiTemp, bNeighborFlags, numIntraNeighbor, unitSize, numUnitsInCU, totalUnits,
                          cuWidth, cuHeight, width, height, picStride);
 }
@@ -532,56 +411,6 @@ void TComPattern::fillReferenceSamples(Pel* roiOrigin, Pel* adiTemp, bool* bNeig
             adiTemp[i * ADI_BUF_STRIDE] = piAdiLineTemp[-i];
         }
     }
-}
-
-Pel* TComPattern::getAdiOrgBuf(int /*cuWidth*/, int /*cuHeight*/, Pel* adiBuf)
-{
-    return adiBuf;
-}
-
-Pel* TComPattern::getAdiCbBuf(int /*cuWidth*/, int /*cuHeight*/, Pel* adiBuf)
-{
-    return adiBuf;
-}
-
-Pel* TComPattern::getAdiCrBuf(int /*cuWidth*/, int cuHeight, Pel* adiBuf)
-{
-    return adiBuf + ADI_BUF_STRIDE * (cuHeight * 2 + 1);
-}
-
-/** Get pointer to reference samples for intra prediction
- * \param dirMode     prediction mode index
- * \param log2BlkSize size of block (2 = 4x4, 3 = 8x8, 4 = 16x16, 5 = 32x32, 6 = 64x64)
- * \param adiBuf    pointer to unfiltered reference samples
- * \return            pointer to (possibly filtered) reference samples
- *
- * The prediction mode index is used to determine whether a smoothed reference sample buffer is returned.
- */
-Pel* TComPattern::getPredictorPtr(uint32_t dirMode, uint32_t log2BlkSize, Pel* adiBuf)
-{
-    Pel* src;
-
-    assert(log2BlkSize >= 2 && log2BlkSize < 7);
-    int diff = std::min<int>(abs((int)dirMode - HOR_IDX), abs((int)dirMode - VER_IDX));
-    UChar ucFiltIdx = diff > m_intraFilter[log2BlkSize - 2] ? 1 : 0;
-    if (dirMode == DC_IDX)
-    {
-        ucFiltIdx = 0; //no smoothing for DC or LM chroma
-    }
-
-    assert(ucFiltIdx <= 1);
-
-    int width  = 1 << log2BlkSize;
-    int height = 1 << log2BlkSize;
-
-    src = getAdiOrgBuf(width, height, adiBuf);
-
-    if (ucFiltIdx)
-    {
-        src += ADI_BUF_STRIDE * (2 * height + 1);
-    }
-
-    return src;
 }
 
 bool TComPattern::isAboveLeftAvailable(TComDataCU* cu, uint32_t partIdxLT)

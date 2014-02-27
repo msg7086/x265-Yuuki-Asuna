@@ -53,7 +53,8 @@ using namespace x265;
 
 TComOutputBitstream::TComOutputBitstream()
 {
-    m_fifo = (uint8_t*)X265_MALLOC(uint8_t, MIN_FIFO_SIZE);
+    m_fifo = X265_MALLOC(uint8_t, MIN_FIFO_SIZE);
+    m_buffsize = MIN_FIFO_SIZE;
     clear();
 }
 
@@ -71,7 +72,7 @@ char* TComOutputBitstream::getByteStream() const
     return (char*)m_fifo;
 }
 
-uint32_t TComOutputBitstream::getByteStreamLength()
+uint32_t TComOutputBitstream::getByteStreamLength() const
 {
     return m_fsize;
 }
@@ -81,17 +82,16 @@ void TComOutputBitstream::clear()
     m_held_bits = 0;
     m_num_held_bits = 0;
     m_fsize = 0;
-    buffsize = MIN_FIFO_SIZE;
 }
 
-void TComOutputBitstream::write(uint32_t uiBits, uint32_t uiNumberOfBits)
+void TComOutputBitstream::write(uint32_t bits, uint32_t numBits)
 {
-    assert(uiNumberOfBits <= 32);
-    assert(uiNumberOfBits == 32 || (uiBits & (~0 << uiNumberOfBits)) == 0);
+    assert(numBits <= 32);
+    assert(numBits == 32 || (bits & (~0 << numBits)) == 0);
 
     /* any modulo 8 remainder of num_total_bits cannot be written this time,
      * and will be held until next time. */
-    uint32_t num_total_bits = uiNumberOfBits + m_num_held_bits;
+    uint32_t num_total_bits = numBits + m_num_held_bits;
     uint32_t next_num_held_bits = num_total_bits % 8;
 
     /* form a byte aligned word (write_bits), by concatenating any held bits
@@ -100,7 +100,7 @@ void TComOutputBitstream::write(uint32_t uiBits, uint32_t uiNumberOfBits)
      * len(H)=7, len(V)=1: ... ---- HHHH HHHV . 0000 0000, next_num_held_bits=0
      * len(H)=7, len(V)=2: ... ---- HHHH HHHV . V000 0000, next_num_held_bits=1
      * if total_bits < 8, the value of v_ is not used */
-    UChar next_held_bits = uiBits << (8 - next_num_held_bits);
+    UChar next_held_bits = bits << (8 - next_num_held_bits);
 
     if (!(num_total_bits >> 3))
     {
@@ -113,8 +113,8 @@ void TComOutputBitstream::write(uint32_t uiBits, uint32_t uiNumberOfBits)
     }
 
     /* topword serves to justify held_bits to align with the msb of uiBits */
-    uint32_t topword = (uiNumberOfBits - next_num_held_bits) & ~((1 << 3) - 1);
-    uint32_t write_bits = (m_held_bits << topword) | (uiBits >> next_num_held_bits);
+    uint32_t topword = (numBits - next_num_held_bits) & ~((1 << 3) - 1);
+    uint32_t write_bits = (m_held_bits << topword) | (bits >> next_num_held_bits);
 
     switch (num_total_bits >> 3)
     {
@@ -138,41 +138,38 @@ void TComOutputBitstream::writeByte(uint32_t val)
 
 void TComOutputBitstream::writeAlignOne()
 {
-    uint32_t num_bits = getNumBitsUntilByteAligned();
+    uint32_t numBits = getNumBitsUntilByteAligned();
 
-    write((1 << num_bits) - 1, num_bits);
+    write((1 << numBits) - 1, numBits);
 }
 
 void TComOutputBitstream::writeAlignZero()
 {
-    if (0 == m_num_held_bits)
-    {
+    if (!m_num_held_bits)
         return;
-    }
+
     push_back(m_held_bits);
     m_held_bits = 0;
     m_num_held_bits = 0;
 }
 
 /**
- - add substream to the end of the current bitstream
- .
- \param  pcSubstream  substream to be added
+ * add substream to the end of the current bitstream
  */
-void   TComOutputBitstream::addSubstream(TComOutputBitstream* pcSubstream)
+void TComOutputBitstream::addSubstream(TComOutputBitstream* substream)
 {
-    uint32_t uiNumBits = pcSubstream->getNumberOfWrittenBits();
+    uint32_t numBits = substream->getNumberOfWrittenBits();
 
-    const uint8_t* rbsp = pcSubstream->getFIFO();
+    const uint8_t* rbsp = substream->getFIFO();
 
-    for (uint32_t count = 0; count < pcSubstream->m_fsize; count++)
+    for (uint32_t count = 0; count < substream->m_fsize; count++)
     {
         write(rbsp[count], 8);
     }
 
-    if (uiNumBits & 0x7)
+    if (numBits & 0x7)
     {
-        write(pcSubstream->getHeldBits() >> (8 - (uiNumBits & 0x7)), uiNumBits & 0x7);
+        write(substream->getHeldBits() >> (8 - (numBits & 0x7)), numBits & 0x7);
     }
 }
 
@@ -202,33 +199,27 @@ int TComOutputBitstream::countStartCodeEmulations()
 
 void TComOutputBitstream::push_back(uint8_t val)
 {
-    /** Chenck FIFO Size if not reached MIN_FIFO_SIZE and Check Allocated m_fifo Buffer
-    before push the encoded bit stream to m_fifo */
-    if (m_fsize < buffsize && m_fifo)
-    {
-        m_fifo[m_fsize] = val;
-        m_fsize++;
-    }
-    else
-    {
-        buffsize *= 2;
+    if (!m_fifo)
+        return;
 
-        /**  FIFO size is Reached into MIN_FIFO_SIZE then Reallocate the FIFO and Copy the fifo to new memory
-        location and continue to push encoded bit streams */
-        uint8_t *temp = (uint8_t*)X265_MALLOC(uint8_t, buffsize);
-
-        /** check Allocated buffer before copy the encoder bitstream and push into FIFO */
+    if (m_fsize >= m_buffsize)
+    {
+        /** reallocate buffer with doubled size */
+        uint8_t *temp = X265_MALLOC(uint8_t, m_buffsize * 2);
         if (temp)
         {
             ::memcpy(temp, m_fifo, m_fsize);
-            temp[m_fsize] = val;
-            m_fsize++;
             X265_FREE(m_fifo);
-
-            /** point the reallocated buffer from temp to fifo, this can be free'd in Distructor */
             m_fifo = temp;
+            m_buffsize *= 2;
+        }
+        else
+        {
+            x265_log(NULL, X265_LOG_ERROR, "Unable to realloc bitstream buffer");
+            return;
         }
     }
+    m_fifo[m_fsize++] = val;
 }
 
 //! \}

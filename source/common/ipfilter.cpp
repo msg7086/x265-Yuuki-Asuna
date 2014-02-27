@@ -37,121 +37,6 @@ using namespace x265;
 #endif
 
 namespace {
-template<int N>
-void filterVertical_sp_c(int16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, int coeffIdx)
-{
-    int headRoom = IF_INTERNAL_PREC - X265_DEPTH;
-    int shift = IF_FILTER_PREC + headRoom;
-    int offset = (1 << (shift - 1)) + (IF_INTERNAL_OFFS << IF_FILTER_PREC);
-    uint16_t maxVal = (1 << X265_DEPTH) - 1;
-    const int16_t *coeff = (N == 8 ? g_lumaFilter[coeffIdx] : g_chromaFilter[coeffIdx]);
-
-    src -= (N / 2 - 1) * srcStride;
-
-    int row, col;
-    for (row = 0; row < height; row++)
-    {
-        for (col = 0; col < width; col++)
-        {
-            int sum;
-
-            sum  = src[col + 0 * srcStride] * coeff[0];
-            sum += src[col + 1 * srcStride] * coeff[1];
-            sum += src[col + 2 * srcStride] * coeff[2];
-            sum += src[col + 3 * srcStride] * coeff[3];
-            if (N == 8)
-            {
-                sum += src[col + 4 * srcStride] * coeff[4];
-                sum += src[col + 5 * srcStride] * coeff[5];
-                sum += src[col + 6 * srcStride] * coeff[6];
-                sum += src[col + 7 * srcStride] * coeff[7];
-            }
-
-            int16_t val = (int16_t)((sum + offset) >> shift);
-
-            val = (val < 0) ? 0 : val;
-            val = (val > maxVal) ? maxVal : val;
-
-            dst[col] = (pixel)val;
-        }
-
-        src += srcStride;
-        dst += dstStride;
-    }
-}
-
-template<int N>
-void filterVertical_ss_c(int16_t *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int width, int height, const int coefIdx)
-{
-    const int16_t *const c = (N == 8 ? g_lumaFilter[coefIdx] : g_chromaFilter[coefIdx]);
-    int shift = IF_FILTER_PREC;
-    int row, col;
-
-    src -= (N / 2 - 1) * srcStride;
-    for (row = 0; row < height; row++)
-    {
-        for (col = 0; col < width; col++)
-        {
-            int sum;
-
-            sum  = src[col + 0 * srcStride] * c[0];
-            sum += src[col + 1 * srcStride] * c[1];
-            sum += src[col + 2 * srcStride] * c[2];
-            sum += src[col + 3 * srcStride] * c[3];
-            if (N == 8)
-            {
-                sum += src[col + 4 * srcStride] * c[4];
-                sum += src[col + 5 * srcStride] * c[5];
-                sum += src[col + 6 * srcStride] * c[6];
-                sum += src[col + 7 * srcStride] * c[7];
-            }
-
-            int16_t val = (int16_t)((sum) >> shift);
-            dst[col] = val;
-        }
-
-        src += srcStride;
-        dst += dstStride;
-    }
-}
-
-template<int N>
-void filterVertical_ps_c(pixel *src, intptr_t srcStride, int16_t *dst, intptr_t dstStride, int width, int height, int16_t const *c)
-{
-    int headRoom = IF_INTERNAL_PREC - X265_DEPTH;
-    int shift = IF_FILTER_PREC - headRoom;
-    int offset = -IF_INTERNAL_OFFS << shift;
-
-    src -= (N / 2 - 1) * srcStride;
-
-    int row, col;
-    for (row = 0; row < height; row++)
-    {
-        for (col = 0; col < width; col++)
-        {
-            int sum;
-
-            sum  = src[col + 0 * srcStride] * c[0];
-            sum += src[col + 1 * srcStride] * c[1];
-            sum += src[col + 2 * srcStride] * c[2];
-            sum += src[col + 3 * srcStride] * c[3];
-            if (N == 8)
-            {
-                sum += src[col + 4 * srcStride] * c[4];
-                sum += src[col + 5 * srcStride] * c[5];
-                sum += src[col + 6 * srcStride] * c[6];
-                sum += src[col + 7 * srcStride] * c[7];
-            }
-
-            int16_t val = (int16_t)((sum + offset) >> shift);
-            dst[col] = val;
-        }
-
-        src += srcStride;
-        dst += dstStride;
-    }
-}
-
 template<int dstStride>
 void filterConvertPelToShort_c(pixel *src, intptr_t srcStride, int16_t *dst, int width, int height)
 {
@@ -434,13 +319,54 @@ void interp_vert_ss_c(int16_t *src, intptr_t srcStride, int16_t *dst, intptr_t d
     }
 }
 
-typedef void (*ipfilter_ps_t)(pixel *src, intptr_t srcStride, short *dst, intptr_t dstStride, int width, int height, const short *coeff);
-typedef void (*ipfilter_sp_t)(short *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, const short *coeff);
+template<int N>
+void filterVertical_sp_c(int16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, int coeffIdx)
+{
+    int headRoom = IF_INTERNAL_PREC - X265_DEPTH;
+    int shift = IF_FILTER_PREC + headRoom;
+    int offset = (1 << (shift - 1)) + (IF_INTERNAL_OFFS << IF_FILTER_PREC);
+    uint16_t maxVal = (1 << X265_DEPTH) - 1;
+    const int16_t *coeff = (N == 8 ? g_lumaFilter[coeffIdx] : g_chromaFilter[coeffIdx]);
+
+    src -= (N / 2 - 1) * srcStride;
+
+    int row, col;
+    for (row = 0; row < height; row++)
+    {
+        for (col = 0; col < width; col++)
+        {
+            int sum;
+
+            sum  = src[col + 0 * srcStride] * coeff[0];
+            sum += src[col + 1 * srcStride] * coeff[1];
+            sum += src[col + 2 * srcStride] * coeff[2];
+            sum += src[col + 3 * srcStride] * coeff[3];
+            if (N == 8)
+            {
+                sum += src[col + 4 * srcStride] * coeff[4];
+                sum += src[col + 5 * srcStride] * coeff[5];
+                sum += src[col + 6 * srcStride] * coeff[6];
+                sum += src[col + 7 * srcStride] * coeff[7];
+            }
+
+            int16_t val = (int16_t)((sum + offset) >> shift);
+
+            val = (val < 0) ? 0 : val;
+            val = (val > maxVal) ? maxVal : val;
+
+            dst[col] = (pixel)val;
+        }
+
+        src += srcStride;
+        dst += dstStride;
+    }
+}
 
 template<int N, int width, int height>
 void interp_hv_pp_c(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int idxX, int idxY)
 {
     short immedVals[(64 + 8) * (64 + 8)];
+
     interp_horiz_ps_c<N, width, height>(src, srcStride, immedVals, width, idxX, 1);
     filterVertical_sp_c<N>(immedVals + 3 * width, width, dst, dstStride, width, height, idxY);
 }
@@ -449,83 +375,112 @@ void interp_hv_pp_c(pixel *src, intptr_t srcStride, pixel *dst, intptr_t dstStri
 namespace x265 {
 // x265 private namespace
 
-#define CHROMA(W, H) \
+#define CHROMA_420(W, H) \
     p.chroma[X265_CSP_I420].filter_hpp[CHROMA_ ## W ## x ## H] = interp_horiz_pp_c<4, W, H>; \
     p.chroma[X265_CSP_I420].filter_hps[CHROMA_ ## W ## x ## H] = interp_horiz_ps_c<4, W, H>; \
-    p.chroma[X265_CSP_I420].filter_vpp[CHROMA_ ## W ## x ## H] = interp_vert_pp_c<4, W, H>; \
-    p.chroma[X265_CSP_I420].filter_vps[CHROMA_ ## W ## x ## H] = interp_vert_ps_c<4, W, H>; \
-    p.chroma[X265_CSP_I420].filter_vsp[CHROMA_ ## W ## x ## H] = interp_vert_sp_c<4, W, H>; \
+    p.chroma[X265_CSP_I420].filter_vpp[CHROMA_ ## W ## x ## H] = interp_vert_pp_c<4, W, H>;  \
+    p.chroma[X265_CSP_I420].filter_vps[CHROMA_ ## W ## x ## H] = interp_vert_ps_c<4, W, H>;  \
+    p.chroma[X265_CSP_I420].filter_vsp[CHROMA_ ## W ## x ## H] = interp_vert_sp_c<4, W, H>;  \
     p.chroma[X265_CSP_I420].filter_vss[CHROMA_ ## W ## x ## H] = interp_vert_ss_c<4, W, H>;
+
+#define CHROMA_444(W, H) \
+    p.chroma[X265_CSP_I444].filter_hpp[LUMA_ ## W ## x ## H] = interp_horiz_pp_c<4, W, H>; \
+    p.chroma[X265_CSP_I444].filter_hps[LUMA_ ## W ## x ## H] = interp_horiz_ps_c<4, W, H>; \
+    p.chroma[X265_CSP_I444].filter_vpp[LUMA_ ## W ## x ## H] = interp_vert_pp_c<4, W, H>;  \
+    p.chroma[X265_CSP_I444].filter_vps[LUMA_ ## W ## x ## H] = interp_vert_ps_c<4, W, H>;  \
+    p.chroma[X265_CSP_I444].filter_vsp[LUMA_ ## W ## x ## H] = interp_vert_sp_c<4, W, H>;  \
+    p.chroma[X265_CSP_I444].filter_vss[LUMA_ ## W ## x ## H] = interp_vert_ss_c<4, W, H>;
 
 #define LUMA(W, H) \
     p.luma_hpp[LUMA_ ## W ## x ## H]     = interp_horiz_pp_c<8, W, H>; \
     p.luma_hps[LUMA_ ## W ## x ## H]     = interp_horiz_ps_c<8, W, H>; \
-    p.luma_vpp[LUMA_ ## W ## x ## H]     = interp_vert_pp_c<8, W, H>; \
-    p.luma_vps[LUMA_ ## W ## x ## H]     = interp_vert_ps_c<8, W, H>; \
-    p.luma_vsp[LUMA_ ## W ## x ## H]     = interp_vert_sp_c<8, W, H>; \
-    p.luma_vss[LUMA_ ## W ## x ## H]     = interp_vert_ss_c<8, W, H>; \
+    p.luma_vpp[LUMA_ ## W ## x ## H]     = interp_vert_pp_c<8, W, H>;  \
+    p.luma_vps[LUMA_ ## W ## x ## H]     = interp_vert_ps_c<8, W, H>;  \
+    p.luma_vsp[LUMA_ ## W ## x ## H]     = interp_vert_sp_c<8, W, H>;  \
+    p.luma_vss[LUMA_ ## W ## x ## H]     = interp_vert_ss_c<8, W, H>;  \
     p.luma_hvpp[LUMA_ ## W ## x ## H]    = interp_hv_pp_c<8, W, H>;
 
 void Setup_C_IPFilterPrimitives(EncoderPrimitives& p)
 {
     LUMA(4, 4);
     LUMA(8, 8);
-    CHROMA(4, 4);
+    CHROMA_420(4,  4);
     LUMA(4, 8);
-    CHROMA(2, 4);
+    CHROMA_420(2,  4);
     LUMA(8, 4);
-    CHROMA(4, 2);
+    CHROMA_420(4,  2);
     LUMA(16, 16);
-    CHROMA(8, 8);
+    CHROMA_420(8,  8);
     LUMA(16,  8);
-    CHROMA(8, 4);
+    CHROMA_420(8,  4);
     LUMA(8, 16);
-    CHROMA(4, 8);
+    CHROMA_420(4,  8);
     LUMA(16, 12);
-    CHROMA(8, 6);
+    CHROMA_420(8,  6);
     LUMA(12, 16);
-    CHROMA(6, 8);
+    CHROMA_420(6,  8);
     LUMA(16,  4);
-    CHROMA(8, 2);
+    CHROMA_420(8,  2);
     LUMA(4, 16);
-    CHROMA(2, 8);
+    CHROMA_420(2,  8);
     LUMA(32, 32);
-    CHROMA(16, 16);
+    CHROMA_420(16, 16);
     LUMA(32, 16);
-    CHROMA(16, 8);
+    CHROMA_420(16, 8);
     LUMA(16, 32);
-    CHROMA(8, 16);
+    CHROMA_420(8,  16);
     LUMA(32, 24);
-    CHROMA(16, 12);
+    CHROMA_420(16, 12);
     LUMA(24, 32);
-    CHROMA(12, 16);
+    CHROMA_420(12, 16);
     LUMA(32,  8);
-    CHROMA(16, 4);
+    CHROMA_420(16, 4);
     LUMA(8, 32);
-    CHROMA(4, 16);
+    CHROMA_420(4,  16);
     LUMA(64, 64);
-    CHROMA(32, 32);
+    CHROMA_420(32, 32);
     LUMA(64, 32);
-    CHROMA(32, 16);
+    CHROMA_420(32, 16);
     LUMA(32, 64);
-    CHROMA(16, 32);
+    CHROMA_420(16, 32);
     LUMA(64, 48);
-    CHROMA(32, 24);
+    CHROMA_420(32, 24);
     LUMA(48, 64);
-    CHROMA(24, 32);
+    CHROMA_420(24, 32);
     LUMA(64, 16);
-    CHROMA(32, 8);
+    CHROMA_420(32, 8);
     LUMA(16, 64);
-    CHROMA(8, 32);
+    CHROMA_420(8,  32);
 
-    p.ipfilter_ps[FILTER_V_P_S_8] = filterVertical_ps_c<8>;
-    p.ipfilter_ps[FILTER_V_P_S_4] = filterVertical_ps_c<4>;
-    p.ipfilter_ss[FILTER_V_S_S_8] = filterVertical_ss_c<8>;
-    p.ipfilter_ss[FILTER_V_S_S_4] = filterVertical_ss_c<4>;
-
-    p.chroma_vsp = filterVertical_sp_c<4>;
+    CHROMA_444(4,  4);
+    CHROMA_444(8,  8);
+    CHROMA_444(4,  8);
+    CHROMA_444(8,  4);
+    CHROMA_444(16, 16);
+    CHROMA_444(16, 8);
+    CHROMA_444(8,  16);
+    CHROMA_444(16, 12);
+    CHROMA_444(12, 16);
+    CHROMA_444(16, 4);
+    CHROMA_444(4,  16);
+    CHROMA_444(32, 32);
+    CHROMA_444(32, 16);
+    CHROMA_444(16, 32);
+    CHROMA_444(32, 24);
+    CHROMA_444(24, 32);
+    CHROMA_444(32, 8);
+    CHROMA_444(8,  32);
+    CHROMA_444(64, 64);
+    CHROMA_444(64, 32);
+    CHROMA_444(32, 64);
+    CHROMA_444(64, 48);
+    CHROMA_444(48, 64);
+    CHROMA_444(64, 16);
+    CHROMA_444(16, 64);
     p.luma_p2s = filterConvertPelToShort_c<MAX_CU_SIZE>;
-    p.chroma_p2s = filterConvertPelToShort_c<MAX_CU_SIZE / 2>;
+
+    p.chroma_p2s[X265_CSP_I444] = filterConvertPelToShort_c<MAX_CU_SIZE>;
+    p.chroma_p2s[X265_CSP_I420] = filterConvertPelToShort_c<MAX_CU_SIZE / 2>;
 
     p.extendRowBorder = extendCURowColBorder;
 }

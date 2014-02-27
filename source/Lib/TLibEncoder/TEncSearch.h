@@ -53,11 +53,19 @@
 #include "bitcost.h"
 #include "motion.h"
 
+#define MVP_IDX_BITS 1
+
 //! \ingroup TLibEncoder
 //! \{
 
 namespace x265 {
 // private namespace
+#define DONT_SPLIT            0
+#define VERTICAL_SPLIT        1
+#define QUAD_SPLIT            2
+#define NUMBER_OF_SPLIT_MODES 3
+
+static const uint32_t partIdxStepShift[NUMBER_OF_SPLIT_MODES] = { 0, 1, 2 };
 
 class TEncCu;
 
@@ -75,20 +83,20 @@ public:
 
 protected:
 
-    TShortYUV*      m_qtTempTComYuv;
-    Pel*            m_sharedPredTransformSkip[3];
+    TShortYUV*      m_qtTempShortYuv;
+    pixel*          m_sharedPredTransformSkip[3];
 
     TCoeff**        m_qtTempCoeffY;
     TCoeff**        m_qtTempCoeffCb;
     TCoeff**        m_qtTempCoeffCr;
-    UChar*          m_qtTempTrIdx;
-    UChar*          m_qtTempCbf[3];
+    uint8_t*        m_qtTempTrIdx;
+    uint8_t*        m_qtTempCbf[3];
 
     TCoeff*         m_qtTempTUCoeffY;
     TCoeff*         m_qtTempTUCoeffCb;
     TCoeff*         m_qtTempTUCoeffCr;
-    UChar*          m_qtTempTransformSkipFlag[3];
-    TComYuv         m_qtTempTransformSkipTComYuv;
+    uint8_t*        m_qtTempTransformSkipFlag[3];
+    TComYuv         m_qtTempTransformSkipYuv;
 
     // interface to option
     TEncCfg*        m_cfg;
@@ -100,18 +108,17 @@ protected:
 
     // ME parameters
     int             m_refLagPixels;
-    int             m_adaptiveRange[2][33];
+    int             m_adaptiveRange[2][MAX_NUM_REF];
     MV              m_mvPredictors[3];
 
     TComYuv         m_tmpYuvPred; // to avoid constant memory allocation/deallocation in xGetInterPredictionError()
-    Pel*            m_tempPel;    // avoid mallocs in xEstimateResidualQT
-
-    // AMVP cost of a given mvp index for a given mvp candidate count
-    uint32_t        m_mvpIdxCost[AMVP_MAX_NUM_CANDS + 1][AMVP_MAX_NUM_CANDS + 1];
 
     // Color space parameters
-    int             m_hChromaShift;
-    int             m_vChromaShift;
+    uint32_t        m_section;
+    uint32_t        m_splitMode;
+    uint32_t        m_absPartIdxTURelCU;
+    uint32_t        m_absPartIdxStep;
+    uint32_t        m_partOffset;
 
 public:
 
@@ -163,8 +170,6 @@ public:
 
     void IPCMSearch(TComDataCU* cu, TComYuv* fencYuv, TComYuv* predYuv, TShortYUV* resiYuv, TComYuv* reconYuv);
 
-    uint32_t estimateHeaderBits(TComDataCU* cu, uint32_t absPartIdx);
-
     void xRecurIntraCodingQT(TComDataCU* cu, uint32_t trDepth, uint32_t absPartIdx, bool bLumaOnly, TComYuv* fencYuv,
                              TComYuv* predYuv, TShortYUV* resiYuv, uint32_t& distY, uint32_t& distC, bool bCheckFirst,
                              uint64_t& dRDCost);
@@ -183,6 +188,8 @@ public:
     // -------------------------------------------------------------------------------------------------------------------
 
     uint32_t xSymbolBitsInter(TComDataCU* cu);
+    bool isNextSection();
+    bool isLastSection();
 
 protected:
 
@@ -204,11 +211,11 @@ protected:
 
     void xRecurIntraChromaCodingQT(TComDataCU* cu, uint32_t trDepth, uint32_t absPartIdx, TComYuv* fencYuv,
                                    TComYuv* predYuv, TShortYUV* resiYuv, uint32_t& outDist);
-    
+
     void residualTransformQuantIntra(TComDataCU* cu, uint32_t trDepth, uint32_t absPartIdx, bool bLumaOnly, TComYuv* fencYuv,
-                             TComYuv* predYuv, TShortYUV* resiYuv, TComYuv* reconYuv);
+                                     TComYuv* predYuv, TShortYUV* resiYuv, TComYuv* reconYuv);
     void residualQTIntrachroma(TComDataCU* cu, uint32_t trDepth, uint32_t absPartIdx, TComYuv* fencYuv,
-                                   TComYuv* predYuv, TShortYUV* resiYuv, TComYuv* reconYuv);
+                               TComYuv* predYuv, TShortYUV* resiYuv, TComYuv* reconYuv);
 
     void xSetIntraResultChromaQT(TComDataCU* cu, uint32_t trDepth, uint32_t absPartIdx, TComYuv* reconYuv);
 
@@ -222,23 +229,21 @@ protected:
     // --------------------------------------------------------------------------------------------
 
     void xEstimateMvPredAMVP(TComDataCU* cu, uint32_t partIdx, int picList, int refIdx,
-                             MV& mvPred, uint32_t* distBiP = NULL);
+                             MV& mvPred, AMVPInfo* amvpInfo, uint32_t* distBiP = NULL);
 
-    void xCheckBestMVP(TComDataCU* cu, int picList, MV cMv, MV& mvPred, int& mvpIdx,
+    void xCheckBestMVP(AMVPInfo* amvpInfo, MV cMv, MV& mvPred, int& mvpIdx,
                        uint32_t& outBits, uint32_t& outCost);
 
-    uint32_t xGetTemplateCost(TComDataCU* cu, uint32_t partAddr, TComYuv* templateCand, MV mvCand, int mvpIdx,
-                              int mvpCandCount, int picList, int refIdx, int sizex, int sizey);
+    uint32_t xGetTemplateCost(TComDataCU* cu, uint32_t partAddr, TComYuv* templateCand, MV mvCand,
+                              int picList, int refIdx, int sizex, int sizey);
 
-    void xCopyAMVPInfo(AMVPInfo* src, AMVPInfo* dst);
-    uint32_t xGetMvpIdxBits(int idx, int num);
     void xGetBlkBits(PartSize cuMode, bool bPSlice, int partIdx, uint32_t lastMode, uint32_t blockBit[3]);
 
     void xMergeEstimation(TComDataCU* cu, int partIdx, uint32_t& uiInterDir,
                           TComMvField* pacMvField, uint32_t& mergeIndex, uint32_t& outCost, uint32_t& outbits,
                           TComMvField* mvFieldNeighbors, UChar* interDirNeighbors, int& numValidMergeCand);
 
-    void xRestrictBipredMergeCand(TComDataCU* cu, uint32_t puIdx, TComMvField* mvFieldNeighbours,
+    void xRestrictBipredMergeCand(TComDataCU* cu, TComMvField* mvFieldNeighbours,
                                   UChar* interDirNeighbours, int numValidMergeCand);
 
     // -------------------------------------------------------------------------------------------------------------------
@@ -252,8 +257,6 @@ protected:
     // -------------------------------------------------------------------------------------------------------------------
 
     void xEncodeResidualQT(TComDataCU* cu, uint32_t absPartIdx, uint32_t depth, bool bSubdivAndCbf, TextType ttype);
-    
-    void setWpScalingDistParam(TComDataCU* cu, int refIdx, int picList);
 };
 }
 //! \}

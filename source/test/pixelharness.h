@@ -31,12 +31,9 @@ class PixelHarness : public TestHarness
 {
 protected:
 
-    pixel *pbuf1, *pbuf2, *pbuf3, *pbuf4;
-
-    int *ibuf1;
-
-    int16_t *sbuf1, *sbuf2, *sbuf3;
-
+    pixel *pbuf1, *pbuf2, *pbuf3, *pbuf4, **pixel_test_buff;
+    int *ibuf1, **int_test_buff;
+    int16_t *sbuf1, *sbuf2, *sbuf3, **short_test_buff, **short_test_buff1, **short_test_buff2;
     bool check_pixelcmp(pixelcmp_t ref, pixelcmp_t opt);
     bool check_pixelcmp_sp(pixelcmp_sp_t ref, pixelcmp_sp_t opt);
     bool check_pixelcmp_ss(pixelcmp_ss_t ref, pixelcmp_ss_t opt);
@@ -64,6 +61,7 @@ protected:
     bool check_pixel_var(var_t ref, var_t opt);
     bool check_ssim_4x4x2_core(ssim_4x4x2_core_t ref, ssim_4x4x2_core_t opt);
     bool check_ssim_end(ssim_end4_t ref, ssim_end4_t opt);
+    bool check_addAvg(addAvg_t, addAvg_t);
 
 public:
 

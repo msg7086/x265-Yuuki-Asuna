@@ -25,6 +25,7 @@
 
 #include "threadpool.h"
 #include "threading.h"
+#include "common.h"
 #include <assert.h>
 #include <string.h>
 #include <new>
@@ -38,7 +39,6 @@ namespace x265 {
 // x265 private namespace
 
 class ThreadPoolImpl;
-static int get_cpu_count();
 
 class PoolThread : public Thread
 {
@@ -48,35 +48,36 @@ private:
 
     PoolThread& operator =(const PoolThread&);
 
-    bool           m_dirty;
+    int            m_id;
 
-    bool           m_idle;
+    bool           m_dirty;
 
     bool           m_exited;
 
+    Event          m_wakeEvent;
+
 public:
 
-    PoolThread(ThreadPoolImpl& pool) : m_pool(pool), m_dirty(false), m_idle(false), m_exited(false) {}
+    PoolThread(ThreadPoolImpl& pool, int id)
+        : m_pool(pool)
+        , m_id(id)
+        , m_dirty(false)
+        , m_exited(false)
+    {
+    }
 
-    //< query if thread is still potentially walking provider list
-    bool isDirty() const  { return !m_idle && m_dirty; }
+    bool isDirty() const  { return m_dirty; }
 
-    //< set m_dirty if the thread might be walking provider list
-    void markDirty()      { m_dirty = !m_idle; }
+    void markDirty()      { m_dirty = true; }
 
     bool isExited() const { return m_exited; }
+
+    void poke()           { m_wakeEvent.trigger(); }
 
     virtual ~PoolThread() {}
 
     void threadMain();
-
-    static volatile int s_sleepCount;
-    static Event s_wakeEvent;
 };
-
-volatile int PoolThread::s_sleepCount = 0;
-
-Event PoolThread::s_wakeEvent;
 
 class ThreadPoolImpl : public ThreadPool
 {
@@ -85,7 +86,9 @@ private:
     bool         m_ok;
     int          m_referenceCount;
     int          m_numThreads;
+    int          m_numSleepMapWords;
     PoolThread  *m_threads;
+    volatile uint64_t *m_sleepMap;
 
     /* Lock for write access to the provider lists.  Threads are
      * always allowed to read m_firstProvider and follow the
@@ -112,6 +115,10 @@ public:
 
         return this;
     }
+
+    void markThreadAsleep(int id);
+
+    void waitForAllIdle();
 
     int getThreadCount() const { return m_numThreads; }
 
@@ -155,23 +162,49 @@ void PoolThread::threadMain()
             cur = cur->m_nextProvider;
         }
 
+        // this thread has reached the end of the provider list
         m_dirty = false;
+
         if (cur == NULL)
         {
-            m_idle = true;
-            ATOMIC_INC(&s_sleepCount);
-            s_wakeEvent.wait();
-            ATOMIC_DEC(&s_sleepCount);
-            m_idle = false;
+            m_pool.markThreadAsleep(m_id);
+            m_wakeEvent.wait();
         }
     }
 
     m_exited = true;
 }
 
+void ThreadPoolImpl::markThreadAsleep(int id)
+{
+    int word = id >> 6;
+    uint64_t bit = 1LL << (id & 63);
+
+    ATOMIC_OR(&m_sleepMap[word], bit);
+}
+
 void ThreadPoolImpl::pokeIdleThread()
 {
-    PoolThread::s_wakeEvent.trigger();
+    /* Find a bit in the sleeping thread bitmap and poke it awake, do
+     * not give up until a thread is awakened or all of them are awake */
+    for (int i = 0; i < m_numSleepMapWords; i++)
+    {
+        uint64_t oldval = m_sleepMap[i];
+        while (oldval)
+        {
+            unsigned long id;
+            CTZ64(id, oldval);
+
+            uint64_t newval = oldval & ~(1LL << id);
+            if (ATOMIC_CAS(&m_sleepMap[i], oldval, newval) == oldval)
+            {
+                m_threads[(i << 6) | id].poke();
+                return;
+            }
+
+            oldval = m_sleepMap[i];
+        }
+    }
 }
 
 ThreadPoolImpl *ThreadPoolImpl::instance;
@@ -210,58 +243,83 @@ ThreadPoolImpl::ThreadPoolImpl(int numThreads)
     , m_lastProvider(NULL)
 {
     if (numThreads == 0)
-        numThreads = get_cpu_count();
+        numThreads = getCpuCount();
+    m_numSleepMapWords = (numThreads + 63) >> 6;
+    m_sleepMap = X265_MALLOC(uint64_t, m_numSleepMapWords);
 
-    char *buffer = new char[sizeof(PoolThread) * numThreads];
+    char *buffer = (char*)X265_MALLOC(PoolThread, numThreads);
     m_threads = reinterpret_cast<PoolThread*>(buffer);
     m_numThreads = numThreads;
 
-    if (m_threads)
+    if (m_threads && m_sleepMap)
     {
-        m_ok = true;
-        for (int i = 0; i < numThreads; i++)
+        for (int i = 0; i < m_numSleepMapWords; i++)
         {
-            new (buffer)PoolThread(*this);
-            buffer += sizeof(PoolThread);
-            m_ok = m_ok && m_threads[i].start();
+            m_sleepMap[i] = 0;
         }
 
-        // Wait for threads to spin up and idle
-        while (PoolThread::s_sleepCount < m_numThreads)
+        m_ok = true;
+        int i;
+        for (i = 0; i < numThreads; i++)
+        {
+            new (buffer)PoolThread(*this, i);
+            buffer += sizeof(PoolThread);
+            if (!m_threads[i].start())
+            {
+                m_ok = false;
+                break;
+            }
+        }
+
+        if (m_ok)
+        {
+            waitForAllIdle();
+        }
+        else
+        {
+            // stop threads that did start up
+            for (int j = 0; j < i; j++)
+            {
+                m_threads[j].poke();
+                m_threads[j].stop();
+            }
+        }
+    }
+}
+
+void ThreadPoolImpl::waitForAllIdle()
+{
+    if (!m_ok)
+        return;
+
+    int id = 0;
+    do
+    {
+        int word = id >> 6;
+        uint64_t bit = 1LL << (id & 63);
+        if (m_sleepMap[word] & bit)
+        {
+            id++;
+        }
+        else
         {
             GIVE_UP_TIME();
         }
     }
+    while (id < m_numThreads);
 }
 
 void ThreadPoolImpl::Stop()
 {
     if (m_ok)
     {
-        // wait for all threads to idle
-        while (PoolThread::s_sleepCount < m_numThreads)
-        {
-            GIVE_UP_TIME();
-        }
+        waitForAllIdle();
 
         // set invalid flag, then wake them up so they exit their main func
         m_ok = false;
-        int exited_count;
-        do
-        {
-            pokeIdleThread();
-            GIVE_UP_TIME();
-            exited_count = 0;
-            for (int i = 0; i < m_numThreads; i++)
-            {
-                exited_count += m_threads[i].isExited() ? 1 : 0;
-            }
-        }
-        while (exited_count < m_numThreads);
-
-        // join each thread to cleanup resources
         for (int i = 0; i < m_numThreads; i++)
         {
+            m_threads[i].poke();
             m_threads[i].stop();
         }
     }
@@ -269,6 +327,8 @@ void ThreadPoolImpl::Stop()
 
 ThreadPoolImpl::~ThreadPoolImpl()
 {
+    X265_FREE((void*)m_sleepMap);
+
     if (m_threads)
     {
         // cleanup thread handles
@@ -277,7 +337,7 @@ ThreadPoolImpl::~ThreadPoolImpl()
             m_threads[i].~PoolThread();
         }
 
-        delete[] reinterpret_cast<char*>(m_threads);
+        X265_FREE(reinterpret_cast<char*>(m_threads));
     }
 }
 
@@ -319,14 +379,14 @@ void ThreadPoolImpl::dequeueJobProvider(JobProvider &p)
     p.m_prevProvider = NULL;
 }
 
-/* Ensure all threads are either idle, or have made a full
- * pass through the provider list, ensuring dequeued providers
- * are safe for deletion. */
+/* Ensure all threads have made a full pass through the provider list, ensuring
+ * dequeued providers are safe for deletion. */
 void ThreadPoolImpl::FlushProviderList()
 {
     for (int i = 0; i < m_numThreads; i++)
     {
         m_threads[i].markDirty();
+        m_threads[i].poke();
     }
 
     int i;
@@ -367,7 +427,7 @@ void JobProvider::dequeue()
     m_pool->pokeIdleThread();
 }
 
-static int get_cpu_count()
+int getCpuCount()
 {
 #if _WIN32
     SYSTEM_INFO sysinfo;

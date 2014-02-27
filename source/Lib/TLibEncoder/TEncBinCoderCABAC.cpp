@@ -57,11 +57,6 @@ void TEncBinCABAC::init(TComBitIf* bitIf)
     m_bitIf = bitIf;
 }
 
-void TEncBinCABAC::uninit()
-{
-    m_bitIf = 0;
-}
-
 void TEncBinCABAC::start()
 {
     m_low              = 0;
@@ -177,7 +172,7 @@ void TEncBinCABAC::encodeBin(uint32_t binValue, ContextModel &ctxModel)
     {
         DTRACE_CABAC_VL(g_nSymbolCounter++)
         DTRACE_CABAC_T("\tstate=")
-        DTRACE_CABAC_V((ctxModel.getState() << 1) + ctxModel.getMps())
+        DTRACE_CABAC_V((ctxModel.m_state << 1) + sbacGetMps(ctxModel.m_state))
         DTRACE_CABAC_T("\tsymbol=")
         DTRACE_CABAC_V(binValue)
         DTRACE_CABAC_T("\n")

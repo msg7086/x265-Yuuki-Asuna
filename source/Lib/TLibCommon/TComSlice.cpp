@@ -54,7 +54,6 @@ TComSlice::TComSlice()
     , m_sliceType(I_SLICE)
     , m_sliceQp(0)
     , m_dependentSliceSegmentFlag(false)
-    , m_sliceQpBase(0)
     , m_deblockingFilterDisable(false)
     , m_deblockingFilterOverrideFlag(false)
     , m_deblockingFilterBetaOffsetDiv2(0)
@@ -81,7 +80,6 @@ TComSlice::TComSlice()
     , m_numEntryPointOffsets(0)
     , m_temporalLayerNonReferenceFlag(false)
     , m_enableTMVPFlag(true)
-    , m_avgQpRc(0)
 {
     m_numRefIdx[0] = m_numRefIdx[1] = 0;
 
@@ -94,7 +92,6 @@ TComSlice::TComSlice()
     }
 
     resetWpScaling();
-    initWpAcDcParam();
     m_saoEnabledFlag = false;
 }
 
@@ -442,27 +439,6 @@ void TComSlice::checkCRA(TComReferencePictureSet *rps, int& pocCRA, bool& prevRA
     }
 }
 
-/** get AC and DC values for weighted pred
- * \param *wp
- * \returns void
- */
-void TComSlice::getWpAcDcParam(wpACDCParam *&wp)
-{
-    wp = m_weightACDCParam;
-}
-
-/** init AC and DC values for weighted pred
- * \returns void
- */
-void TComSlice::initWpAcDcParam()
-{
-    for (int comp = 0; comp < 3; comp++)
-    {
-        m_weightACDCParam[comp].ac = 0;
-        m_weightACDCParam[comp].dc = 0;
-    }
-}
-
 /** get WP tables for weighted pred
  * \param int
  * \param refIdx
@@ -488,7 +464,6 @@ void  TComSlice::resetWpScaling()
             {
                 wpScalingParam  *pwp = &(m_weightPredTable[e][i][yuv]);
                 pwp->bPresentFlag    = false;
-                pwp->log2WeightDenom = 0;
                 pwp->log2WeightDenom = 0;
                 pwp->inputWeight     = 1;
                 pwp->inputOffset     = 0;
@@ -516,7 +491,7 @@ void  TComSlice::initWpScaling()
                     pwp->inputOffset = 0;
                 }
 
-                pwp->w = pwp->inputWeight;
+                pwp->w      = pwp->inputWeight;
                 pwp->o      = pwp->inputOffset << (X265_DEPTH - 8);
                 pwp->shift  = pwp->log2WeightDenom;
                 pwp->round  = (pwp->log2WeightDenom >= 1) ? (1 << (pwp->log2WeightDenom - 1)) : (0);
@@ -622,7 +597,7 @@ void  TComSPS::createRPSList(int numRPS)
     m_RPSList.create(numRPS);
 }
 
-void TComSPS::setHrdParameters(uint32_t frameRate, uint32_t numDU, uint32_t bitRate, bool randomAccess)
+void TComSPS::setHrdParameters(uint32_t fpsNum, uint32_t fpsDenom, uint32_t numDU, uint32_t bitRate, bool randomAccess)
 {
     if (!getVuiParametersPresentFlag())
     {
@@ -634,33 +609,8 @@ void TComSPS::setHrdParameters(uint32_t frameRate, uint32_t numDU, uint32_t bitR
 
     TimingInfo *timingInfo = vui->getTimingInfo();
     timingInfo->setTimingInfoPresentFlag(true);
-    switch (frameRate)
-    {
-    case 24:
-        timingInfo->setNumUnitsInTick(1125000);
-        timingInfo->setTimeScale(27000000);
-        break;
-    case 25:
-        timingInfo->setNumUnitsInTick(1080000);
-        timingInfo->setTimeScale(27000000);
-        break;
-    case 30:
-        timingInfo->setNumUnitsInTick(900900);
-        timingInfo->setTimeScale(27000000);
-        break;
-    case 50:
-        timingInfo->setNumUnitsInTick(540000);
-        timingInfo->setTimeScale(27000000);
-        break;
-    case 60:
-        timingInfo->setNumUnitsInTick(450450);
-        timingInfo->setTimeScale(27000000);
-        break;
-    default:
-        timingInfo->setNumUnitsInTick(1001);
-        timingInfo->setTimeScale(60000);
-        break;
-    }
+    timingInfo->setNumUnitsInTick(fpsDenom);
+    timingInfo->setTimeScale(fpsNum);
 
     bool rateCnt = (bitRate > 0);
     hrd->setNalHrdParametersPresentFlag(rateCnt);
@@ -1077,8 +1027,6 @@ void TComScalingList::init()
             m_scalingListCoef[sizeId][listId] = new int[X265_MIN(MAX_MATRIX_COEF_NUM, (int)g_scalingListSize[sizeId])];
         }
     }
-
-    m_scalingListCoef[SCALING_LIST_32x32][3] = m_scalingListCoef[SCALING_LIST_32x32][1]; // copy address for 32x32
 }
 
 /** destroy quantization matrix array

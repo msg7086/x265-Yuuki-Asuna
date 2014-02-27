@@ -47,18 +47,19 @@ static const char emulation_prevention_three_byte[] = { 3 };
 /**
  * write nalu to bytestream out, performing RBSP anti startcode
  * emulation as required.  nalu.m_RBSPayload must be byte aligned.
+ * caller is responsible for freeing returned allocated pointer
  */
-void write(uint8_t*& out, OutputNALUnit& nalu, uint32_t &packetSize)
+uint8_t *write(const OutputNALUnit& nalu, uint32_t &packetSize)
 {
     packetSize = 0;
     TComOutputBitstream bsNALUHeader;
-    bsNALUHeader.write(0, 1);                 // forbidden_zero_bit
-    bsNALUHeader.write(nalu.m_nalUnitType, 6); // nal_unit_type
-    bsNALUHeader.write(nalu.m_reservedZero6Bits, 6);                 // nuh_reserved_zero_6bits
-    bsNALUHeader.write(nalu.m_temporalId + 1, 3); // nuh_temporal_id_plus1
+    bsNALUHeader.write(0, 1);                        // forbidden_zero_bit
+    bsNALUHeader.write(nalu.m_nalUnitType, 6);       // nal_unit_type
+    bsNALUHeader.write(nalu.m_reservedZero6Bits, 6); // nuh_reserved_zero_6bits
+    bsNALUHeader.write(nalu.m_temporalId + 1, 3);    // nuh_temporal_id_plus1
 
     packetSize += bsNALUHeader.getByteStreamLength();
-    out = (uint8_t*)malloc(packetSize);
+    uint8_t *out = (uint8_t*)malloc(packetSize);
     ::memcpy(out, bsNALUHeader.getByteStream(), packetSize);
 
     /* write out rsbp_byte's, inserting any required
@@ -84,8 +85,8 @@ void write(uint8_t*& out, OutputNALUnit& nalu, uint32_t &packetSize)
      */
     uint32_t fsize = nalu.m_bitstream.getByteStreamLength();
     uint8_t* fifo = nalu.m_bitstream.getFIFO();
-    uint32_t  emulationSize = fsize / 2;
-    uint8_t* emulation = (uint8_t*)X265_MALLOC(uint8_t, fsize + emulationSize);
+    uint32_t emulationSize = fsize / 2;
+    uint8_t* emulation = X265_MALLOC(uint8_t, fsize + emulationSize);
     uint32_t nalsize = 0;
 
     if (emulation)
@@ -93,8 +94,7 @@ void write(uint8_t*& out, OutputNALUnit& nalu, uint32_t &packetSize)
         for (int count = 0; count < fsize; count++)
         {
             uint8_t val = fifo[count];
-            if (count > 3 && (emulation[nalsize - 1] == 0x00 || emulation[nalsize - 1] == 0x01 || emulation[nalsize - 1] == 0x02 || emulation[nalsize - 1] == 0x03)
-                && emulation[nalsize - 2] == 0x00 && emulation[nalsize - 3] == 0x00)
+            if (count > 3 && !emulation[nalsize - 2] && !emulation[nalsize - 3] && emulation[nalsize - 1] <= 0x03)
             {
                 uint8_t tmp = emulation[nalsize - 1];
                 emulation[nalsize - 1] = emulation_prevention_three_byte[0];
@@ -115,10 +115,10 @@ void write(uint8_t*& out, OutputNALUnit& nalu, uint32_t &packetSize)
         packetSize += nalsize;
 
         /* 7.4.1.1
-        * ... when the last byte of the RBSP data is equal to 0x00 (which can
-        * only occur when the RBSP ends in a cabac_zero_word), a final byte equal
-        * to 0x03 is appended to the end of the data.
-        */
+         * ... when the last byte of the RBSP data is equal to 0x00 (which can
+         * only occur when the RBSP ends in a cabac_zero_word), a final byte equal
+         * to 0x03 is appended to the end of the data.
+         */
         if (out[packetSize - 1] == 0x00)
         {
             out[i] = 3;
@@ -126,6 +126,8 @@ void write(uint8_t*& out, OutputNALUnit& nalu, uint32_t &packetSize)
         }
         X265_FREE(emulation);
     }
+
+    return out;
 }
 
 /**

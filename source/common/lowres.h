@@ -32,7 +32,6 @@ namespace x265 {
 // private namespace
 
 class TComPicYuv;
-typedef struct WpScalingParam wpScalingParam;
 
 struct ReferencePlanes
 {
@@ -118,9 +117,12 @@ struct Lowres : public ReferencePlanes
     int       intraMbs[X265_BFRAME_MAX + 2];
     int32_t*  intraCost;
     int64_t   satdCost;
+    uint16_t* lowresCostForRc;
     uint16_t(*lowresCosts[X265_BFRAME_MAX + 2][X265_BFRAME_MAX + 2]);
     int32_t*  lowresMvCosts[2][X265_BFRAME_MAX + 1];
     MV*       lowresMvs[2][X265_BFRAME_MAX + 1];
+    int       plannedType[X265_LOOKAHEAD_MAX + 1];
+    int64_t   plannedSatd[X265_LOOKAHEAD_MAX + 1];
 
     /* rate control / adaptive quant data */
     double*   qpAqOffset;      // qp Aq offset values for each Cu
@@ -130,9 +132,9 @@ struct Lowres : public ReferencePlanes
     uint64_t  wp_sum[3];
 
     uint16_t* propagateCost;
-    double    weightedCostDelta[X265_BFRAME_MAX+2];
+    double    weightedCostDelta[X265_BFRAME_MAX + 2];
 
-    void create(TComPicYuv *orig, int bframes, int32_t *aqMode);
+    bool create(TComPicYuv *orig, int bframes, bool bAqEnabled);
     void destroy(int bframes);
     void init(TComPicYuv *orig, int poc, int sliceType, int bframes);
 };

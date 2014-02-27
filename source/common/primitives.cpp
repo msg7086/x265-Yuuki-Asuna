@@ -83,7 +83,6 @@ void x265_setup_primitives(x265_param *param, int cpuid)
 {
     // initialize global variables
     initROM();
-    buildNextStateTable();
 
     if (cpuid < 0)
     {
@@ -117,7 +116,7 @@ void x265_setup_primitives(x265_param *param, int cpuid)
         }
 
         if (!cpuid)
-            p += sprintf(p, " none!");
+            sprintf(p, " none!");
         x265_log(param, X265_LOG_INFO, "%s\n", buf);
     }
 
@@ -158,21 +157,23 @@ extern "C" {
 // is disabled there should be no reason to use EMMS.
 void x265_cpu_emms(void) {}
 
-int x265_cpu_cpuid_test(void)
-{
-    return 0;
-}
+#if defined(X265_ARCH_X86)
 
 #if defined(_MSC_VER)
-#pragma warning(disable: 4100)
+# pragma warning(disable: 4100)
 #elif defined(__GNUC__) || defined(__clang__)    // use inline assembly, Gnu/AT&T syntax
-#define __cpuidex(regsArray, level, index) \
+# define __cpuidex(regsArray, level, index) \
     __asm__ __volatile__ ("cpuid" \
                           : "=a" ((regsArray)[0]), "=b" ((regsArray)[1]), "=c" ((regsArray)[2]), "=d" ((regsArray)[3]) \
                           : "0" (level), "2" (index));
 #else
-#error "compiler not supported"
+# error "compiler not supported"
 #endif
+
+int x265_cpu_cpuid_test(void)
+{
+    return 0;
+}
 
 void x265_cpu_cpuid(uint32_t op, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
 {
@@ -188,6 +189,8 @@ void x265_cpu_cpuid(uint32_t op, uint32_t *eax, uint32_t *ebx, uint32_t *ecx, ui
 void x265_cpu_xgetbv(uint32_t op, uint32_t *eax, uint32_t *edx)
 {
     uint64_t out = 0;
+
+#if X265_ARCH_X86
 
 #if (defined(_MSC_FULL_VER) && _MSC_FULL_VER >= 160040000) || (defined(__INTEL_COMPILER) && __INTEL_COMPILER >= 1200)
 
@@ -206,8 +209,12 @@ void x265_cpu_xgetbv(uint32_t op, uint32_t *eax, uint32_t *edx)
 
 #endif // if (defined(_MSC_FULL_VER) && _MSC_FULL_VER >= 160040000) || (defined(__INTEL_COMPILER) && __INTEL_COMPILER >= 1200)
 
+#endif // if x86
+
     *eax = (uint32_t)out;
     *edx = (uint32_t)(out >> 32);
 }
+
+#endif // X265_ARCH_X86
 }
 #endif // if !ENABLE_ASSEMBLY

@@ -33,7 +33,10 @@ const hsub_mul,    times 16 db 1, -1
 const pw_1,        times 16 dw 1
 const pw_16,       times 16 dw 16
 const pw_32,       times 16 dw 32
+const pw_128,      times 16 dw 128
+const pw_256,      times 16 dw 256
 const pw_512,      times 16 dw 512
+const pw_1023,     times 8  dw 1023
 const pw_1024,     times 16 dw 1024
 const pw_4096,     times 16 dw 4096
 const pw_00ff,     times 16 dw 0x00ff
@@ -67,9 +70,10 @@ const pw_ppppmmmm, dw 1,1,1,1,-1,-1,-1,-1
 const pw_ppmmppmm, dw 1,1,-1,-1,1,1,-1,-1
 const pw_pmpmpmpm, dw 1,-1,1,-1,1,-1,1,-1
 const pw_pmmpzzzz, dw 1,-1,-1,1,0,0,0,0
-
 const pd_1,        times 4 dd 1
 const pd_2,        times 4 dd 2
+const pd_4,        times 4 dd 4
+const pd_8,        times 4 dd 8
 const pd_16,       times 4 dd 16
 const pd_32,       times 4 dd 32
 const pd_64,       times 4 dd 64
@@ -79,6 +83,7 @@ const pd_512,      times 4 dd 512
 const pd_1024,     times 4 dd 1024
 const pd_2048,     times 4 dd 2048
 const pd_ffff,     times 4 dd 0xffff
+const pd_n32768,   times 4 dd 0xffff8000
 const pw_ff00,     times 8 dw 0xff00
 
 const multi_2Row,  dw 1, 2, 3, 4, 1, 2, 3, 4

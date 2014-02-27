@@ -446,13 +446,13 @@ public:
 
     bool getTimingInfoPresentFlag()             { return m_timingInfoPresentFlag; }
 
-    void setNumUnitsInTick(uint32_t value)          { m_numUnitsInTick = value; }
+    void setNumUnitsInTick(uint32_t value)      { m_numUnitsInTick = value; }
 
-    uint32_t getNumUnitsInTick()                    { return m_numUnitsInTick; }
+    uint32_t getNumUnitsInTick()                { return m_numUnitsInTick; }
 
-    void setTimeScale(uint32_t value)               { m_timeScale = value; }
+    void setTimeScale(uint32_t value)           { m_timeScale = value; }
 
-    uint32_t getTimeScale()                         { return m_timeScale; }
+    uint32_t getTimeScale()                     { return m_timeScale; }
 
     bool getPocProportionalToTimingFlag()       { return m_pocProportionalToTimingFlag; }
 
@@ -604,6 +604,7 @@ private:
     bool m_frameFieldInfoPresentFlag;
     bool m_hrdParametersPresentFlag;
     bool m_bitstreamRestrictionFlag;
+    bool m_tilesFixedStructureFlag;
     bool m_motionVectorsOverPicBoundariesFlag;
     bool m_restrictedRefPicListsFlag;
     int  m_minSpatialSegmentationIdc;
@@ -638,6 +639,7 @@ public:
         , m_frameFieldInfoPresentFlag(false)
         , m_hrdParametersPresentFlag(false)
         , m_bitstreamRestrictionFlag(false)
+        , m_tilesFixedStructureFlag(false)
         , m_motionVectorsOverPicBoundariesFlag(true)
         , m_restrictedRefPicListsFlag(1)
         , m_minSpatialSegmentationIdc(0)
@@ -737,6 +739,10 @@ public:
 
     void setBitstreamRestrictionFlag(bool i) { m_bitstreamRestrictionFlag = i; }
 
+    bool getTilesFixedStructureFlag() { return m_tilesFixedStructureFlag; }
+
+    void setTilesFixedStructureFlag(bool i) { m_tilesFixedStructureFlag = i; }
+
     bool getMotionVectorsOverPicBoundariesFlag() { return m_motionVectorsOverPicBoundariesFlag; }
 
     void setMotionVectorsOverPicBoundariesFlag(bool i) { m_motionVectorsOverPicBoundariesFlag = i; }
@@ -778,7 +784,7 @@ private:
     int         m_SPSId;
     int         m_VPSId;
     int         m_chromaFormatIdc;
-
+    bool        m_colorPlaneFlag;
     uint32_t    m_maxTLayers;         // maximum number of temporal layers
 
     // Structure
@@ -862,6 +868,10 @@ public:
     int  getChromaFormatIdc()         { return m_chromaFormatIdc; }
 
     void setChromaFormatIdc(int i)    { m_chromaFormatIdc = i; }
+
+    void setSeparateColorPlaneFlag(bool c)      { m_colorPlaneFlag = c; }
+
+    bool getSeparateColorPlaneFlag()      { return m_colorPlaneFlag; }
 
     static int getWinUnitX(int chromaFormatIdc) { assert(chromaFormatIdc > 0 && chromaFormatIdc <= MAX_CHROMA_FORMAT_IDC); return g_winUnitX[chromaFormatIdc]; }
 
@@ -1049,7 +1059,7 @@ public:
 
     TComVUI* getVuiParameters() { return &m_vuiParameters; }
 
-    void setHrdParameters(uint32_t frameRate, uint32_t numDU, uint32_t bitRate, bool randomAccess);
+    void setHrdParameters(uint32_t fpsNum, uint32_t fpsDenom, uint32_t numDU, uint32_t bitRate, bool randomAccess);
 
     TComPTL* getPTL() { return &m_ptl; }
 };
@@ -1247,7 +1257,7 @@ public:
     void setSliceHeaderExtensionPresentFlag(bool val)  { m_sliceHeaderExtensionPresentFlag = val; }
 };
 
-struct WpScalingParam
+typedef struct wpScalingParam
 {
     // Explicit weighted prediction parameters parsed in slice header,
     // or Implicit weighted prediction parameters (8 bits depth values).
@@ -1273,15 +1283,7 @@ struct WpScalingParam
 
         inputWeight = X265_MIN(inputWeight, 127);
     }
-};
-
-typedef WpScalingParam wpScalingParam;
-
-typedef struct
-{
-    int64_t ac;
-    int64_t dc;
-} wpACDCParam;
+} wpScalingParam;
 
 /// slice header class
 class TComSlice
@@ -1303,7 +1305,6 @@ private:
     SliceType   m_sliceType;
     int         m_sliceQp;
     bool        m_dependentSliceSegmentFlag;
-    int         m_sliceQpBase;
     bool        m_deblockingFilterDisable;
     bool        m_deblockingFilterOverrideFlag;    //< offsets for deblocking filter inherit from PPS
     int         m_deblockingFilterBetaOffsetDiv2;  //< beta offset for deblocking filter
@@ -1339,8 +1340,6 @@ private:
     uint32_t    m_sliceSegmentBits;
     bool        m_bFinalized;
 
-    wpACDCParam m_weightACDCParam[3];                 // [0:Y, 1:U, 2:V]
-
     uint32_t    m_tileOffstForMultES;
 
     uint32_t*   m_substreamSizes;
@@ -1357,7 +1356,6 @@ public:
 
     wpScalingParam  m_weightPredTable[2][MAX_NUM_REF][3]; // [REF_PIC_LIST_0 or REF_PIC_LIST_1][refIdx][0:Y, 1:U, 2:V]
     int             m_numWPRefs;                          // number of references for which unidirectional weighted prediction is used
-    int             m_avgQpRc;
 
     TComSlice();
     virtual ~TComSlice();
@@ -1414,8 +1412,6 @@ public:
     bool      getDependentSliceSegmentFlag() const   { return m_dependentSliceSegmentFlag; }
 
     void      setDependentSliceSegmentFlag(bool val) { m_dependentSliceSegmentFlag = val; }
-
-    int       getSliceQpBase()                    { return m_sliceQpBase; }
 
     int       getSliceQpDelta()                   { return m_sliceQpDelta; }
 
@@ -1475,8 +1471,6 @@ public:
     void      setSliceType(SliceType e)               { m_sliceType = e; }
 
     void      setSliceQp(int i)                       { m_sliceQp = i; }
-
-    void      setSliceQpBase(int i)                   { m_sliceQpBase = i; }
 
     void      setSliceQpDelta(int i)                  { m_sliceQpDelta = i; }
 
@@ -1551,11 +1545,6 @@ public:
     void  resetWpScaling();
     void  initWpScaling();
     inline bool applyWP() { return (m_sliceType == P_SLICE && m_pps->getUseWP()) || (m_sliceType == B_SLICE && m_pps->getWPBiPred()); }
-
-    void  setWpAcDcParam(wpACDCParam wp[3]) { memcpy(m_weightACDCParam, wp, sizeof(wpACDCParam) * 3); }
-
-    void  getWpAcDcParam(wpACDCParam *&wp);
-    void  initWpAcDcParam();
 
     void setTileOffstForMultES(uint32_t offset) { m_tileOffstForMultES = offset; }
 

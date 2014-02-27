@@ -1071,20 +1071,19 @@ cglobal quant, 5,6,8, 0-(3*mmsize)
     mova        m4, [c_d_4]     ; m4 = [4 4 4 4]
 .loop:
     ; 4 coeff
-    movu        m0, [r0]        ; m1 = level
+    movu        m0, [r0]        ; m0 = level
     pxor        m1, m1
-    pcmpgtd     m1, m0          ; m2 = sign
-    movu        m2, [r1]        ; m3 = qcoeff
+    pcmpgtd     m1, m0          ; m1 = sign
+    movu        m2, [r1]        ; m2 = qcoeff
     pabsd       m0, m0
-    pmulld      m0, m2          ; m1 = tmpLevel1
+    pmulld      m0, m2          ; m0 = tmpLevel1
     paddd       m2, m0, addVec
-    psrad       m2, qbits       ; m3 = level1
+    psrad       m2, qbits       ; m2 = level1
     paddd       m7, m2
     pslld       m3, m2, qbits
     psubd       m0, m3
-    psrad       m0, qbits8      ; m1 = deltaU1
+    psrad       m0, qbits8      ; m0 = deltaU1
     movu        [r2], m0
-
     pxor        m0, m0
     pcmpeqd     m0, m2          ; m0 = mask4
     pand        m5, m0
@@ -1097,22 +1096,20 @@ cglobal quant, 5,6,8, 0-(3*mmsize)
     packssdw    m2, m2
     pmovsxwd    m2, m2
     movu        [r3], m2
-
     ; 4 coeff
-    movu        m0, [r0 + 16]   ; m1 = level
+    movu        m0, [r0 + 16]   ; m0 = level
     pxor        m1, m1
-    pcmpgtd     m1, m0          ; m2 = sign
-    movu        m2, [r1 + 16]   ; m3 = qcoeff
+    pcmpgtd     m1, m0          ; m1 = sign
+    movu        m2, [r1 + 16]   ; m2 = qcoeff
     pabsd       m0, m0
-    pmulld      m0, m2          ; m1 = tmpLevel1
+    pmulld      m0, m2          ; m0 = tmpLevel1
     paddd       m2, m0, addVec
-    psrad       m2, qbits       ; m3 = level1
+    psrad       m2, qbits       ; m2 = level1
     paddd       m7, m2
     pslld       m3, m2, qbits
     psubd       m0, m3
-    psrad       m0, qbits8      ; m1 = deltaU1
+    psrad       m0, qbits8      ; m0 = deltaU1
     movu        [r2 + 16], m0
-
     pxor        m0, m0
     pcmpeqd     m0, m2          ; m0 = mask4
     pand        m5, m0
@@ -1154,8 +1151,12 @@ cglobal quant, 5,6,8, 0-(3*mmsize)
 ; void dequant_normal(const int32_t* quantCoef, int32_t* coef, int num, int scale, int shift)
 ;-----------------------------------------------------------------------------
 INIT_XMM sse4
-cglobal dequant_normal, 2,5,8
-    movd        m1, r3m             ; m1 = word [scale]
+cglobal dequant_normal, 4,5,5
+    movd        m1, r3             ; m1 = word [scale]
+    cmp         r3d, 32767
+    jle         .skip
+
+    psrld       m1, 2
     mov         r4d, r4m
     movd        m0, r4d             ; m0 = shift
     xor         r3d, r3d
@@ -1171,6 +1172,45 @@ cglobal dequant_normal, 2,5,8
     ; m1 = scale
     ; m2 = word [1]
 .loop:
+    movu        m3, [r0]
+    movu        m4, [r0 + 16]
+    packssdw    m3, m4              ; m3 = clipQCoef
+    psllw       m3, 2
+    punpckhwd   m4, m3, m2
+    punpcklwd   m3, m2
+    pmaddwd     m3, m1              ; m3 = dword (clipQCoef * scale + add)
+    pmaddwd     m4, m1
+    psrad       m3, m0
+    psrad       m4, m0
+    packssdw    m3, m3              ; OPT_ME: store must be 32 bits
+    pmovsxwd    m3, m3
+    packssdw    m4, m4
+    pmovsxwd    m4, m4
+    movu        [r1], m3
+    movu        [r1 + 16], m4
+
+    add         r0, 32
+    add         r1, 32
+
+    sub         r2d, 8
+    jnz        .loop
+    jz         .end
+
+.skip:
+    mov         r4d, r4m
+    movd        m0, r4d             ; m0 = shift
+    xor         r3d, r3d
+    dec         r4d
+    bts         r3d, r4d
+    movd        m2, r3d
+    punpcklwd   m1, m2
+    pshufd      m1, m1, 0           ; m1 = dword [add scale]
+    mova        m2, [pw_1]
+    mov         r2d, r2m
+    ; m0 = shift
+    ; m1 = scale
+    ; m2 = word [1]
+.sloop:
     movu        m3, [r0]
     movu        m4, [r0 + 16]
     packssdw    m3, m4              ; m3 = clipQCoef
@@ -1191,8 +1231,38 @@ cglobal dequant_normal, 2,5,8
     add         r1, 32
 
     sub         r2d, 8
-    jnz        .loop
+    jnz        .sloop
+.end:
     RET
+
+
+;-----------------------------------------------------------------------------
+; int count_nonzero(const int32_t *quantCoeff, int numCoeff);
+;-----------------------------------------------------------------------------
+INIT_XMM sse2
+cglobal count_nonzero, 2,2,4
+    pxor        m0, m0
+    shr         r1d, 3
+    movd        m1, r1d
+    pshuflw     m1, m1, 0
+    punpcklqdq  m1, m1
+
+.loop
+    mova        m2, [r0]
+    mova        m3, [r0 + 16]
+    add         r0, 32
+    packssdw    m2, m3
+    pcmpeqw     m2, m0
+    paddw       m1, m2
+    dec         r1d
+    jnz         .loop
+
+    packuswb    m1, m1
+    psadbw      m1, m0
+    movd        eax, m1
+
+    RET
+
 
 ;-----------------------------------------------------------------------------------------------------------------------------------------------
 ;void weight_pp(pixel *src, pixel *dst, intptr_t srcStride, intptr_t dstStride, int width, int height, int w0, int round, int shift, int offset)
@@ -2609,30 +2679,34 @@ cglobal scale2D_64to32, 3, 4, 8, dest, src, stride
 ;-----------------------------------------------------------------------------
 %if HIGH_BIT_DEPTH
 INIT_XMM sse2
-cglobal pixel_sub_ps_2x4, 6, 6, 8, dest, deststride, src0, src1, srcstride0, srcstride1
-    add      r1,    r1
-    add      r4,    r4
-    add      r5,    r5
-    movd     m0,    [r2]
-    movd     m1,    [r3]
-    movd     m2,    [r2 + r4]
-    movd     m3,    [r3 + r5]
-    movd     m4,    [r2 + 2 * r4]
-    movd     m5,    [r3 + 2 * r5]
-    lea      r2,    [r2 + 2 * r4]
-    lea      r3,    [r3 + 2 * r5]
-    movd     m6,    [r2 + r4]
-    movd     m7,    [r3 + r5]
-    psubw    m0,    m1
-    psubw    m2,    m3
-    psubw    m4,    m5
-    psubw    m6,    m7
+cglobal pixel_sub_ps_2x4, 6, 6, 2
+    add      r1, r1
+    add      r4, r4
+    add      r5, r5
 
-    movd     [r0],           m0
-    movd     [r0 + r1],      m2
-    movd     [r0 + 2 * r1],  m4
-    lea      r0,             [r0 + 2 * r1]
-    movd     [r0 + r1],      m6
+    movd     m0, [r2]
+    movd     m1, [r3]
+    psubw    m0, m1
+    movd     [r0], m0
+
+    movd     m0, [r2 + r4]
+    movd     m1, [r3 + r5]
+    psubw    m0, m1
+    movd     [r0 + r1], m0
+
+    movd     m0, [r2 + 2 * r4]
+    movd     m1, [r3 + 2 * r5]
+    psubw    m0, m1
+    movd     [r0 + 2 * r1], m0
+
+    lea      r2, [r2 + 2 * r4]
+    lea      r3, [r3 + 2 * r5]
+    lea      r0, [r0 + 2 * r1]
+
+    movd     m0, [r2 + r4]
+    movd     m1, [r3 + r5]
+    psubw    m0, m1
+    movd     [r0 + r1], m0
 %else
 INIT_XMM sse4
 %if ARCH_X86_64
@@ -2726,54 +2800,59 @@ RET
 ;-----------------------------------------------------------------------------
 %if HIGH_BIT_DEPTH
 INIT_XMM sse2
-cglobal pixel_sub_ps_2x8, 6, 6, 8, dest, deststride, src0, src1, srcstride0, srcstride1
-    add      r1,    r1
-    add      r4,    r4
-    add      r5,    r5
-    movd     m0,    [r2]
-    movd     m1,    [r3]
-    movd     m2,    [r2 + r4]
-    movd     m3,    [r3 + r5]
-    movd     m4,    [r2 + 2 * r4]
-    movd     m5,    [r3 + 2 * r5]
-    lea      r2,    [r2 + 2 * r4]
-    lea      r3,    [r3 + 2 * r5]
-    movd     m6,    [r2 + r4]
-    movd     m7,    [r3 + r5]
+cglobal pixel_sub_ps_2x8, 6, 6, 2
+    add      r1, r1
+    add      r4, r4
+    add      r5, r5
+
+    movd     m0, [r2]
+    movd     m1, [r3]
+    psubw    m0, m1
+    movd     [r0], m0
+
+    movd     m0, [r2 + r4]
+    movd     m1, [r3 + r5]
+    psubw    m0, m1
+    movd     [r0 + r1], m0
+
+    movd     m0, [r2 + 2 * r4]
+    movd     m1, [r3 + 2 * r5]
+    psubw    m0, m1
+    movd     [r0 + 2 * r1], m0
+
+    lea      r2, [r2 + 2 * r4]
+    lea      r3, [r3 + 2 * r5]
+    movd     m0, [r2 + r4]
+    movd     m1, [r3 + r5]
+    psubw    m0, m1
+    lea      r0, [r0 + 2 * r1]
+    movd     [r0 + r1], m0
+
+    movd     m0, [r2 + 2 * r4]
+    movd     m1, [r3 + 2 * r5]
     psubw    m0,    m1
-    psubw    m2,    m3
-    psubw    m4,    m5
-    psubw    m6,    m7
-
-    movd     [r0],           m0
-    movd     [r0 + r1],      m2
-    movd     [r0 + 2 * r1],  m4
-    lea      r0,             [r0 + 2 * r1]
-    movd     [r0 + r1],      m6
-
-    movd     m0,    [r2 + 2 * r4]
-    movd     m1,    [r3 + 2 * r5]
-    lea      r2,    [r2 + 2 * r4]
-    lea      r3,    [r3 + 2 * r5]
-    movd     m2,    [r2 + r4]
-    movd     m3,    [r3 + r5]
-    movd     m4,    [r2 + 2 * r4]
-    movd     m5,    [r3 + 2 * r5]
-    lea      r2,    [r2 + 2 * r4]
-    lea      r3,    [r3 + 2 * r5]
-    movd     m6,    [r2 + r4]
-    movd     m7,    [r3 + r5]
-    psubw    m0,    m1
-    psubw    m2,    m3
-    psubw    m4,    m5
-    psubw    m6,    m7
-
     movd     [r0 + 2 * r1],  m0
-    lea      r0,             [r0 + 2 * r1]
-    movd     [r0 + r1],      m2
-    movd     [r0 + 2 * r1],  m4
-    lea      r0,             [r0 + 2 * r1]
-    movd     [r0 + r1],      m6
+
+    lea      r2, [r2 + 2 * r4]
+    lea      r3, [r3 + 2 * r5]
+    movd     m0, [r2 + r4]
+    movd     m1, [r3 + r5]
+    psubw    m0, m1
+    lea      r0, [r0 + 2 * r1]
+    movd     [r0 + r1], m0
+
+    movd     m0, [r2 + 2 * r4]
+    movd     m1, [r3 + 2 * r5]
+    psubw    m0, m1
+    movd     [r0 + 2 * r1], m0
+
+    lea      r2, [r2 + 2 * r4]
+    lea      r3, [r3 + 2 * r5]
+    movd     m0, [r2 + r4]
+    movd     m1, [r3 + r5]
+    psubw    m0, m1
+    lea      r0, [r0 + 2 * r1]
+    movd     [r0 + r1], m0
 %else
 INIT_XMM sse4
 %if ARCH_X86_64
@@ -3048,99 +3127,87 @@ PIXELSUB_PS_W4_H4 4, 16
 ; void pixel_sub_ps_c_%1x%2(int16_t *dest, intptr_t destride, pixel *src0, pixel *src1, intptr_t srcstride0, intptr_t srcstride1);
 ;-----------------------------------------------------------------------------
 %macro PIXELSUB_PS_W6_H4 2
-cglobal pixel_sub_ps_%1x%2, 6, 7, 8, dest, deststride, src0, src1, srcstride0, srcstride1
+cglobal pixel_sub_ps_%1x%2, 6, 7, 2
     add    r1,     r1
     mov    r6d,    %2/4
 %if HIGH_BIT_DEPTH
-    add         r4,    r4
-    add         r5,    r5
+    add         r4, r4
+    add         r5, r5
 .loop
-    movu        m0,    [r2]
-    movu        m1,    [r3]
-    movu        m2,    [r2 + r4]
-    movu        m3,    [r3 + r5]
-    mova        m4,    m0
-    mova        m5,    m1
-    mova        m6,    m2
-    mova        m7,    m3
-    punpckhqdq  m4,    m4
-    punpckhqdq  m5,    m5
-    punpckhqdq  m6,    m6
-    punpckhqdq  m7,    m7
-    psubw       m0,    m1
-    psubw       m2,    m3
-    psubw       m4,    m5
-    psubw       m6,    m7
+    movu        m0, [r2]
+    movu        m1, [r3]
+    psubw       m0, m1
+    movh        [r0], m0
+    movhlps     m0, m0
+    movd        [r0 + 8], m0
 
-    lea      r2,    [r2 + 2 * r4]
-    lea      r3,    [r3 + 2 * r5]
-    movh     [r0],             m0
-    movd     [r0 + 8],         m4
-    movh     [r0 + r1],        m2
-    movd     [r0 + r1 + 8],    m6
+    movu        m0, [r2 + r4]
+    movu        m1, [r3 + r5]
+    psubw       m0, m1
+    movh        [r0 + r1], m0
+    movhlps     m0, m0
+    movd        [r0 + r1 + 8], m0
 
-    movu        m0,    [r2]
-    movu        m1,    [r3]
-    movu        m2,    [r2 + r4]
-    movu        m3,    [r3 + r5]
-    mova        m4,    m0
-    mova        m5,    m1
-    mova        m6,    m2
-    mova        m7,    m3
-    punpckhqdq  m4,    m4
-    punpckhqdq  m5,    m5
-    punpckhqdq  m6,    m6
-    punpckhqdq  m7,    m7
-    psubw       m0,    m1
-    psubw       m2,    m3
-    psubw       m4,    m5
-    psubw       m6,    m7
-    lea      r0,    [r0 + 2 * r1]
-    movh     [r0],             m0
-    movd     [r0 + 8],         m4
-    movh     [r0 + r1],        m2
-    movd     [r0 + r1 + 8],    m6
+    lea         r2, [r2 + 2 * r4]
+    lea         r3, [r3 + 2 * r5]
+    lea         r0, [r0 + 2 * r1]
+
+    movu        m0, [r2]
+    movu        m1, [r3]
+    psubw       m0, m1
+    movh        [r0], m0
+    movhlps     m0, m0
+    movd        [r0 + 8], m0
+
+    movu        m0, [r2 + r4]
+    movu        m1, [r3 + r5]
+    psubw       m0, m1
+    movh        [r0 + r1], m0
+    movhlps     m0, m0
+    movd        [r0 + r1 + 8], m0
 %else
 .loop
-    movh        m0,    [r2]
-    movh        m1,    [r3]
-    movh        m2,    [r2 + r4]
-    movh        m3,    [r3 + r5]
-    movh        m4,    [r2 + 2 * r4]
-    movh        m5,    [r3 + 2 * r5]
-    lea         r2,    [r2 + 2 * r4]
-    lea         r3,    [r3 + 2 * r5]
-    movh        m6,    [r2 + r4]
-    movh        m7,    [r3 + r5]
-    pmovzxbw    m0,    m0
-    pmovzxbw    m1,    m1
-    pmovzxbw    m2,    m2
-    pmovzxbw    m3,    m3
-    pmovzxbw    m4,    m4
-    pmovzxbw    m5,    m5
-    pmovzxbw    m6,    m6
-    pmovzxbw    m7,    m7
-    psubw       m0,    m1
-    psubw       m2,    m3
-    psubw       m4,    m5
-    psubw       m6,    m7
+    movh        m0, [r2]
+    pmovzxbw    m0, m0
+    movh        m1, [r3]
+    pmovzxbw    m1, m1
+    psubw       m0, m1
+    movh        [r0], m0
+    pextrd      [r0 + 8], m0, 2
 
-    movh      [r0],                 m0
-    pextrd    [r0 + 8],             m0,    2
-    movh      [r0 + r1],            m2
-    pextrd    [r0 + r1 + 8],        m2,    2
-    movh      [r0 + 2* r1],         m4
-    pextrd    [r0 + 2 * r1 + 8],    m4,    2
-    lea       r0,                   [r0 + 2 * r1]
-    movh      [r0 + r1],            m6
-    pextrd    [r0 + r1 + 8],        m6,    2
+    movh        m0, [r2 + r4]
+    pmovzxbw    m0, m0
+    movh        m1, [r3 + r5]
+    pmovzxbw    m1, m1
+    psubw       m0, m1
+    movh        [r0 + r1], m0
+    pextrd      [r0 + r1 + 8], m0, 2
+
+    movh        m0, [r2 + 2 * r4]
+    pmovzxbw    m0, m0
+    movh        m1, [r3 + 2 * r5]
+    pmovzxbw    m1, m1
+    psubw       m0, m1
+    movh        [r0 + 2* r1], m0
+    pextrd      [r0 + 2 * r1 + 8], m0, 2
+
+    lea         r2, [r2 + 2 * r4]
+    lea         r3, [r3 + 2 * r5]
+    movh        m0, [r2 + r4]
+    pmovzxbw    m0, m0
+    movh        m1, [r3 + r5]
+    pmovzxbw    m1, m1
+    psubw       m0, m1
+    lea         r0, [r0 + 2 * r1]
+    movh        [r0 + r1], m0
+    pextrd      [r0 + r1 + 8], m0, 2
 %endif
-    dec    r6d
-    lea    r2,    [r2 + 2 * r4]
-    lea    r3,    [r3 + 2 * r5]
-    lea    r0,    [r0 + 2 * r1]
-jnz    .loop
-RET
+    dec         r6d
+    lea         r2, [r2 + 2 * r4]
+    lea         r3, [r3 + 2 * r5]
+    lea         r0, [r0 + 2 * r1]
+    jnz         .loop
+    RET
 %endmacro
 
 %if HIGH_BIT_DEPTH

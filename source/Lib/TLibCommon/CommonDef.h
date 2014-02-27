@@ -88,6 +88,8 @@
 
 #define MLS_GRP_NUM                 64 ///< G644 : Max number of coefficient groups, max(16, 64)
 #define MLS_CG_SIZE                 4 ///< G644 : Coefficient group size of 4x4
+#define MLS_CG_LOG2_WIDTH           2
+#define MLS_CG_LOG2_HEIGHT          2
 
 #define ARL_C_PRECISION             7 ///< G382: 7-bit arithmetic precision
 #define LEVEL_RANGE                 30 ///< G382: max coefficient level in statistics collection
@@ -106,7 +108,7 @@
 #define NUM_CHROMA_MODE             5 // total number of chroma modes
 #define DM_CHROMA_IDX               36 // chroma mode index for derived from luma intra mode
 
-#define FULL_NBIT 0 ///< When enabled, compute costs using full sample bitdepth.  When disabled, compute costs as if it is 8-bit source video.
+#define FULL_NBIT 1 ///< When enabled, compute costs using full sample bitdepth.  When disabled, compute costs as if it is 8-bit source video.
 #if FULL_NBIT || !HIGH_BIT_DEPTH
 # define DISTORTION_PRECISION_ADJUSTMENT(x) 0
 #else
@@ -137,10 +139,6 @@
 #define MAX_MAX_QP                  69
 
 #define NOT_VALID                  -1
-
-// for use in HM, replaces old xMalloc/xFree macros
-#define X265_MALLOC(type, count)    x265_malloc(sizeof(type) * (count))
-#define X265_FREE(ptr)              x265_free(ptr)
 
 // ====================================================================================================================
 // Coding tool configuration

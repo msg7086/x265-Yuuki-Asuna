@@ -38,6 +38,7 @@ struct EncStats
     double        m_psnrSumU;
     double        m_psnrSumV;
     double        m_globalSsim;
+    double        m_totalQp;
     uint64_t      m_accBits;
     uint32_t      m_numPics;
 
@@ -46,7 +47,10 @@ struct EncStats
         m_psnrSumY = m_psnrSumU = m_psnrSumV = m_globalSsim = 0;
         m_accBits = 0;
         m_numPics = 0;
+        m_totalQp = 0;
     }
+
+    void addQP(double aveQp);
 
     void addPsnr(double psnrY, double psnrU, double psnrV);
 
@@ -69,16 +73,21 @@ class Encoder : public TEncCfg, public x265_encoder
 {
 private:
 
+    bool               m_aborted;          // fatal error detected
     int                m_pocLast;          ///< time index (POC)
     int                m_outputCount;
     PicList            m_freeList;
+
+    int                m_bframeDelay;
+    int64_t            m_firstPts;
+    int64_t            m_bframeDelayTime;
+    int64_t            m_prevReorderedPts[2];
+    int64_t            m_encodedFrameNum;
 
     ThreadPool*        m_threadPool;
     Lookahead*         m_lookahead;
     FrameEncoder*      m_frameEncoder;
     DPB*               m_dpb;
-    RateControl*       m_rateControl;
-
     /* frame parallelism */
     int                m_curEncoder;
 
@@ -135,12 +144,12 @@ public:
     int  extractNalData(NALUnitEBSP **nalunits);
 
     void updateVbvPlan(RateControl* rc);
-
     void signalReconRowCompleted(int poc);
+    RateControl*       m_rateControl;
 
 protected:
 
-    uint64_t calculateHashAndPSNR(TComPic* pic, NALUnitEBSP **nalunits); // Returns total number of bits for encoded pic
+    void finishFrameStats(TComPic* pic, FrameEncoder *curEncoder, uint64_t bits);
 };
 }
 

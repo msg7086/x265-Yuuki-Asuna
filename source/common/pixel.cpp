@@ -513,6 +513,8 @@ void weight_pp_c(pixel *src, pixel *dst, intptr_t srcStride, intptr_t dstStride,
 {
     int x, y;
 
+    assert(!(width & 15));
+
     for (y = 0; y <= height - 1; y++)
     {
         for (x = 0; x <= width - 1; )
@@ -654,12 +656,12 @@ float ssim_end_1(int s1, int s2, int ss, int s12)
 
 #define PIXEL_MAX ((1 << X265_DEPTH) - 1)
 #if HIGH_BIT_DEPTH
-assert(X265_DEPTH == 10);
+    assert(X265_DEPTH == 10);
 #define type float
     static const float ssim_c1 = (float)(.01 * .01 * PIXEL_MAX * PIXEL_MAX * 64);
     static const float ssim_c2 = (float)(.03 * .03 * PIXEL_MAX * PIXEL_MAX * 64 * 63);
 #else
-assert(X265_DEPTH == 8);
+    assert(X265_DEPTH == 8);
 #define type int
     static const int ssim_c1 = (int)(.01 * .01 * PIXEL_MAX * PIXEL_MAX * 64 + .5);
     static const int ssim_c2 = (int)(.03 * .03 * PIXEL_MAX * PIXEL_MAX * 64 * 63 + .5);
@@ -800,12 +802,57 @@ void pixel_add_ps_c(pixel *a, intptr_t dstride, pixel *b0, int16_t *b1, intptr_t
         a += dstride;
     }
 }
+
+template<int bx, int by>
+void addAvg(int16_t* src0, int16_t* src1, pixel* dst, intptr_t src0Stride, intptr_t src1Stride, intptr_t dstStride)
+{
+    int shiftNum, offset;
+
+    shiftNum = IF_INTERNAL_PREC + 1 - X265_DEPTH;
+    offset = (1 << (shiftNum - 1)) + 2 * IF_INTERNAL_OFFS;
+
+    for (int y = 0; y < by; y++)
+    {
+        for (int x = 0; x < bx; x += 2)
+        {
+            dst[x + 0] = (pixel)ClipY((src0[x + 0] + src1[x + 0] + offset) >> shiftNum);
+            dst[x + 1] = (pixel)ClipY((src0[x + 1] + src1[x + 1] + offset) >> shiftNum);
+        }
+
+        src0 += src0Stride;
+        src1 += src1Stride;
+        dst  += dstStride;
+    }
+}
 }  // end anonymous namespace
 
 namespace x265 {
 // x265 private namespace
 
-/* It should initialize entries for pixel functions defined in this file. */
+/* Extend the edges of a picture so that it may safely be used for motion
+ * compensation. This function assumes the picture is stored in a buffer with
+ * sufficient padding for the X and Y margins */
+void extendPicBorder(pixel* pic, int stride, int width, int height, int marginX, int marginY)
+{
+    /* extend left and right margins */
+    primitives.extendRowBorder(pic, stride, width, height, marginX);
+
+    /* copy top row to create above margin */
+    pixel *top = pic - marginX;
+    for (int y = 0; y < marginY; y++)
+    {
+        memcpy(top - (y + 1) * stride, top, stride * sizeof(pixel));
+    }
+
+    /* copy bottom row to create below margin */
+    pixel *bot = pic - marginX + (height - 1) * stride;
+    for (int y = 0; y < marginY; y++)
+    {
+        memcpy(bot + (y + 1) * stride, bot, stride * sizeof(pixel));
+    }
+}
+
+/* Initialize entries for pixel functions defined in this file */
 void Setup_C_PixelPrimitives(EncoderPrimitives &p)
 {
     SET_FUNC_PRIMITIVE_TABLE_C2(sad)
@@ -840,14 +887,24 @@ void Setup_C_PixelPrimitives(EncoderPrimitives &p)
     p.satd[LUMA_64x16] = satd8<64, 16>;
     p.satd[LUMA_16x64] = satd8<16, 64>;
 
-#define CHROMA(W, H) \
+#define CHROMA_420(W, H) \
+    p.chroma[X265_CSP_I420].addAvg[CHROMA_ ## W ## x ## H]  = addAvg<W, H>; \
     p.chroma[X265_CSP_I420].copy_pp[CHROMA_ ## W ## x ## H] = blockcopy_pp_c<W, H>; \
     p.chroma[X265_CSP_I420].copy_sp[CHROMA_ ## W ## x ## H] = blockcopy_sp_c<W, H>; \
     p.chroma[X265_CSP_I420].copy_ps[CHROMA_ ## W ## x ## H] = blockcopy_ps_c<W, H>; \
     p.chroma[X265_CSP_I420].sub_ps[CHROMA_ ## W ## x ## H] = pixel_sub_ps_c<W, H>; \
     p.chroma[X265_CSP_I420].add_ps[CHROMA_ ## W ## x ## H] = pixel_add_ps_c<W, H>;
 
+#define CHROMA_444(W, H) \
+    p.chroma[X265_CSP_I444].addAvg[LUMA_ ## W ## x ## H]  = addAvg<W, H>; \
+    p.chroma[X265_CSP_I444].copy_pp[LUMA_ ## W ## x ## H] = blockcopy_pp_c<W, H>; \
+    p.chroma[X265_CSP_I444].copy_sp[LUMA_ ## W ## x ## H] = blockcopy_sp_c<W, H>; \
+    p.chroma[X265_CSP_I444].copy_ps[LUMA_ ## W ## x ## H] = blockcopy_ps_c<W, H>; \
+    p.chroma[X265_CSP_I444].sub_ps[LUMA_ ## W ## x ## H] = pixel_sub_ps_c<W, H>; \
+    p.chroma[X265_CSP_I444].add_ps[LUMA_ ## W ## x ## H] = pixel_add_ps_c<W, H>;
+
 #define LUMA(W, H) \
+    p.luma_addAvg[LUMA_ ## W ## x ## H]  = addAvg<W, H>; \
     p.luma_copy_pp[LUMA_ ## W ## x ## H] = blockcopy_pp_c<W, H>; \
     p.luma_copy_sp[LUMA_ ## W ## x ## H] = blockcopy_sp_c<W, H>; \
     p.luma_copy_ps[LUMA_ ## W ## x ## H] = blockcopy_ps_c<W, H>; \
@@ -856,53 +913,79 @@ void Setup_C_PixelPrimitives(EncoderPrimitives &p)
 
     LUMA(4, 4);
     LUMA(8, 8);
-    CHROMA(4, 4);
+    CHROMA_420(4, 4);
     LUMA(4, 8);
-    CHROMA(2, 4);
+    CHROMA_420(2, 4);
     LUMA(8, 4);
-    CHROMA(4, 2);
+    CHROMA_420(4, 2);
     LUMA(16, 16);
-    CHROMA(8, 8);
+    CHROMA_420(8,  8);
     LUMA(16,  8);
-    CHROMA(8, 4);
+    CHROMA_420(8,  4);
     LUMA(8, 16);
-    CHROMA(4, 8);
+    CHROMA_420(4,  8);
     LUMA(16, 12);
-    CHROMA(8, 6);
+    CHROMA_420(8,  6);
     LUMA(12, 16);
-    CHROMA(6, 8);
+    CHROMA_420(6,  8);
     LUMA(16,  4);
-    CHROMA(8, 2);
+    CHROMA_420(8,  2);
     LUMA(4, 16);
-    CHROMA(2, 8);
+    CHROMA_420(2,  8);
     LUMA(32, 32);
-    CHROMA(16, 16);
+    CHROMA_420(16, 16);
     LUMA(32, 16);
-    CHROMA(16, 8);
+    CHROMA_420(16, 8);
     LUMA(16, 32);
-    CHROMA(8, 16);
+    CHROMA_420(8,  16);
     LUMA(32, 24);
-    CHROMA(16, 12);
+    CHROMA_420(16, 12);
     LUMA(24, 32);
-    CHROMA(12, 16);
+    CHROMA_420(12, 16);
     LUMA(32,  8);
-    CHROMA(16, 4);
+    CHROMA_420(16, 4);
     LUMA(8, 32);
-    CHROMA(4, 16);
+    CHROMA_420(4,  16);
     LUMA(64, 64);
-    CHROMA(32, 32);
+    CHROMA_420(32, 32);
     LUMA(64, 32);
-    CHROMA(32, 16);
+    CHROMA_420(32, 16);
     LUMA(32, 64);
-    CHROMA(16, 32);
+    CHROMA_420(16, 32);
     LUMA(64, 48);
-    CHROMA(32, 24);
+    CHROMA_420(32, 24);
     LUMA(48, 64);
-    CHROMA(24, 32);
+    CHROMA_420(24, 32);
     LUMA(64, 16);
-    CHROMA(32, 8);
+    CHROMA_420(32, 8);
     LUMA(16, 64);
-    CHROMA(8, 32);
+    CHROMA_420(8,  32);
+
+    CHROMA_444(4,  4);
+    CHROMA_444(8,  8);
+    CHROMA_444(4,  8);
+    CHROMA_444(8,  4);
+    CHROMA_444(16, 16);
+    CHROMA_444(16, 8);
+    CHROMA_444(8,  16);
+    CHROMA_444(16, 12);
+    CHROMA_444(12, 16);
+    CHROMA_444(16, 4);
+    CHROMA_444(4,  16);
+    CHROMA_444(32, 32);
+    CHROMA_444(32, 16);
+    CHROMA_444(16, 32);
+    CHROMA_444(32, 24);
+    CHROMA_444(24, 32);
+    CHROMA_444(32, 8);
+    CHROMA_444(8,  32);
+    CHROMA_444(64, 64);
+    CHROMA_444(64, 32);
+    CHROMA_444(32, 64);
+    CHROMA_444(64, 48);
+    CHROMA_444(48, 64);
+    CHROMA_444(64, 16);
+    CHROMA_444(16, 64);
 
     SET_FUNC_PRIMITIVE_TABLE_C(sse_pp, sse, pixelcmp_t, pixel, pixel)
     SET_FUNC_PRIMITIVE_TABLE_C(sse_sp, sse, pixelcmp_sp_t, int16_t, pixel)
