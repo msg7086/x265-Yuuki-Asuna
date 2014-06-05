@@ -1238,7 +1238,7 @@ int RateControl::rateControlEnd(TComPic* pic, int64_t bits, RateControlEntry* rc
     {
         if (rce->sliceType == B_SLICE)
         {
-            m_bframeBits += (int)actualBits;
+            m_bframeBits += actualBits;
             if (rce->bLastMiniGopBFrame)
             {
                 if (rce->bframes != 0)
