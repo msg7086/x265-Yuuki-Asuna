@@ -1037,7 +1037,6 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.dct[DCT_4x4] = x265_dct4_sse2;
         p.idct[IDCT_4x4] = x265_idct4_sse2;
         p.idct[IDST_4x4] = x265_idst4_sse2;
-        p.count_nonzero = x265_count_nonzero_sse2;
 
         LUMA_SS_FILTERS(_sse2);
     }
@@ -1050,6 +1049,7 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
 
         p.dct[DST_4x4] = x265_dst4_ssse3;
         p.idct[IDCT_8x8] = x265_idct8_ssse3;
+        p.count_nonzero = x265_count_nonzero_ssse3;
     }
     if (cpuMask & X265_CPU_SSE4)
     {
@@ -1061,6 +1061,7 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
 
         p.dct[DCT_8x8] = x265_dct8_sse4;
         p.quant = x265_quant_sse4;
+        p.nquant = x265_nquant_sse4;
         p.dequant_normal = x265_dequant_normal_sse4;
         p.cvt16to32_shl = x265_cvt16to32_shl_sse4;
         p.intra_pred[BLOCK_4x4][0] = x265_intra_pred_planar4_sse4;
@@ -1173,7 +1174,6 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.dct[DCT_4x4] = x265_dct4_sse2;
         p.idct[IDCT_4x4] = x265_idct4_sse2;
         p.idct[IDST_4x4] = x265_idst4_sse2;
-        p.count_nonzero = x265_count_nonzero_sse2;
         p.planecopy_sp = x265_downShift_16_sse2;
     }
     if (cpuMask & X265_CPU_SSSE3)
@@ -1208,6 +1208,7 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
 
         p.dct[DST_4x4] = x265_dst4_ssse3;
         p.idct[IDCT_8x8] = x265_idct8_ssse3;
+        p.count_nonzero = x265_count_nonzero_ssse3;
     }
     if (cpuMask & X265_CPU_SSE4)
     {
@@ -1257,6 +1258,7 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.calcresidual[BLOCK_16x16] = x265_getResidual16_sse4;
         p.calcresidual[BLOCK_32x32] = x265_getResidual32_sse4;
         p.quant = x265_quant_sse4;
+        p.nquant = x265_nquant_sse4;
         p.dequant_normal = x265_dequant_normal_sse4;
         p.weight_pp = x265_weight_pp_sse4;
         p.weight_sp = x265_weight_sp_sse4;
@@ -1315,39 +1317,6 @@ void Setup_Assembly_Primitives(EncoderPrimitives &p, int cpuMask)
         p.sad_x4[LUMA_16x32] = x265_pixel_sad_x4_16x32_avx2;
     }
 #endif // if HIGH_BIT_DEPTH
-
-    /* copy reusable luma primitives to chroma 4:4:4 */
-    for (int i = 0; i < NUM_LUMA_PARTITIONS; i++)
-    {
-        p.chroma[X265_CSP_I444].copy_pp[i] = p.luma_copy_pp[i];
-        p.chroma[X265_CSP_I444].copy_ps[i] = p.luma_copy_ps[i];
-        p.chroma[X265_CSP_I444].copy_sp[i] = p.luma_copy_sp[i];
-        p.chroma[X265_CSP_I444].copy_ss[i] = p.luma_copy_ss[i];
-        p.chroma[X265_CSP_I444].add_ps[i]  = p.luma_add_ps[i];
-        p.chroma[X265_CSP_I444].sub_ps[i]  = p.luma_sub_ps[i];
-        p.chroma[X265_CSP_I444].addAvg[i]  = p.luma_addAvg[i];
-    }
-
-    primitives.sa8d[BLOCK_4x4]   = primitives.sa8d_inter[LUMA_4x4];
-    primitives.sa8d[BLOCK_8x8]   = primitives.sa8d_inter[LUMA_8x8];
-    primitives.sa8d[BLOCK_16x16] = primitives.sa8d_inter[LUMA_16x16];
-    primitives.sa8d[BLOCK_32x32] = primitives.sa8d_inter[LUMA_32x32];
-    primitives.sa8d[BLOCK_64x64] = primitives.sa8d_inter[LUMA_64x64];
-
-    primitives.sad_square[BLOCK_4x4]   = primitives.sad[LUMA_4x4];
-    primitives.sad_square[BLOCK_8x8]   = primitives.sad[LUMA_8x8];
-    primitives.sad_square[BLOCK_16x16] = primitives.sad[LUMA_16x16];
-    primitives.sad_square[BLOCK_32x32] = primitives.sad[LUMA_32x32];
-    primitives.sad_square[BLOCK_64x64] = primitives.sad[LUMA_64x64];
-
-    // SA8D devolves to SATD for blocks not even multiples of 8x8
-    primitives.sa8d_inter[LUMA_4x4]   = primitives.satd[LUMA_4x4];
-    primitives.sa8d_inter[LUMA_4x8]   = primitives.satd[LUMA_4x8];
-    primitives.sa8d_inter[LUMA_4x16]  = primitives.satd[LUMA_4x16];
-    primitives.sa8d_inter[LUMA_8x4]   = primitives.satd[LUMA_8x4];
-    primitives.sa8d_inter[LUMA_16x4]  = primitives.satd[LUMA_16x4];
-    primitives.sa8d_inter[LUMA_16x12] = primitives.satd[LUMA_16x12];
-    primitives.sa8d_inter[LUMA_12x16] = primitives.satd[LUMA_12x16];
 }
 }
 

@@ -879,7 +879,7 @@ cglobal quant, 5,6,8, 0-(3*mmsize)
   %define qbits8    [rsp + 2 * mmsize]
 %endif
 
-    ; fill qbits-8
+    ; fill qbits
     movd        m0, r4d
     mova        qbits, m0
 
@@ -979,6 +979,81 @@ cglobal quant, 5,6,8, 0-(3*mmsize)
 
 
 ;-----------------------------------------------------------------------------
+; uint32_t nquant(int32_t *coef, int32_t *quantCoeff, int32_t *scaledCoeff, int32_t *qCoef, int qBits, int add, int numCoeff);
+;-----------------------------------------------------------------------------
+INIT_XMM sse4
+cglobal nquant, 5,6,8
+
+    ; fill qbits
+    movd        m5, r4d         ; m5 = qbits
+
+    ; fill offset
+    movd        m6, r5m
+    pshufd      m6, m6, 0       ; m6 = add
+
+    mov         r4d, r6m
+    shr         r4d, 3
+    pxor        m7, m7          ; m7 = numZero
+.loop:
+    ; 4 coeff
+    movu        m0, [r0]        ; m0 = level
+    pxor        m1, m1
+    pcmpgtd     m1, m0          ; m1 = sign
+    movu        m2, [r1]        ; m2 = qcoeff
+    pabsd       m0, m0
+    pmulld      m0, m2          ; m0 = tmpLevel1
+    movu        [r2], m0        ; m0 = scaledCoeff
+    paddd       m2, m0, m6
+    psrad       m2, m5          ; m2 = level1
+    pxor        m4, m4
+    pcmpeqd     m4, m2          ; m4 = mask4
+
+    pxor        m2, m1
+    psubd       m2, m1
+    packssdw    m2, m2
+    pmovsxwd    m2, m2
+    movu        [r3], m2
+    ; 4 coeff
+    movu        m0, [r0 + 16]   ; m0 = level
+    pxor        m1, m1
+    pcmpgtd     m1, m0          ; m1 = sign
+    movu        m2, [r1 + 16]   ; m2 = qcoeff
+    pabsd       m0, m0
+    pmulld      m0, m2          ; m0 = tmpLevel1
+    movu        [r2 + 16], m0   ; m0 = scaledCoeff
+    paddd       m2, m0, m6
+    psrad       m2, m5          ; m2 = level1
+    pxor        m0, m0
+    pcmpeqd     m0, m2          ; m0 = mask4
+
+    pxor        m2, m1
+    psubd       m2, m1
+    packssdw    m2, m2
+    pmovsxwd    m2, m2
+    movu        [r3 + 16], m2
+
+    packssdw    m4, m0          ; m4 = mask8
+    psubw       m7, m4          ; m7 = numZero
+
+    add         r0, 32
+    add         r1, 32
+    add         r2, 32
+    add         r3, 32
+
+    dec         r4d
+    jnz        .loop
+
+    packuswb    m7, m7
+    pxor        m0, m0
+    psadbw      m0, m7
+    mov         eax, r6m
+    movd        r4d, m0
+    sub         eax, r4d        ; numSig
+
+    RET
+
+
+;-----------------------------------------------------------------------------
 ; void dequant_normal(const int32_t* quantCoef, int32_t* coef, int num, int scale, int shift)
 ;-----------------------------------------------------------------------------
 INIT_XMM sse4
@@ -1070,28 +1145,31 @@ cglobal dequant_normal, 4,5,5
 ;-----------------------------------------------------------------------------
 ; int count_nonzero(const int32_t *quantCoeff, int numCoeff);
 ;-----------------------------------------------------------------------------
-INIT_XMM sse2
-cglobal count_nonzero, 2,2,4
+INIT_XMM ssse3
+cglobal count_nonzero, 2,2,5
     pxor        m0, m0
-    shr         r1d, 3
+    shr         r1d, 4
     movd        m1, r1d
-    pshuflw     m1, m1, 0
-    punpcklqdq  m1, m1
+    pshufb      m1, m0
 
 .loop:
-    mova        m2, [r0]
+    mova        m2, [r0 +  0]
     mova        m3, [r0 + 16]
-    add         r0, 32
     packssdw    m2, m3
-    pcmpeqw     m2, m0
-    paddw       m1, m2
+    mova        m3, [r0 + 32]
+    mova        m4, [r0 + 48]
+    add         r0, 64
+    packssdw    m3, m4
+    packsswb    m2, m3
+    pcmpeqb     m2, m0
+    paddb       m1, m2
     dec         r1d
     jnz         .loop
 
-    packuswb    m1, m1
     psadbw      m1, m0
-    movd        eax, m1
-
+    pshufd      m0, m1, 2
+    paddd       m0, m1
+    movd        eax, m0
     RET
 
 
