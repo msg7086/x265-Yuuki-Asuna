@@ -27,7 +27,6 @@
 #include "common.h"
 #include "bitstream.h"
 #include "TLibCommon/TComSlice.h"
-#include "TLibEncoder/SyntaxElementWriter.h"
 
 namespace x265 {
 // private namespace
@@ -81,11 +80,36 @@ protected:
     void writeByteAlign();
 };
 
-#if ENC_DEC_TRACE
-#define LOG(string) fprintf(g_hTrace, string)
-#else
-#define LOG(string)
-#endif
+class SEIuserDataUnregistered : public SEI
+{
+public:
+
+    PayloadType payloadType() const { return USER_DATA_UNREGISTERED; }
+
+    SEIuserDataUnregistered() : m_userData(NULL) {}
+
+    static const uint8_t m_uuid_iso_iec_11578[16];
+    uint32_t m_userDataLength;
+    uint8_t *m_userData;
+
+    void write(Bitstream& bs, TComSPS&)
+    {
+        m_bitIf = &bs;
+
+        WRITE_CODE(USER_DATA_UNREGISTERED, 8, "payload_type");
+
+        uint32_t payloadSize = 16 + m_userDataLength;
+        for (; payloadSize >= 0xff; payloadSize -= 0xff)
+            WRITE_CODE(0xff, 8, "payload_size");
+        WRITE_CODE(payloadSize, 8, "payload_size");
+
+        for (uint32_t i = 0; i < 16; i++)
+            WRITE_CODE(m_uuid_iso_iec_11578[i], 8, "sei.uuid_iso_iec_11578[i]");
+
+        for (uint32_t i = 0; i < m_userDataLength; i++)
+            WRITE_CODE(m_userData[i], 8, "user_data");
+    }
+};
 
 class SEIDecodedPictureHash : public SEI
 {
@@ -104,9 +128,7 @@ public:
 
     void write(Bitstream& bs, TComSPS&)
     {
-        setBitstream(&bs);
-
-        LOG("=========== Decoded picture hash SEI message ===========\n");
+        m_bitIf = &bs;
 
         WRITE_CODE(DECODED_PICTURE_HASH, 8, "payload_type");
 
@@ -161,7 +183,6 @@ public:
 
     void writeSEI(TComSPS&)
     {
-        LOG("=========== Active Parameter sets SEI message ===========\n");
         WRITE_CODE(m_activeVPSId,     4,   "active_vps_id");
         WRITE_FLAG(m_fullRandomAccessFlag, "full_random_access_flag");
         WRITE_FLAG(m_noParamSetUpdateFlag, "no_param_set_update_flag");
@@ -204,8 +225,6 @@ public:
     {
         TComVUI *vui = sps.getVuiParameters();
         TComHRD *hrd = vui->getHrdParameters();
-
-        LOG("=========== Buffering period SEI message ===========\n");
 
         WRITE_UVLC(m_bpSeqParameterSetId, "bp_seq_parameter_set_id");
         if (!hrd->getSubPicHrdParamsPresentFlag())
@@ -256,8 +275,6 @@ public:
 
     void writeSEI(TComSPS& sps)
     {
-        LOG("=========== Picture timing SEI message ===========\n");
-
         TComVUI *vui = sps.getVuiParameters();
         TComHRD *hrd = vui->getHrdParameters();
 
@@ -290,7 +307,6 @@ public:
 
     void writeSEI(TComSPS&)
     {
-        LOG("=========== Recovery point SEI message ===========\n");
         WRITE_SVLC(m_recoveryPocCnt,    "recovery_poc_cnt");
         WRITE_FLAG(m_exactMatchingFlag, "exact_matching_flag");
         WRITE_FLAG(m_brokenLinkFlag,    "broken_link_flag");
@@ -298,7 +314,5 @@ public:
     }
 };
 }
-
-#undef LOG
 
 #endif // ifndef X265_SEI_H

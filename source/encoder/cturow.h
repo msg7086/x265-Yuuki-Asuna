@@ -29,7 +29,6 @@
 #include "frame.h"
 
 #include "TLibEncoder/TEncCu.h"
-#include "TLibEncoder/TEncSearch.h"
 
 #include "rdcost.h"
 #include "entropy.h"
@@ -41,10 +40,7 @@ class Encoder;
 
 struct ThreadLocalData
 {
-    TEncSearch  m_search;
     TEncCu      m_cuCoder;
-    RDCost      m_rdCost;
-    TComTrQuant m_trQuant;
 
     // NOTE: the maximum LCU 64x64 have 256 partitions
     bool        m_edgeFilter[256];
@@ -63,7 +59,7 @@ public:
 
     SBac            m_rowEntropyCoder; /* only used by frameEncoder::encodeSlice() */
 
-    SBac            m_rdGoOnSbacCoder;
+    SBac            m_sbacCoder;
     SBac            m_bufferSbacCoder;
     SBac            m_rdSbacCoders[MAX_CU_DEPTH + 1][CI_NUM];
 
@@ -72,18 +68,10 @@ public:
     double          m_pCuCnt;
     double          m_skipCuCnt;
 
-    CTURow()
-    {
-        m_rdGoOnSbacCoder.m_bIsCounter = true;
-        for (uint32_t depth = 0; depth < g_maxCUDepth + 1; depth++)
-            for (int ciIdx = 0; ciIdx < CI_NUM; ciIdx++)
-                m_rdSbacCoders[depth][ciIdx].m_bIsCounter = true;
-    }
-
     void init(TComSlice *slice)
     {
         m_active = 0;
-        m_rdGoOnSbacCoder.resetEntropy(slice);
+        m_sbacCoder.resetEntropy(slice);
 
         // Note: Reset status to avoid frame parallelism output mistake on different thread number
         for (uint32_t depth = 0; depth < g_maxCUDepth + 1; depth++)

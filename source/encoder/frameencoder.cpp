@@ -25,6 +25,7 @@
 
 #include "PPA/ppa.h"
 #include "wavefront.h"
+#include "param.h"
 
 #include "encoder.h"
 #include "frameencoder.h"
@@ -92,6 +93,12 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     m_rows = new CTURow[m_numRows];
     bool ok = !!m_numRows;
 
+    int range = m_param->searchRange; /* fpel search */
+    range    += 1;                    /* diamond search range check lag */
+    range    += 2;                    /* subpel refine */
+    range    += NTAPS_LUMA / 2;       /* subpel filter half-length */
+    m_refLagRows = 1 + ((range + g_maxCUSize - 1) / g_maxCUSize);
+
     // NOTE: 2 times of numRows because both Encoder and Filter in same queue
     if (!WaveFront::init(m_numRows * 2))
     {
@@ -100,7 +107,7 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     }
 
     m_tld.init(*top);
-    m_frameFilter.init(top, this, numRows, &m_rows[0].m_rdGoOnSbacCoder);
+    m_frameFilter.init(top, this, numRows, &m_rows[0].m_sbacCoder);
 
     // initialize SPS
     top->initSPS(&m_sps);
@@ -151,7 +158,6 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     m_nr.offset = m_nr.offsetDenoise;
     m_nr.residualSum = m_nr.residualSumBuf[0];
     m_nr.count = m_nr.countBuf[0];
-
     m_nr.bNoiseReduction = !!m_param->noiseReduction;
 
     start();
@@ -217,6 +223,32 @@ void FrameEncoder::getStreamHeaders(NALList& list, Bitstream& bs)
     m_sbacCoder.codePPS(&m_pps, m_top->getScalingList());
     bs.writeByteAlignment();
     list.serialize(NAL_UNIT_PPS, bs);
+
+    char *opts = x265_param2string(m_param);
+    if (opts)
+    {
+        char *buffer = X265_MALLOC(char, strlen(opts) + strlen(x265_version_str) +
+                                         strlen(x265_build_info_str) + 200);
+        if (buffer)
+        {
+            sprintf(buffer, "x265 (build %d) - %s:%s - H.265/HEVC codec - "
+                    "Copyright 2013-2014 (c) Multicoreware Inc - "
+                    "http://x265.org - options: %s",
+                    X265_BUILD, x265_version_str, x265_build_info_str, opts);
+            
+            bs.resetBits();
+            SEIuserDataUnregistered idsei;
+            idsei.m_userData = (uint8_t*)buffer;
+            idsei.m_userDataLength = (uint32_t)strlen(buffer);
+            idsei.write(bs, m_sps);
+            bs.writeByteAlignment();
+            list.serialize(NAL_UNIT_PREFIX_SEI, bs);
+
+            X265_FREE(buffer);
+        }
+
+        X265_FREE(opts);
+    }
 
     if (m_param->bEmitHRDSEI)
     {
@@ -311,7 +343,7 @@ void FrameEncoder::setLambda(int qp, ThreadLocalData &tld)
     chromaQPOffset = slice->getPPS()->getChromaCrQpOffset() + slice->getSliceQpDeltaCr();
     int qpCr = Clip3(0, MAX_MAX_QP, qp + chromaQPOffset);
     
-    tld.m_search.setQP(qp, qpCb, qpCr);
+    tld.m_cuCoder.setQP(qp, qpCb, qpCr);
 }
 
 void FrameEncoder::compressFrame()
@@ -490,6 +522,7 @@ void FrameEncoder::compressFrame()
     compressCTURows();
 
     if (m_param->rc.bStatWrite)
+    {
         // accumulate intra,inter,skip cu count per frame for 2 pass
         for (int i = 0; i < m_numRows; i++)
         {
@@ -497,7 +530,11 @@ void FrameEncoder::compressFrame()
             m_frameStats.cuCount_p += m_rows[i].m_pCuCnt;
             m_frameStats.cuCount_skip += m_rows[i].m_skipCuCnt;
         }
-
+        double totalCuCount = m_frameStats.cuCount_i + m_frameStats.cuCount_p + m_frameStats.cuCount_skip;
+        m_frameStats.cuCount_i /= totalCuCount;
+        m_frameStats.cuCount_p /= totalCuCount;
+        m_frameStats.cuCount_skip /= totalCuCount;
+    }
     if (m_sps.getUseSAO())
     {
         SAOParam* saoParam = m_frame->getPicSym()->getSaoParam();
@@ -602,15 +639,6 @@ void FrameEncoder::compressFrame()
 
 void FrameEncoder::encodeSlice()
 {
-#if ENC_DEC_TRACE
-    g_bJustDoIt = g_bEncDecTraceEnable;
-    DTRACE_CABAC_VL(g_nSymbolCounter++);
-    DTRACE_CABAC_T("\tPOC: ");
-    DTRACE_CABAC_V(m_frame->getPOC());
-    DTRACE_CABAC_T("\n");
-    g_bJustDoIt = g_bEncDecTraceDisable;
-#endif
-
     TComSlice* slice = m_frame->getSlice();
     const uint32_t widthInLCUs = m_frame->getPicSym()->getFrameWidthInCU();
     const uint32_t lastCUAddr = (slice->getSliceCurEndCUAddr() + m_frame->getNumPartInCU() - 1) / m_frame->getNumPartInCU();
@@ -667,17 +695,9 @@ void FrameEncoder::encodeSlice()
             }
         }
 
-#if ENC_DEC_TRACE
-        g_bJustDoIt = g_bEncDecTraceEnable;
-#endif
-        
-        m_tld.m_search.m_sbacCoder = &m_sbacCoder;
+        // final coding (bitstream generation) for this CU
         m_tld.m_cuCoder.m_sbacCoder = &m_sbacCoder;
-        m_tld.m_cuCoder.encodeCU(cu, false);
-
-#if ENC_DEC_TRACE
-        g_bJustDoIt = g_bEncDecTraceDisable;
-#endif
+        m_tld.m_cuCoder.encodeCU(cu);
 
         // load back status of the entropy coder after encoding the LCU into relevant bitstream entropy coder
         m_rows[subStrm].m_rowEntropyCoder.load(m_sbacCoder);
@@ -723,11 +743,6 @@ void FrameEncoder::compressCTURows()
 
     bool bUseWeightP = slice->getPPS()->getUseWP() && slice->getSliceType() == P_SLICE;
     bool bUseWeightB = slice->getPPS()->getWPBiPred() && slice->getSliceType() == B_SLICE;
-    int range = m_param->searchRange; /* fpel search */
-    range    += 1;                    /* diamond search range check lag */
-    range    += 2;                    /* subpel refine */
-    range    += NTAPS_LUMA / 2;       /* subpel filter half-length */
-    int refLagRows = 1 + ((range + g_maxCUSize - 1) / g_maxCUSize);
     int numPredDir = slice->isInterP() ? 1 : slice->isInterB() ? 2 : 0;
 
     m_SSDY = m_SSDU = m_SSDV = 0;
@@ -752,14 +767,14 @@ void FrameEncoder::compressCTURows()
                     Frame *refpic = slice->getRefPic(l, ref);
 
                     int reconRowCount = refpic->m_reconRowCount.get();
-                    while ((reconRowCount != m_numRows) && (reconRowCount < row + refLagRows))
+                    while ((reconRowCount != m_numRows) && (reconRowCount < row + m_refLagRows))
                     {
                         reconRowCount = refpic->m_reconRowCount.waitForChange(reconRowCount);
                     }
 
                     if ((bUseWeightP || bUseWeightB) && m_mref[l][ref].isWeighted)
                     {
-                        m_mref[l][ref].applyWeight(row + refLagRows, m_numRows);
+                        m_mref[l][ref].applyWeight(row + m_refLagRows, m_numRows);
                     }
                 }
             }
@@ -791,14 +806,14 @@ void FrameEncoder::compressCTURows()
                         Frame *refpic = slice->getRefPic(list, ref);
 
                         int reconRowCount = refpic->m_reconRowCount.get();
-                        while ((reconRowCount != m_numRows) && (reconRowCount < i + refLagRows))
+                        while ((reconRowCount != m_numRows) && (reconRowCount < i + m_refLagRows))
                         {
                             reconRowCount = refpic->m_reconRowCount.waitForChange(reconRowCount);
                         }
 
                         if ((bUseWeightP || bUseWeightB) && m_mref[l][ref].isWeighted)
                         {
-                            m_mref[list][ref].applyWeight(i + refLagRows, m_numRows);
+                            m_mref[list][ref].applyWeight(i + m_refLagRows, m_numRows);
                         }
                     }
                 }
@@ -867,13 +882,12 @@ void FrameEncoder::processRowEncoder(int row, ThreadLocalData& tld)
     }
 
     // setup thread-local data
-    tld.m_trQuant.m_nr = &m_nr;
-    tld.m_search.m_mref = m_mref;
-
-    setLambda(m_frame->getSlice()->getSliceQp(), tld);
     TComPicYuv* fenc = m_frame->getPicYuvOrg();
-    tld.m_search.m_me.setSourcePlane(fenc->getLumaAddr(), fenc->getStride());
+    tld.m_cuCoder.m_trQuant.m_nr = &m_nr;
+    tld.m_cuCoder.m_mref = m_mref;
+    tld.m_cuCoder.m_me.setSourcePlane(fenc->getLumaAddr(), fenc->getStride());
     tld.m_cuCoder.m_log = &tld.m_cuCoder.m_sliceTypeLog[m_frame->getSlice()->getSliceType()];
+    setLambda(m_frame->getSlice()->getSliceQp(), tld);
 
     int64_t startTime = x265_mdate();
     assert(m_frame->getPicSym()->getFrameWidthInCU() == m_numCols);

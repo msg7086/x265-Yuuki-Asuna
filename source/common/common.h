@@ -192,6 +192,12 @@ struct NoiseReduction
     uint32_t countBuf[4][8];
 };
 
+enum SCALING_LIST_PARAMETER
+{
+    SCALING_LIST_OFF,
+    SCALING_LIST_DEFAULT,
+};
+
 /* defined in common.cpp */
 int64_t x265_mdate(void);
 void x265_log(const x265_param *param, int level, const char *fmt, ...);
@@ -202,7 +208,6 @@ void x265_free(void *ptr);
 double x265_ssim2dB(double ssim);
 double x265_qScale2qp(double qScale);
 double x265_qp2qScale(double qp);
-
 uint32_t x265_picturePlaneSize(int csp, int width, int height, int plane);
-
+char* x265_slurp_file(const char *filename);
 #endif // ifndef X265_COMMON_H

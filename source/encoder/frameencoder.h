@@ -31,7 +31,6 @@
 #include "frame.h"
 
 #include "TLibEncoder/TEncCu.h"
-#include "TLibEncoder/TEncSearch.h"
 #include "TLibEncoder/TEncSampleAdaptiveOffset.h"
 
 #include "entropy.h"
@@ -44,12 +43,6 @@
 namespace x265 {
 // private x265 namespace
 
-enum SCALING_LIST_PARAMETER
-{
-    SCALING_LIST_OFF,
-    SCALING_LIST_DEFAULT,
-};
-
 class ThreadPool;
 class Encoder;
 
@@ -61,7 +54,7 @@ struct FrameStats
     /* Texture bits (DCT coefs) */
     int         coeffBits;
     int         miscBits;
-    /* CU type counts */
+    /* CU type counts stored as percentage */
     double      cuCount_i;
     double      cuCount_p;
     double      cuCount_skip;
@@ -124,6 +117,7 @@ public:
 
     int                      m_numRows;
     uint32_t                 m_numCols;
+    int                      m_refLagRows;
     CTURow*                  m_rows;
     TComSPS                  m_sps;
     TComPPS                  m_pps;

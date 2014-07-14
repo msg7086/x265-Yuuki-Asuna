@@ -1213,8 +1213,10 @@ char *x265_param2string(x265_param *p)
 #define BOOL(param, cliopt) \
     s += sprintf(s, " %s", (param) ? cliopt : "no-"cliopt);
 
+    s += sprintf(s, "%dx%d", p->sourceWidth,p->sourceHeight);
+    s += sprintf(s, " fps=%u/%u", p->fpsNum, p->fpsDenom);
+    s += sprintf(s, " bitdepth=%d", p->internalBitDepth);
     BOOL(p->bEnableWavefront, "wpp");
-    s += sprintf(s, " fps=%d/%d", p->fpsNum, p->fpsDenom);
     s += sprintf(s, " ctu=%d", p->maxCUSize);
     s += sprintf(s, " tu-intra-depth=%d", p->tuQTMaxIntraDepth);
     s += sprintf(s, " tu-inter-depth=%d", p->tuQTMaxInterDepth);
@@ -1274,19 +1276,19 @@ char *x265_param2string(x265_param *p)
                           p->rc.complexityBlur, p->rc.qblur);
         if (p->rc.vbvBufferSize)
         {
-            s += sprintf(s, " vbv_maxrate=%d vbv_bufsize=%d",
+            s += sprintf(s, " vbv-maxrate=%d vbv-bufsize=%d",
                           p->rc.vbvMaxBitrate, p->rc.vbvBufferSize);
             if (p->rc.rateControlMode == X265_RC_CRF)
-                s += sprintf(s, " crf_max=%.1f", p->rc.rfConstantMax);
+                s += sprintf(s, " crf-max=%.1f", p->rc.rfConstantMax);
         }
     }
     else if (p->rc.rateControlMode == X265_RC_CQP)
         s += sprintf(s, " qp=%d", p->rc.qp);
     if (!(p->rc.rateControlMode == X265_RC_CQP && p->rc.qp == 0))
     {
-        s += sprintf(s, " ip_ratio=%.2f", p->rc.ipFactor);
+        s += sprintf(s, " ipratio=%.2f", p->rc.ipFactor);
         if (p->bframes)
-            s += sprintf(s, " pb_ratio=%.2f", p->rc.pbFactor);
+            s += sprintf(s, " pbratio=%.2f", p->rc.pbFactor);
     }
 #undef BOOL
     return buf;

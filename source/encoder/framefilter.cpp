@@ -39,7 +39,6 @@ FrameFilter::FrameFilter()
     , m_frame(NULL)
     , m_ssimBuf(NULL)
 {
-    m_sbacCoder.m_bIsCounter = true;
 }
 
 void FrameFilter::destroy()
@@ -56,7 +55,7 @@ void FrameFilter::destroy()
     X265_FREE(m_ssimBuf);
 }
 
-void FrameFilter::init(Encoder *top, FrameEncoder *frame, int numRows, SBac* rdGoOnSbacCoder)
+void FrameFilter::init(Encoder *top, FrameEncoder *frame, int numRows, SBac* row0Coder)
 {
     m_param = top->m_param;
     m_frame = frame;
@@ -67,7 +66,7 @@ void FrameFilter::init(Encoder *top, FrameEncoder *frame, int numRows, SBac* rdG
     m_pad[1] = top->m_pad[1];
 
     // NOTE: for sao only, I write this code because I want to exact match with HM's bug bitstream
-    m_rdGoOnSbacCoderRow0 = rdGoOnSbacCoder;
+    m_sbacCoderRow0 = row0Coder;
 
     if (m_param->bEnableLoopFilter)
         m_loopFilter.create(g_maxCUDepth);
@@ -90,7 +89,6 @@ void FrameFilter::start(Frame *pic)
     m_pic = pic;
 
     m_saoRowDelay = m_param->bEnableLoopFilter ? 1 : 0;
-    m_sbacCoder.setBitstream(&m_bitCounter);
     m_sbacCoder.zeroFract();
 
     if (m_param->bEnableSAO)
@@ -126,7 +124,7 @@ void FrameFilter::processRow(int row, ThreadLocalData& tld)
     if (row == 0 && m_param->bEnableSAO)
     {
         // NOTE: not need, seems HM's bug, I want to keep output exact matched.
-        m_sbacCoder.m_fracBits = m_rdGoOnSbacCoderRow0->m_fracBits;
+        m_sbacCoder.m_fracBits = m_sbacCoderRow0->m_fracBits;
         m_sao.startSaoEnc(m_pic, &m_sbacCoder);
     }
 

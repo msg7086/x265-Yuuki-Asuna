@@ -48,6 +48,7 @@
 #include "motion.h"
 
 #include "entropy.h"
+#include "rdcost.h"
 
 #define MVP_IDX_BITS 1
 
@@ -104,8 +105,6 @@ public:
     MotionEstimate   m_me;
     MotionReference (*m_mref)[MAX_NUM_REF + 1];
 
-    SBac          (*m_rdSbacCoders)[CI_NUM];
-    SBac*           m_rdGoOnSbacCoder;
     bool            m_bFrameParallel;
 
     ShortYuv*       m_qtTempShortYuv;
@@ -117,10 +116,12 @@ public:
     uint8_t*        m_qtTempTransformSkipFlag[3];
 
     // interface to classes
-    TComTrQuant*    m_trQuant;
-    RDCost*         m_rdCost;
+    TComTrQuant     m_trQuant;
+    RDCost          m_rdCost;
+
     SBac*           m_sbacCoder;
     x265_param*     m_param;
+    SBac          (*m_rdSbacCoders)[CI_NUM];
 
     bool            m_bEnableRDOQ;
     int             m_numLayers;
@@ -133,7 +134,7 @@ public:
     TEncSearch();
     virtual ~TEncSearch();
 
-    bool init(Encoder* top, RDCost* rdCost, TComTrQuant *trQuant);
+    bool initSearch();
 
     uint32_t xModeBitsIntra(TComDataCU* cu, uint32_t mode, uint32_t partOffset, uint32_t depth);
     uint32_t xModeBitsRemIntra(TComDataCU * cu, uint32_t partOffset, uint32_t depth, uint32_t preds[3], uint64_t & mpms);

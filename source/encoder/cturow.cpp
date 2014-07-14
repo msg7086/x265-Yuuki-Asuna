@@ -32,26 +32,7 @@ using namespace x265;
 
 void ThreadLocalData::init(Encoder& enc)
 {
-    m_trQuant.init(enc.m_bEnableRDOQ);
-    if (enc.m_useScalingListId == SCALING_LIST_OFF)
-    {
-        m_trQuant.setFlatScalingList();
-        m_trQuant.setUseScalingList(false);
-    }
-    else if (enc.m_useScalingListId == SCALING_LIST_DEFAULT)
-    {
-        m_trQuant.setScalingList(enc.getScalingList());
-        m_trQuant.setUseScalingList(true);
-    }
-
-    m_rdCost.setPsyRdScale(enc.m_param->psyRd);
-
-    m_search.init(&enc, &m_rdCost, &m_trQuant);
-
     m_cuCoder.init(&enc);
-    m_cuCoder.m_search = &m_search;
-    m_cuCoder.m_trQuant = &m_trQuant;
-    m_cuCoder.m_rdCost = &m_rdCost;
     m_cuCoder.create((uint8_t)g_maxCUDepth, g_maxCUSize);
 }
 
@@ -67,24 +48,15 @@ void CTURow::processCU(TComDataCU *cu, SBac *bufferSbac, ThreadLocalData& tld, b
         m_rdSbacCoders[0][CI_CURR_BEST].loadContexts(*bufferSbac);
 
     // setup thread local data structures to use this row's CABAC state
-    tld.m_search.m_sbacCoder = &m_rdGoOnSbacCoder;
-    tld.m_search.m_rdSbacCoders = m_rdSbacCoders;
-    tld.m_search.m_rdGoOnSbacCoder = &m_rdGoOnSbacCoder;
-    tld.m_cuCoder.m_sbacCoder = &m_rdGoOnSbacCoder;
+    tld.m_cuCoder.m_sbacCoder = &m_sbacCoder;
     tld.m_cuCoder.m_rdSbacCoders = m_rdSbacCoders;
-    tld.m_cuCoder.m_rdGoOnSbacCoder = &m_rdGoOnSbacCoder;
-
-    BitCounter bc;
-    m_rdGoOnSbacCoder.setBitstream(&bc);
 
     tld.m_cuCoder.compressCU(cu); // Does all the CU analysis
 
-    tld.m_search.m_sbacCoder = &m_rdSbacCoders[0][CI_CURR_BEST];
     tld.m_cuCoder.m_sbacCoder = &m_rdSbacCoders[0][CI_CURR_BEST];
-    m_rdSbacCoders[0][CI_CURR_BEST].setBitstream(&bc);
-    bc.resetBits();
+    m_rdSbacCoders[0][CI_CURR_BEST].resetBits();
 
-    tld.m_cuCoder.encodeCU(cu, true);  // Count bits
+    tld.m_cuCoder.encodeCU(cu);
 
     if (bSaveSBac)
         // Save CABAC state for next row

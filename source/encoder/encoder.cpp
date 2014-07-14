@@ -62,8 +62,6 @@ Encoder::Encoder()
     m_numChromaWPFrames = 0;
     m_numLumaWPBiFrames = 0;
     m_numChromaWPBiFrames = 0;
-    m_TransquantBypassEnableFlag = false;
-    m_CUTransquantBypassFlagValue = false;
     m_lookahead = NULL;
     m_frameEncoder = NULL;
     m_rateControl = NULL;
@@ -73,19 +71,10 @@ Encoder::Encoder()
     m_outputCount = 0;
     m_csvfpt = NULL;
     m_param = NULL;
-
-#if ENC_DEC_TRACE
-    g_hTrace = fopen("TraceEnc.txt", "wb");
-    g_bJustDoIt = g_bEncDecTraceDisable;
-    g_nSymbolCounter = 0;
-#endif
 }
 
 Encoder::~Encoder()
 {
-#if ENC_DEC_TRACE
-    fclose(g_hTrace);
-#endif
 }
 
 void Encoder::create()
@@ -99,12 +88,8 @@ void Encoder::create()
 
     m_frameEncoder = new FrameEncoder[m_param->frameNumThreads];
     if (m_frameEncoder)
-    {
         for (int i = 0; i < m_param->frameNumThreads; i++)
-        {
             m_frameEncoder[i].setThreadPool(m_threadPool);
-        }
-    }
 
     /* Allocate thread local data shared by all frame encoders */
     ThreadPool *pool = ThreadPool::getThreadPool();
@@ -619,8 +604,7 @@ void Encoder::printSummary()
     if (!m_param->bLogCuStats)
         return;
 
-    ThreadPool *pool = ThreadPool::getThreadPool();
-    const int poolThreadCount = pool ? pool->getThreadCount() : 1;
+    const int poolThreadCount = m_threadPool ? m_threadPool->getThreadCount() : 1;
 
     for (int sliceType = 2; sliceType >= 0; sliceType--)
     {
@@ -1221,7 +1205,7 @@ void Encoder::initPPS(TComPPS *pps)
     pps->setNumRefIdxL0DefaultActive(1);
     pps->setNumRefIdxL1DefaultActive(1);
 
-    pps->setTransquantBypassEnableFlag(m_TransquantBypassEnableFlag);
+    pps->setTransquantBypassEnableFlag(m_param->bCULossless || m_param->bLossless);
     pps->setUseTransformSkip(m_param->bEnableTransformSkip);
 }
 
@@ -1319,19 +1303,12 @@ void Encoder::configure(x265_param *p)
 
     if (p->bLossless)
     {
-        m_TransquantBypassEnableFlag  = true;
-        m_CUTransquantBypassFlagValue = true; 
         p->rc.rateControlMode = X265_RC_CQP;
         p->rc.qp = 4; // An oddity, QP=4 is more lossless than QP=0 and gives better lambdas
         p->bEnableSsim = 0;
         p->bEnablePsnr = 0;
     }
     
-    if (p->bCULossless)
-    {
-        m_TransquantBypassEnableFlag  = true;
-    }
-
     if (p->rc.rateControlMode == X265_RC_CQP)
     {
         p->rc.aqMode = X265_AQ_NONE;
@@ -1346,7 +1323,7 @@ void Encoder::configure(x265_param *p)
         p->rc.aqStrength = 0.0;
     }
 
-    if (p->lookaheadDepth == 0 && p->rc.cuTree)
+    if (p->lookaheadDepth == 0 && p->rc.cuTree && !p->rc.bStatRead)
     {
         x265_log(p, X265_LOG_WARNING, "cuTree disabled, requires lookahead to be enabled\n");
         p->rc.cuTree = 0;
