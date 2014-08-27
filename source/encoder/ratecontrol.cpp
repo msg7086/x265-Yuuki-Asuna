@@ -403,7 +403,7 @@ RateControl::RateControl(x265_param *p)
     }
 
     m_isCbr = m_param->rc.rateControlMode == X265_RC_ABR && m_isVbv && !m_2pass && m_param->rc.vbvMaxBitrate <= m_param->rc.bitrate;
-    m_bframes = m_param->bframes;
+    m_leadingBframes = m_param->bframes;
     m_bframeBits = 0;
     m_leadingNoBSatd = 0;
     m_ipOffset = 6.0 * X265_LOG2(m_param->rc.ipFactor);
@@ -1069,9 +1069,9 @@ int RateControl::rateControlStart(Frame* pic, RateControlEntry* rce, Encoder* en
     }
     rce->isActive = true;
     if (m_sliceType == B_SLICE)
-        rce->bframes = m_bframes;
+        rce->bframes = m_leadingBframes;
     else
-        m_bframes = pic->m_lowres.leadingBframes;
+        m_leadingBframes = pic->m_lowres.leadingBframes;
 
     rce->bLastMiniGopBFrame = pic->m_lowres.bLastMiniGopBFrame;
     rce->bufferRate = m_bufferRate;
@@ -1369,7 +1369,7 @@ double RateControl::rateEstimateQscale(Frame* pic, RateControlEntry *rce)
             q += m_pbOffset;
         rce->qpNoVbv = q;
         double qScale = x265_qp2qScale(q);
-        if (m_bframes > 5 && m_isVbv)
+        if (m_leadingBframes > 5 && m_isVbv)
         {
             qScale = clipQscale(pic, qScale);
             m_lastQScaleFor[m_sliceType] = qScale;
@@ -1735,6 +1735,25 @@ double RateControl::clipQscale(Frame* pic, double q)
 
             q = X265_MAX(q0, q);
         }
+         // Check B-frame complexity, and use up any bits that would
+         // overflow before the next P-frame.
+         if (m_leadingBframes <= 5 && m_sliceType == P_SLICE && !m_singleFrameVbv)
+         {
+             int nb = m_leadingBframes;
+             double bits = predictSize(&m_pred[m_sliceType], q, (double)m_currentSatd);
+             double bbits = predictSize(&m_predBfromP, q * m_param->rc.pbFactor, (double)m_currentSatd);
+             double space;
+             if (bbits > m_bufferRate)
+                 nb = 0;
+             double pbbits = nb * bbits;
+
+             space = m_bufferFill + (1 + nb) * m_bufferRate - m_bufferSize;
+             if (pbbits < space)
+             {
+                 q *= X265_MAX(pbbits / space, bits / (0.5 * m_bufferSize));
+             }
+             q = X265_MAX(q0 / 2, q);
+         }
 
         if (!m_isCbr)
             q = X265_MAX(q0, q);
