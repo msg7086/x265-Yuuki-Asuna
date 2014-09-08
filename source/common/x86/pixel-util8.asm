@@ -54,6 +54,8 @@ cextern pw_1
 cextern pw_00ff
 cextern pw_2000
 cextern pw_pixel_max
+cextern pd_32767
+cextern pd_n32768
 
 ;-----------------------------------------------------------------------------
 ; void calcrecon(pixel* pred, int16_t* residual, int16_t* reconqt, pixel *reconipred, int stride, int strideqt, int strideipred)
@@ -1040,21 +1042,18 @@ cglobal nquant, 3,5,7
 ;-----------------------------------------------------------------------------
 INIT_XMM sse4
 cglobal dequant_normal, 5,5,5
-    movd        m1, r3              ; m1 = word [scale]
     mova        m2, [pw_1]
 %if HIGH_BIT_DEPTH
     cmp         r3d, 32767
     jle         .skip
-    psrld       m1, 2
+    shr         r3d, 2
     sub         r4d, 2
 .skip:
 %endif
     movd        m0, r4d             ; m0 = shift
-    xor         r3d, r3d
-    dec         r4d
+    add         r4d, 15
     bts         r3d, r4d
-    movd        m3, r3d
-    punpcklwd   m1, m3
+    movd        m1, r3d
     pshufd      m1, m1, 0           ; m1 = dword [add scale]
     ; m0 = shift
     ; m1 = scale
@@ -1071,14 +1070,60 @@ cglobal dequant_normal, 5,5,5
     pmovsxwd    m3, m3
     packssdw    m4, m4
     pmovsxwd    m4, m4
-    movu        [r1], m3
-    movu        [r1 + 16], m4
+    mova        [r1], m3
+    mova        [r1 + 16], m4
 
     add         r0, 16
     add         r1, 32
 
     sub         r2d, 8
     jnz        .loop
+    RET
+
+
+INIT_YMM avx2
+cglobal dequant_normal, 5,5,7
+    vpbroadcastd    m2, [pw_1]          ; m2 = word [1]
+    vpbroadcastd    m5, [pd_32767]      ; m5 = dword [32767]
+    vpbroadcastd    m6, [pd_n32768]     ; m6 = dword [-32768]
+%if HIGH_BIT_DEPTH
+    cmp             r3d, 32767
+    jle            .skip
+    shr             r3d, 2
+    sub             r4d, 2
+.skip:
+%endif
+    movd            xm0, r4d            ; m0 = shift
+    add             r4d, -1+16
+    bts             r3d, r4d
+    vpbroadcastd    m1, r3d             ; m1 = dword [add scale]
+
+    ; m0 = shift
+    ; m1 = scale
+    ; m2 = word [1]
+    shr             r2d, 4
+.loop:
+    movu            m3, [r0]
+    punpckhwd       m4, m3, m2
+    punpcklwd       m3, m2
+    pmaddwd         m3, m1              ; m3 = dword (clipQCoef * scale + add)
+    pmaddwd         m4, m1
+    psrad           m3, xm0
+    psrad           m4, xm0
+    pminsd          m3, m5
+    pmaxsd          m3, m6
+    pminsd          m4, m5
+    pmaxsd          m4, m6
+    mova            [r1 + 0 * mmsize/2], xm3
+    mova            [r1 + 1 * mmsize/2], xm4
+    vextracti128    [r1 + 2 * mmsize/2], m3, 1
+    vextracti128    [r1 + 3 * mmsize/2], m4, 1
+
+    add             r0, mmsize
+    add             r1, mmsize * 2
+
+    dec             r2d
+    jnz            .loop
     RET
 
 
