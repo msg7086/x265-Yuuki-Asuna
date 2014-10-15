@@ -47,6 +47,7 @@ public:
     TComPicSym*       m_picSym;
     PicYuv*           m_reconPicYuv;
     int               m_POC;
+    int               m_frameEncoderID;     // To identify the ID of the frameEncoder processing this frame
 
     bool              m_bChromaPlanesExtended; // orig chroma planes motion extended for weightp analysis
 

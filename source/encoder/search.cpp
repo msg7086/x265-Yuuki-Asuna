@@ -284,7 +284,7 @@ uint32_t Search::xGetIntraBitsLuma(const TComDataCU& cu, const CU& cuData, uint3
 }
 
 /* returns distortion */
-uint32_t Search::xIntraCodingLumaBlk(Mode& mode, const CU& cuData, uint32_t absPartIdx, uint32_t log2TrSize, int16_t* reconQt, uint32_t reconQtStride, coeff_t* coeff, uint32_t& cbf)
+uint32_t Search::calcIntraLumaRecon(Mode& mode, const CU& cuData, uint32_t absPartIdx, uint32_t log2TrSize, int16_t* reconQt, uint32_t reconQtStride, coeff_t* coeff, uint32_t& cbf)
 {
     TComDataCU* cu      = &mode.cu;
     const Yuv* fencYuv  = mode.fencYuv;
@@ -333,7 +333,7 @@ uint32_t Search::xIntraCodingLumaBlk(Mode& mode, const CU& cuData, uint32_t absP
     }
 }
 
-uint32_t Search::xIntraCodingChromaBlk(Mode& mode, const CU& cuData, uint32_t absPartIdx, uint32_t chromaId, uint32_t log2TrSizeC,
+uint32_t Search::calcIntraChromaRecon(Mode& mode, const CU& cuData, uint32_t absPartIdx, uint32_t chromaId, uint32_t log2TrSizeC,
                                        int16_t* reconQt, uint32_t reconQtStride, coeff_t* coeff, uint32_t& cbf)
 {
     TComDataCU* cu = &mode.cu;
@@ -501,8 +501,7 @@ uint32_t Search::xRecurIntraCodingQT(Mode& mode, const CU& cuData, uint32_t trDe
                 if ((cu->m_slice->m_pps->bTransquantBypassEnabled))
                     cu->setCUTransquantBypassSubParts(bIsLossLess, absPartIdx, fullDepth);
 
-                // code luma block with given intra prediction mode and store Cbf
-                singleDistYTmp = xIntraCodingLumaBlk(mode, cuData, absPartIdx, log2TrSize, recon, reconStride, coeff, singleCbfYTmp);
+                singleDistYTmp = calcIntraLumaRecon(mode, cuData, absPartIdx, log2TrSize, recon, reconStride, coeff, singleCbfYTmp);
                 singlePsyEnergyYTmp = 0;
                 if (m_rdCost.m_psyRd)
                 {
@@ -566,9 +565,8 @@ uint32_t Search::xRecurIntraCodingQT(Mode& mode, const CU& cuData, uint32_t trDe
         {
             m_entropyCoder.store(m_rdContexts[fullDepth].rqtRoot);
 
-            // code luma block with given intra prediction mode and store Cbf
             cu->setTransformSkipSubParts(0, TEXT_LUMA, absPartIdx, fullDepth);
-            singleDistY = xIntraCodingLumaBlk(mode, cuData, absPartIdx, log2TrSize, reconQt, reconQtStride, coeffY, singleCbfY);
+            singleDistY = calcIntraLumaRecon(mode, cuData, absPartIdx, log2TrSize, reconQt, reconQtStride, coeffY, singleCbfY);
             if (m_rdCost.m_psyRd)
             {
                 uint32_t zorder = cuData.encodeIdx + absPartIdx;
@@ -959,7 +957,7 @@ uint32_t Search::xRecurIntraChromaCodingQT(Mode& mode, const CU& cuData, uint32_
 
                     cu->setTransformSkipPartRange(chromaModeId, (TextType)chromaId, absPartIdxC, tuIterator.absPartIdxStep);
 
-                    singleDistCTmp = xIntraCodingChromaBlk(mode, cuData, absPartIdxC, chromaId, log2TrSizeC, recon, reconStride, coeff, singleCbfCTmp);
+                    singleDistCTmp = calcIntraChromaRecon(mode, cuData, absPartIdxC, chromaId, log2TrSizeC, recon, reconStride, coeff, singleCbfCTmp);
                     cu->setCbfPartRange(singleCbfCTmp << trDepth, (TextType)chromaId, absPartIdxC, tuIterator.absPartIdxStep);
 
                     if (chromaModeId == 1 && !singleCbfCTmp)
@@ -1030,7 +1028,7 @@ uint32_t Search::xRecurIntraChromaCodingQT(Mode& mode, const CU& cuData, uint32_
             else
             {
                 cu->setTransformSkipPartRange(0, (TextType)chromaId, absPartIdxC, tuIterator.absPartIdxStep);
-                outDist += xIntraCodingChromaBlk(mode, cuData, absPartIdxC, chromaId, log2TrSizeC, reconQt, reconQtStride, coeffC, singleCbfC);
+                outDist += calcIntraChromaRecon(mode, cuData, absPartIdxC, chromaId, log2TrSizeC, reconQt, reconQtStride, coeffC, singleCbfC);
                 if (m_rdCost.m_psyRd)
                 {
                     uint32_t zorder = cuData.encodeIdx + absPartIdxC;

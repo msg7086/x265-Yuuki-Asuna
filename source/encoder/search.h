@@ -195,7 +195,7 @@ protected:
 
     uint32_t xGetIntraBitsLuma(const TComDataCU& cu, const CU& cuData, uint32_t trDepth, uint32_t absPartIdx, uint32_t log2TrSize, const coeff_t* coeff, uint32_t depthRange[2]);
 
-    uint32_t xIntraCodingLumaBlk(Mode& mode, const CU& cuData, uint32_t absPartIdx, uint32_t log2TrSize, int16_t* reconQt, uint32_t reconQtStride, coeff_t* coeff, uint32_t& cbf);
+    uint32_t calcIntraLumaRecon(Mode& mode, const CU& cuData, uint32_t absPartIdx, uint32_t log2TrSize, int16_t* reconQt, uint32_t reconQtStride, coeff_t* coeff, uint32_t& cbf);
 
     uint32_t xEstimateResidualQT(Mode& mode, const CU& cuData, uint32_t absPartIdx, ShortYuv* resiYuv, uint32_t depth,
                                  uint64_t &rdCost, uint32_t &outBits, uint32_t *zeroDist, uint32_t tuDepthRange[2]);
@@ -205,8 +205,8 @@ protected:
 
     uint32_t xRecurIntraChromaCodingQT(Mode& mode, const CU& cuData, uint32_t trDepth, uint32_t absPartIdx, uint32_t& psyEnergy);
 
-    uint32_t xIntraCodingChromaBlk(Mode& mode, const CU& cuData, uint32_t absPartIdx, uint32_t chromaId, uint32_t log2TrSizeC,
-                                   int16_t* reconQt, uint32_t reconQtStride, coeff_t* coeff, uint32_t& cbf);
+    uint32_t calcIntraChromaRecon(Mode& mode, const CU& cuData, uint32_t absPartIdx, uint32_t chromaId, uint32_t log2TrSizeC,
+                                  int16_t* reconQt, uint32_t reconQtStride, coeff_t* coeff, uint32_t& cbf);
 
     void     residualTransformQuantIntra(Mode& mode, const CU& cuData, uint32_t trDepth, uint32_t absPartIdx, uint32_t depthRange[2]);
     void     residualQTIntraChroma(Mode& mode, const CU& cuData, uint32_t trDepth, uint32_t absPartIdx);

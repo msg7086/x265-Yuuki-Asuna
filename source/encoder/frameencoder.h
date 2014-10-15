@@ -120,7 +120,7 @@ public:
 
     virtual ~FrameEncoder() {}
 
-    bool init(Encoder *top, int numRows, int numCols);
+    bool init(Encoder *top, int numRows, int numCols, int id);
 
     void destroy();
 
@@ -176,6 +176,7 @@ public:
     int                      m_filterRowDelayCus;
     Event                    m_completionEvent;
     int64_t                  m_totalTime;
+    int                      m_frameEncoderID;
 
 protected:
 
