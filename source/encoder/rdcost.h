@@ -79,7 +79,13 @@ public:
     /* return the difference in energy between the source block and the recon block */
     inline int psyCost(int size, pixel *source, intptr_t sstride, pixel *recon, intptr_t rstride) const
     {
-        return primitives.psy_cost[size](source, sstride, recon, rstride);
+        return primitives.psy_cost_pp[size](source, sstride, recon, rstride);
+    }
+
+    /* return the difference in energy between the source block and the recon block */
+    inline int psyCost(int size, int16_t *source, intptr_t sstride, int16_t *recon, intptr_t rstride) const
+    {
+        return primitives.psy_cost_ss[size](source, sstride, recon, rstride);
     }
 
     /* return the RD cost of this prediction, including the effect of psy-rd */
