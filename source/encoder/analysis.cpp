@@ -901,6 +901,7 @@ void Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom& cuGe
                         residualTransformQuantIntra(*md.bestMode, cuGeom, initTrDepth, 0, tuDepthRange);
                         getBestIntraModeChroma(*md.bestMode, cuGeom);
                         residualQTIntraChroma(*md.bestMode, cuGeom, 0, 0);
+                        md.bestMode->reconYuv.copyFromPicYuv(*m_frame->m_reconPicYuv, cu.m_cuAddr, cuGeom.encodeIdx); // TODO:
                     }
                 }
             }
@@ -909,7 +910,7 @@ void Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom& cuGe
         if (m_bTryLossless)
             tryLossless(cuGeom);
 
-        if (mightSplit && m_param->rdLevel > 1)
+        if (mightSplit)
             addSplitFlagCost(*md.bestMode, cuGeom.depth);
     }
 
@@ -961,7 +962,7 @@ void Analysis::compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom& cuGe
         if (mightNotSplit)
             addSplitFlagCost(*splitPred, cuGeom.depth);
         else if (m_param->rdLevel <= 1)
-            splitPred->sa8dCost = m_rdCost.calcRdSADCost(splitPred->distortion, splitPred->totalBits);
+            splitPred->sa8dCost = m_rdCost.calcRdSADCost(splitPred->distortion, splitPred->sa8dBits);
         else
             updateModeCost(*splitPred);
 
@@ -1412,8 +1413,6 @@ void Analysis::encodeResidue(const CUData& ctu, const CUGeom& cuGeom)
     uint32_t absPartIdx = cuGeom.encodeIdx;
     int sizeIdx = cuGeom.log2CUSize - 2;
 
-    /* at RD 0, the prediction pixels are accumulated into the top depth predYuv */
-    Yuv& predYuv = m_modeDepth[0].bestMode->predYuv;
     Yuv& fencYuv = m_modeDepth[0].fencYuv;
 
     /* reuse the bestMode data structures at the current depth */
@@ -1426,18 +1425,13 @@ void Analysis::encodeResidue(const CUData& ctu, const CUGeom& cuGeom)
 
     if (cu.m_predMode[0] == MODE_INTRA)
     {
-        uint32_t initTrDepth = cu.m_partSize[0] == SIZE_2Nx2N ? 0 : 1;
-
         uint32_t tuDepthRange[2];
         cu.getIntraTUQtDepthRange(tuDepthRange, 0);
 
+        uint32_t initTrDepth = cu.m_partSize[0] == SIZE_NxN;
         residualTransformQuantIntra(*bestMode, cuGeom, initTrDepth, 0, tuDepthRange);
         getBestIntraModeChroma(*bestMode, cuGeom);
         residualQTIntraChroma(*bestMode, cuGeom, 0, 0);
-
-        /* copy the reconstructed part to the recon pic for later intra
-         * predictions */
-        reconYuv.copyToPicYuv(*m_frame->m_reconPicYuv, cu.m_cuAddr, absPartIdx);
     }
     else if (cu.m_predMode[0] == MODE_INTER)
     {
@@ -1447,16 +1441,22 @@ void Analysis::encodeResidue(const CUData& ctu, const CUGeom& cuGeom)
 
         ShortYuv& resiYuv = m_rqt[cuGeom.depth].tmpResiYuv;
 
+        /* at RD 0, the prediction pixels are accumulated into the top depth predYuv */
+        Yuv& predYuv = m_modeDepth[0].bestMode->predYuv;
+        pixel* predY = predYuv.getLumaAddr(absPartIdx);
+        pixel* predU = predYuv.getCbAddr(absPartIdx);
+        pixel* predV = predYuv.getCrAddr(absPartIdx);
+
         primitives.luma_sub_ps[sizeIdx](resiYuv.m_buf[0], resiYuv.m_size,
-                                        fencYuv.getLumaAddr(absPartIdx), predYuv.getLumaAddr(absPartIdx),
+                                        fencYuv.getLumaAddr(absPartIdx), predY,
                                         fencYuv.m_size, predYuv.m_size);
 
         primitives.chroma[m_csp].sub_ps[sizeIdx](resiYuv.m_buf[1], resiYuv.m_csize,
-                                        fencYuv.getCbAddr(absPartIdx), predYuv.getCbAddr(absPartIdx),
+                                        fencYuv.getCbAddr(absPartIdx), predU,
                                         fencYuv.m_csize, predYuv.m_csize);
 
         primitives.chroma[m_csp].sub_ps[sizeIdx](resiYuv.m_buf[2], resiYuv.m_csize,
-                                        fencYuv.getCrAddr(absPartIdx), predYuv.getCrAddr(absPartIdx),
+                                        fencYuv.getCrAddr(absPartIdx), predV,
                                         fencYuv.m_csize, predYuv.m_csize);
 
         uint32_t tuDepthRange[2];
@@ -1466,22 +1466,35 @@ void Analysis::encodeResidue(const CUData& ctu, const CUGeom& cuGeom)
 
         if (cu.m_mergeFlag[0] && cu.m_partSize[0] == SIZE_2Nx2N && !cu.getQtRootCbf(0))
             cu.setSkipFlagSubParts(true);
-        else if (cu.getQtRootCbf(0))
+
+        PicYuv& reconPicYuv = *m_frame->m_reconPicYuv;
+        if (cu.getQtRootCbf(0)) // TODO: split to each component
         {
             /* residualTransformQuantInter() wrote transformed residual back into
              * resiYuv. Generate the recon pixels by adding it to the prediction */
 
             primitives.luma_add_ps[sizeIdx](reconYuv.m_buf[0], reconYuv.m_size,
-                                            predYuv.getLumaAddr(absPartIdx), resiYuv.m_buf[0], predYuv.m_size, resiYuv.m_size);
-
+                                            predY, resiYuv.m_buf[0], predYuv.m_size, resiYuv.m_size);
             primitives.chroma[m_csp].add_ps[sizeIdx](reconYuv.m_buf[1], reconYuv.m_csize,
-                                            predYuv.getCbAddr(absPartIdx), resiYuv.m_buf[1], predYuv.m_csize, resiYuv.m_csize);
+                                            predU, resiYuv.m_buf[1], predYuv.m_csize, resiYuv.m_csize);
             primitives.chroma[m_csp].add_ps[sizeIdx](reconYuv.m_buf[2], reconYuv.m_csize,
-                                            predYuv.getCrAddr(absPartIdx), resiYuv.m_buf[2], predYuv.m_csize, resiYuv.m_csize);
+                                            predV, resiYuv.m_buf[2], predYuv.m_csize, resiYuv.m_csize);
 
             /* copy the reconstructed part to the recon pic for later intra
              * predictions */
             reconYuv.copyToPicYuv(*m_frame->m_reconPicYuv, cu.m_cuAddr, absPartIdx);
+        }
+        else
+        {
+            /* copy the prediction pixels to the recon pic for later intra
+             * predictions */
+
+            primitives.luma_copy_pp[sizeIdx](reconPicYuv.getLumaAddr(cu.m_cuAddr, absPartIdx), reconPicYuv.m_stride,
+                                             predY, predYuv.m_size);
+            primitives.chroma[m_csp].copy_pp[sizeIdx](reconPicYuv.getCbAddr(cu.m_cuAddr, absPartIdx), reconPicYuv.m_strideC,
+                                                      predU, predYuv.m_csize);
+            primitives.chroma[m_csp].copy_pp[sizeIdx](reconPicYuv.getCrAddr(cu.m_cuAddr, absPartIdx), reconPicYuv.m_strideC,
+                                                      predV, predYuv.m_csize);
         }
     }
     /* else if (cu.m_predMode[0] == MODE_NONE) {} */
