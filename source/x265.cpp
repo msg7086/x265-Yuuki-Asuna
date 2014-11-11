@@ -878,9 +878,16 @@ void CLIOptions::readAnalysisFile(x265_picture* pic, x265_param* p)
     fread(&numCU, sizeof(int), 1, this->analysisFile);
     fread(&numPart, sizeof(int), 1, this->analysisFile);
 
-    if (poc != pic->poc || width != p->sourceWidth || height != p->sourceHeight)
+    if (width != p->sourceWidth || height != p->sourceHeight)
     {
-        x265_log(NULL, X265_LOG_WARNING, "Error in reading intra-inter data.\n");
+        x265_log(NULL, X265_LOG_WARNING, "Error reading analysis data: width/height mismatch\n");
+        x265_free_analysis_data(pic);
+        return;
+    }
+
+    if (poc != pic->poc)
+    {
+        x265_log(NULL, X265_LOG_WARNING, "Error reading analysis data: POC mismatch\n");
         x265_free_analysis_data(pic);
         return;
     }
@@ -891,10 +898,6 @@ void CLIOptions::readAnalysisFile(x265_picture* pic, x265_param* p)
         sizeof(uint8_t), pic->analysisData.numPartitions * pic->analysisData.numCUsInFrame, this->analysisFile);
     fread(pic->analysisData.intraData->partSizes,
         sizeof(char), pic->analysisData.numPartitions * pic->analysisData.numCUsInFrame, this->analysisFile);
-    fread(pic->analysisData.intraData->poc,
-        sizeof(int), pic->analysisData.numCUsInFrame, this->analysisFile);
-    fread(pic->analysisData.intraData->cuAddr,
-        sizeof(uint32_t), pic->analysisData.numCUsInFrame, this->analysisFile);
     fread(pic->analysisData.interData, sizeof(x265_inter_data), pic->analysisData.numCUsInFrame * (X265_MAX_PRED_MODE_PER_CU), this->analysisFile);
 }
 
@@ -915,8 +918,6 @@ void CLIOptions::writeAnalysisFile(x265_picture* pic, x265_param *p)
         sizeof(uint8_t), pic->analysisData.numPartitions * pic->analysisData.numCUsInFrame, this->analysisFile);
     fwrite(pic->analysisData.intraData->partSizes,
         sizeof(char), pic->analysisData.numPartitions * pic->analysisData.numCUsInFrame, this->analysisFile);
-    fwrite(pic->analysisData.intraData->poc, sizeof(int), pic->analysisData.numCUsInFrame, this->analysisFile);
-    fwrite(pic->analysisData.intraData->cuAddr, sizeof(uint32_t), pic->analysisData.numCUsInFrame, this->analysisFile);
     fwrite(pic->analysisData.interData, sizeof(x265_inter_data), pic->analysisData.numCUsInFrame * X265_MAX_PRED_MODE_PER_CU, this->analysisFile);
 }
 
@@ -991,7 +992,8 @@ int main(int argc, char **argv)
 
     x265_picture pic_orig, pic_out;
     x265_picture *pic_in = &pic_orig;
-    x265_picture *pic_recon = cliopt.recon ? &pic_out : NULL;
+    /* Allocate recon picture if analysisMode is enabled */
+    x265_picture *pic_recon = (cliopt.recon || !!param->analysisMode) ? &pic_out : NULL;
     uint32_t inFrameCount = 0;
     uint32_t outFrameCount = 0;
     x265_nal *p_nal;
@@ -1012,11 +1014,6 @@ int main(int argc, char **argv)
 
     x265_picture_init(param, pic_in);
 
-    if (param->analysisMode && !pic_recon)
-    {
-        x265_log(NULL, X265_LOG_ERROR, "Must specify recon with analysis-mode option.\n");
-        goto fail;
-    }
     if (param->analysisMode)
     {
         if (param->analysisMode == X265_ANALYSIS_SAVE)
@@ -1031,7 +1028,7 @@ int main(int argc, char **argv)
             uint32_t numPart = pic_in->analysisData.numPartitions;
 
             cliopt.analysisRecordSize = ((sizeof(int) * 4 + sizeof(uint32_t) * 2) + sizeof(x265_inter_data) * numCU * X265_MAX_PRED_MODE_PER_CU +
-                    sizeof(uint8_t) * 2 * numPart * numCU + sizeof(char) * numPart * numCU + sizeof(int) * numCU + sizeof(uint32_t) * numCU);
+                    sizeof(uint8_t) * 2 * numPart * numCU + sizeof(char) * numPart * numCU);
 
             fprintf(cliopt.analysisFile, "#options: %s\n", p);
             cliopt.analysisHeaderSize = ftell(cliopt.analysisFile);
@@ -1099,7 +1096,8 @@ int main(int argc, char **argv)
         outFrameCount += numEncoded;
         if (numEncoded && pic_recon)
         {
-            cliopt.recon->writePicture(pic_out);
+            if (cliopt.recon)
+                cliopt.recon->writePicture(pic_out);
             if (param->analysisMode == X265_ANALYSIS_SAVE)
                 cliopt.writeAnalysisFile(pic_recon, param);
             if (param->analysisMode)
@@ -1120,7 +1118,8 @@ int main(int argc, char **argv)
         outFrameCount += numEncoded;
         if (numEncoded && pic_recon)
         {
-            cliopt.recon->writePicture(pic_out);
+            if (cliopt.recon)
+                cliopt.recon->writePicture(pic_out);
             if (param->analysisMode == X265_ANALYSIS_SAVE)
                 cliopt.writeAnalysisFile(pic_recon, param);
             if (param->analysisMode)

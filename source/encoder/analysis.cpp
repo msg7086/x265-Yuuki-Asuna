@@ -142,8 +142,6 @@ Mode& Analysis::compressCTU(CUData& ctu, Frame& frame, const CUGeom& cuGeom, con
                 memcpy(&m_frame->m_intraData->depth[ctu.m_cuAddr * numPartition], bestCU->m_cuDepth, sizeof(uint8_t) * numPartition);
                 memcpy(&m_frame->m_intraData->modes[ctu.m_cuAddr * numPartition], bestCU->m_lumaIntraDir, sizeof(uint8_t) * numPartition);
                 memcpy(&m_frame->m_intraData->partSizes[ctu.m_cuAddr * numPartition], bestCU->m_partSize, sizeof(uint8_t) * numPartition);
-                m_frame->m_intraData->cuAddr[ctu.m_cuAddr] = ctu.m_cuAddr;
-                m_frame->m_intraData->poc[ctu.m_cuAddr] = m_frame->m_poc;
             }
         }
     }
@@ -1451,12 +1449,17 @@ void Analysis::checkInter_rd0_4(Mode& interMode, const CUGeom& cuGeom, PartSize 
 
     if (m_param->analysisMode == X265_ANALYSIS_LOAD && m_interAnalysisData)
     {
-        for (int32_t i = 0; i < numPredDir; i++)
+        for (uint32_t part = 0; part < interMode.cu.getNumPartInter(); part++)
         {
-            interMode.bestME[i].costZero = !!m_interAnalysisData->costZero[i];
-            interMode.bestME[i].mv.x = m_interAnalysisData->mvx[i];
-            interMode.bestME[i].mv.y = m_interAnalysisData->mvy[i];
-            interMode.bestME[i].ref = m_interAnalysisData->ref[i];
+            MotionData* bestME = interMode.bestME[part];
+            for (int32_t i = 0; i < numPredDir; i++)
+            {
+                bestME[i].costZero = !!m_interAnalysisData->costZero[i];
+                bestME[i].mv.x = m_interAnalysisData->mvx[i];
+                bestME[i].mv.y = m_interAnalysisData->mvy[i];
+                bestME[i].ref = m_interAnalysisData->ref[i];
+            }
+            m_interAnalysisData++;
         }
     }
     if (predInterSearch(interMode, cuGeom, false, false))
@@ -1469,17 +1472,21 @@ void Analysis::checkInter_rd0_4(Mode& interMode, const CUGeom& cuGeom, PartSize 
 
         if (m_param->analysisMode == X265_ANALYSIS_SAVE && m_interAnalysisData)
         {
-            for (int32_t i = 0; i < numPredDir; i++)
+            for (uint32_t part = 0; part < interMode.cu.getNumPartInter(); part++)
             {
-                m_interAnalysisData->costZero[i] = interMode.bestME[i].costZero;
-                m_interAnalysisData->mvx[i] = interMode.bestME[i].mv.x;
-                m_interAnalysisData->mvy[i] = interMode.bestME[i].mv.y;
-                m_interAnalysisData->ref[i] = interMode.bestME[i].ref;
+                MotionData* bestME = interMode.bestME[part];
+                for (int32_t i = 0; i < numPredDir; i++)
+                {
+                    m_interAnalysisData->costZero[i] = bestME[i].costZero;
+                    m_interAnalysisData->mvx[i] = bestME[i].mv.x;
+                    m_interAnalysisData->mvy[i] = bestME[i].mv.y;
+                    m_interAnalysisData->ref[i] = bestME[i].ref;
+                }
+                m_interAnalysisData->zOrder = cuGeom.encodeIdx;
+                m_interAnalysisData->depth  = cuGeom.depth;
+                m_interAnalysisData++;
             }
-            m_interAnalysisData->zOrder = cuGeom.encodeIdx;
-            m_interAnalysisData->depth  = cuGeom.depth;
         }
-        m_interAnalysisData++;
     }
     else
     {
@@ -1497,12 +1504,17 @@ void Analysis::checkInter_rd5_6(Mode& interMode, const CUGeom& cuGeom, PartSize 
 
     if (m_param->analysisMode == X265_ANALYSIS_LOAD && m_interAnalysisData)
     {
-        for (int32_t i = 0; i < numPredDir; i++)
+        for (uint32_t part = 0; part < interMode.cu.getNumPartInter(); part++)
         {
-            interMode.bestME[i].costZero = !!m_interAnalysisData->costZero[i];
-            interMode.bestME[i].mv.x = m_interAnalysisData->mvx[i];
-            interMode.bestME[i].mv.y = m_interAnalysisData->mvy[i];
-            interMode.bestME[i].ref = m_interAnalysisData->ref[i];
+            MotionData* bestME = interMode.bestME[part];
+            for (int32_t i = 0; i < numPredDir; i++)
+            {
+                bestME[i].costZero = !!m_interAnalysisData->costZero[i];
+                bestME[i].mv.x = m_interAnalysisData->mvx[i];
+                bestME[i].mv.y = m_interAnalysisData->mvy[i];
+                bestME[i].ref = m_interAnalysisData->ref[i];
+            }
+            m_interAnalysisData++;
         }
     }
     if (predInterSearch(interMode, cuGeom, bMergeOnly, true))
@@ -1511,17 +1523,21 @@ void Analysis::checkInter_rd5_6(Mode& interMode, const CUGeom& cuGeom, PartSize 
         encodeResAndCalcRdInterCU(interMode, cuGeom);
         if (m_param->analysisMode == X265_ANALYSIS_SAVE && m_interAnalysisData)
         {
-            for (int32_t i = 0; i < numPredDir; i++)
+            for (uint32_t part = 0; part < interMode.cu.getNumPartInter(); part++)
             {
-                m_interAnalysisData->costZero[i] = interMode.bestME[i].costZero;
-                m_interAnalysisData->mvx[i] = interMode.bestME[i].mv.x;
-                m_interAnalysisData->mvy[i] = interMode.bestME[i].mv.y;
-                m_interAnalysisData->ref[i] = interMode.bestME[i].ref;
+                MotionData* bestME = interMode.bestME[part];
+                for (int32_t i = 0; i < numPredDir; i++)
+                {
+                    m_interAnalysisData->costZero[i] = bestME[i].costZero;
+                    m_interAnalysisData->mvx[i] = bestME[i].mv.x;
+                    m_interAnalysisData->mvy[i] = bestME[i].mv.y;
+                    m_interAnalysisData->ref[i] = bestME[i].ref;
+                }
+                m_interAnalysisData->zOrder = cuGeom.encodeIdx;
+                m_interAnalysisData->depth  = cuGeom.depth;
+                m_interAnalysisData++;
             }
-            m_interAnalysisData->zOrder = cuGeom.encodeIdx;
-            m_interAnalysisData->depth  = cuGeom.depth;
         }
-        m_interAnalysisData++;
     }
     else
     {
@@ -1534,7 +1550,7 @@ void Analysis::checkBidir2Nx2N(Mode& inter2Nx2N, Mode& bidir2Nx2N, const CUGeom&
 {
     CUData& cu = bidir2Nx2N.cu;
 
-    if (cu.isBipredRestriction() || inter2Nx2N.bestME[0].cost == MAX_UINT || inter2Nx2N.bestME[1].cost == MAX_UINT)
+    if (cu.isBipredRestriction() || inter2Nx2N.bestME[0][0].cost == MAX_UINT || inter2Nx2N.bestME[0][1].cost == MAX_UINT)
     {
         bidir2Nx2N.sa8dCost = MAX_INT64;
         bidir2Nx2N.rdCost = MAX_INT64;
@@ -1545,14 +1561,15 @@ void Analysis::checkBidir2Nx2N(Mode& inter2Nx2N, Mode& bidir2Nx2N, const CUGeom&
     MV   mvzero(0, 0);
     int  partEnum = cuGeom.log2CUSize - 2;
 
-    bidir2Nx2N.bestME[0] = inter2Nx2N.bestME[0];
-    bidir2Nx2N.bestME[1] = inter2Nx2N.bestME[1];
-    int ref0    = bidir2Nx2N.bestME[0].ref;
-    MV  mvp0    = bidir2Nx2N.bestME[0].mvp;
-    int mvpIdx0 = bidir2Nx2N.bestME[0].mvpIdx;
-    int ref1    = bidir2Nx2N.bestME[1].ref;
-    MV  mvp1    = bidir2Nx2N.bestME[1].mvp;
-    int mvpIdx1 = bidir2Nx2N.bestME[1].mvpIdx;
+    bidir2Nx2N.bestME[0][0] = inter2Nx2N.bestME[0][0];
+    bidir2Nx2N.bestME[0][1] = inter2Nx2N.bestME[0][1];
+    MotionData* bestME = bidir2Nx2N.bestME[0];
+    int ref0    = bestME[0].ref;
+    MV  mvp0    = bestME[0].mvp;
+    int mvpIdx0 = bestME[0].mvpIdx;
+    int ref1    = bestME[1].ref;
+    MV  mvp1    = bestME[1].mvp;
+    int mvpIdx1 = bestME[1].mvpIdx;
 
     bidir2Nx2N.initCosts();
     cu.setPartSizeSubParts(SIZE_2Nx2N);
@@ -1565,20 +1582,20 @@ void Analysis::checkBidir2Nx2N(Mode& inter2Nx2N, Mode& bidir2Nx2N, const CUGeom&
     cu.m_mergeFlag[0] = 0;
 
     /* Estimate cost of BIDIR using best 2Nx2N L0 and L1 motion vectors */
-    cu.setPUMv(0, bidir2Nx2N.bestME[0].mv, 0, 0);
-    cu.m_mvd[0][0] = bidir2Nx2N.bestME[0].mv - mvp0;
+    cu.setPUMv(0, bestME[0].mv, 0, 0);
+    cu.m_mvd[0][0] = bestME[0].mv - mvp0;
 
-    cu.setPUMv(1, bidir2Nx2N.bestME[1].mv, 0, 0);
-    cu.m_mvd[1][0] = bidir2Nx2N.bestME[1].mv - mvp1;
+    cu.setPUMv(1, bestME[1].mv, 0, 0);
+    cu.m_mvd[1][0] = bestME[1].mv - mvp1;
 
     prepMotionCompensation(cu, cuGeom, 0);
     motionCompensation(bidir2Nx2N.predYuv, true, true);
 
     int sa8d = primitives.sa8d[partEnum](fencYuv.m_buf[0], fencYuv.m_size, bidir2Nx2N.predYuv.m_buf[0], bidir2Nx2N.predYuv.m_size);
-    bidir2Nx2N.sa8dBits = bidir2Nx2N.bestME[0].bits + bidir2Nx2N.bestME[1].bits + m_listSelBits[2] - (m_listSelBits[0] + m_listSelBits[1]);
+    bidir2Nx2N.sa8dBits = bestME[0].bits + bestME[1].bits + m_listSelBits[2] - (m_listSelBits[0] + m_listSelBits[1]);
     bidir2Nx2N.sa8dCost = sa8d + m_rdCost.getCost(bidir2Nx2N.sa8dBits);
 
-    bool bTryZero = bidir2Nx2N.bestME[0].mv.notZero() || bidir2Nx2N.bestME[1].mv.notZero();
+    bool bTryZero = bestME[0].mv.notZero() || bestME[1].mv.notZero();
     if (bTryZero)
     {
         /* Do not try zero MV if unidir motion predictors are beyond
@@ -1590,8 +1607,8 @@ void Analysis::checkBidir2Nx2N(Mode& inter2Nx2N, Mode& bidir2Nx2N, const CUGeom&
         mvmin <<= 2;
         mvmax <<= 2;
 
-        bTryZero &= bidir2Nx2N.bestME[0].mvp.checkRange(mvmin, mvmax);
-        bTryZero &= bidir2Nx2N.bestME[1].mvp.checkRange(mvmin, mvmax);
+        bTryZero &= bestME[0].mvp.checkRange(mvmin, mvmax);
+        bTryZero &= bestME[1].mvp.checkRange(mvmin, mvmax);
     }
     if (bTryZero)
     {
@@ -1604,8 +1621,8 @@ void Analysis::checkBidir2Nx2N(Mode& inter2Nx2N, Mode& bidir2Nx2N, const CUGeom&
         primitives.pixelavg_pp[partEnum](tmpPredYuv.m_buf[0], tmpPredYuv.m_size, fref0, refStride, fref1, refStride, 32);
         int sa8dCost = primitives.sa8d[partEnum](fencYuv.m_buf[0], fencYuv.m_size, tmpPredYuv.m_buf[0], tmpPredYuv.m_size);
 
-        uint32_t bits0 = bidir2Nx2N.bestME[0].bits - m_me.bitcost(bidir2Nx2N.bestME[0].mv, mvp0) + m_me.bitcost(mvzero, mvp0);
-        uint32_t bits1 = bidir2Nx2N.bestME[1].bits - m_me.bitcost(bidir2Nx2N.bestME[1].mv, mvp1) + m_me.bitcost(mvzero, mvp1);
+        uint32_t bits0 = bestME[0].bits - m_me.bitcost(bestME[0].mv, mvp0) + m_me.bitcost(mvzero, mvp0);
+        uint32_t bits1 = bestME[1].bits - m_me.bitcost(bestME[1].mv, mvp1) + m_me.bitcost(mvzero, mvp1);
         uint32_t zcost = sa8dCost + m_rdCost.getCost(bits0) + m_rdCost.getCost(bits1);
 
         /* refine MVP selection for zero mv, updates: mvp, mvpidx, bits, cost */
