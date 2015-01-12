@@ -77,6 +77,7 @@ public:
     /* Analysis data for load/save modes, keeps getting incremented as CTU analysis proceeds and data is consumed or read */
     analysis_intra_data* m_reuseIntraDataCTU;
     analysis_inter_data* m_reuseInterDataCTU;
+    int32_t* reuseRef;
     Analysis();
     bool create(ThreadLocalData* tld);
     void destroy();
@@ -100,7 +101,7 @@ protected:
     /* full analysis for a P or B slice CU */
     void compressInterCU_dist(const CUData& parentCTU, const CUGeom& cuGeom);
     void compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom& cuGeom);
-    void compressInterCU_rd5_6(const CUData& parentCTU, const CUGeom& cuGeom);
+    void compressInterCU_rd5_6(const CUData& parentCTU, const CUGeom& cuGeom, uint32_t &zOrder);
 
     /* measure merge and skip */
     void checkMerge2Nx2N_rd0_4(Mode& skip, Mode& merge, const CUGeom& cuGeom);
