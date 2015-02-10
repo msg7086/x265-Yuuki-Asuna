@@ -1200,6 +1200,11 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask) // 8bpp
     if (cpuMask & X265_CPU_AVX)
     {
         p.pu[LUMA_4x4].satd = p.cu[BLOCK_4x4].sa8d = x265_pixel_satd_4x4_avx;
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_16x24].satd = x265_pixel_satd_16x24_avx;
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_32x48].satd = x265_pixel_satd_32x48_avx;
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_24x64].satd = x265_pixel_satd_24x64_avx;
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x64].satd = x265_pixel_satd_8x64_avx;
+        p.chroma[X265_CSP_I422].pu[CHROMA_422_8x12].satd = x265_pixel_satd_8x12_avx;
         ALL_LUMA_PU(satd, pixel_satd, avx);
         ASSIGN_SA8D(avx);
         ASSIGN_SSE_PP(avx);
@@ -1236,6 +1241,13 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask) // 8bpp
 
         p.chroma[X265_CSP_I422].pu[CHROMA_422_32x64].copy_pp = x265_blockcopy_pp_32x64_avx;
         p.pu[LUMA_32x64].copy_pp = x265_blockcopy_pp_32x64_avx;
+
+        p.pu[LUMA_64x16].copy_pp = x265_blockcopy_pp_64x16_avx;
+        p.pu[LUMA_64x32].copy_pp = x265_blockcopy_pp_64x32_avx;
+        p.pu[LUMA_64x48].copy_pp = x265_blockcopy_pp_64x48_avx;
+        p.pu[LUMA_64x64].copy_pp = x265_blockcopy_pp_64x64_avx;
+
+        p.pu[LUMA_48x64].copy_pp = x265_blockcopy_pp_48x64_avx;
 
         p.frameInitLowres = x265_frame_init_lowres_core_avx;
     }
@@ -1324,6 +1336,30 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask) // 8bpp
         p.pu[LUMA_64x32].luma_vpp = x265_interp_8tap_vert_pp_64x32_avx2;
         p.pu[LUMA_64x48].luma_vpp = x265_interp_8tap_vert_pp_64x48_avx2;
         p.pu[LUMA_64x64].luma_vpp = x265_interp_8tap_vert_pp_64x64_avx2;
+
+        p.pu[LUMA_12x16].luma_vps = x265_interp_8tap_vert_ps_12x16_avx2;
+
+        p.pu[LUMA_16x4].luma_vps = x265_interp_8tap_vert_ps_16x4_avx2;
+        p.pu[LUMA_16x8].luma_vps = x265_interp_8tap_vert_ps_16x8_avx2;
+        p.pu[LUMA_16x12].luma_vps = x265_interp_8tap_vert_ps_16x12_avx2;
+        p.pu[LUMA_16x16].luma_vps = x265_interp_8tap_vert_ps_16x16_avx2;
+        p.pu[LUMA_16x32].luma_vps = x265_interp_8tap_vert_ps_16x32_avx2;
+        p.pu[LUMA_16x64].luma_vps = x265_interp_8tap_vert_ps_16x64_avx2;
+
+        p.pu[LUMA_24x32].luma_vps = x265_interp_8tap_vert_ps_24x32_avx2;
+
+        p.pu[LUMA_32x8].luma_vps = x265_interp_8tap_vert_ps_32x8_avx2;
+        p.pu[LUMA_32x16].luma_vps = x265_interp_8tap_vert_ps_32x16_avx2;
+        p.pu[LUMA_32x24].luma_vps = x265_interp_8tap_vert_ps_32x24_avx2;
+        p.pu[LUMA_32x32].luma_vps = x265_interp_8tap_vert_ps_32x32_avx2;
+        p.pu[LUMA_32x64].luma_vps = x265_interp_8tap_vert_ps_32x64_avx2;
+
+        p.pu[LUMA_48x64].luma_vps = x265_interp_8tap_vert_ps_48x64_avx2;
+
+        p.pu[LUMA_64x16].luma_vps = x265_interp_8tap_vert_ps_64x16_avx2;
+        p.pu[LUMA_64x32].luma_vps = x265_interp_8tap_vert_ps_64x32_avx2;
+        p.pu[LUMA_64x48].luma_vps = x265_interp_8tap_vert_ps_64x48_avx2;
+        p.pu[LUMA_64x64].luma_vps = x265_interp_8tap_vert_ps_64x64_avx2;
 #endif
         p.pu[LUMA_4x4].luma_hpp = x265_interp_8tap_horiz_pp_4x4_avx2;
 
@@ -1358,11 +1394,22 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask) // 8bpp
         p.chroma[X265_CSP_I420].pu[CHROMA_420_16x16].filter_hpp = x265_interp_4tap_horiz_pp_16x16_avx2;
 
         p.pu[LUMA_4x4].luma_vps = x265_interp_8tap_vert_ps_4x4_avx2;
+        p.pu[LUMA_4x8].luma_vps = x265_interp_8tap_vert_ps_4x8_avx2;
+        p.pu[LUMA_4x16].luma_vps = x265_interp_8tap_vert_ps_4x16_avx2;
+
         p.pu[LUMA_4x4].luma_vpp = x265_interp_8tap_vert_pp_4x4_avx2;
+        p.pu[LUMA_4x8].luma_vpp = x265_interp_8tap_vert_pp_4x8_avx2;
+        p.pu[LUMA_4x16].luma_vpp = x265_interp_8tap_vert_pp_4x16_avx2;
+
         p.pu[LUMA_8x4].luma_vpp = x265_interp_8tap_vert_pp_8x4_avx2;
         p.pu[LUMA_8x8].luma_vpp = x265_interp_8tap_vert_pp_8x8_avx2;
         p.pu[LUMA_8x16].luma_vpp = x265_interp_8tap_vert_pp_8x16_avx2;
         p.pu[LUMA_8x32].luma_vpp = x265_interp_8tap_vert_pp_8x32_avx2;
+
+        p.pu[LUMA_8x4].luma_vps = x265_interp_8tap_vert_ps_8x4_avx2;
+        p.pu[LUMA_8x8].luma_vps = x265_interp_8tap_vert_ps_8x8_avx2;
+        p.pu[LUMA_8x16].luma_vps = x265_interp_8tap_vert_ps_8x16_avx2;
+        p.pu[LUMA_8x32].luma_vps = x265_interp_8tap_vert_ps_8x32_avx2;
 
         // color space i420
         p.chroma[X265_CSP_I420].pu[CHROMA_420_4x4].filter_vpp = x265_interp_4tap_vert_pp_4x4_avx2;
