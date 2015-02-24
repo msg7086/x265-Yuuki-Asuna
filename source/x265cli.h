@@ -37,7 +37,8 @@ static const struct option long_options[] =
     { "version",              no_argument, NULL, 'V' },
     { "asm",            required_argument, NULL, 0 },
     { "no-asm",               no_argument, NULL, 0 },
-    { "threads",        required_argument, NULL, 0 },
+    { "pools",          required_argument, NULL, 0 },
+    { "numa-pools",     required_argument, NULL, 0 },
     { "preset",         required_argument, NULL, 'p' },
     { "tune",           required_argument, NULL, 't' },
     { "frame-threads",  required_argument, NULL, 'F' },
@@ -253,7 +254,8 @@ static void showHelp(x265_param *param)
     H0("   --level-idc <integer|float>   Force a minimum required decoder level (as '5.0' or '50')\n");
     H0("   --[no-]high-tier              If a decoder level is specified, this modifier selects High tier of that level\n");
     H0("\nThreading, performance:\n");
-    H0("   --threads <integer>           Number of threads for thread pool (0: detect CPU core count, default)\n");
+    H0("   --pools <integer,...>         Comma separated thread count per thread pool (pool per NUMA node)\n");
+    H0("                                 '-' implies no threads on node, '+' implies one thread per core on node\n");
     H0("-F/--frame-threads <integer>     Number of concurrently encoded frames. 0: auto-determined by core count\n");
     H0("   --[no-]wpp                    Enable Wavefront Parallel Processing. Default %s\n", OPT(param->bEnableWavefront));
     H0("   --[no-]pmode                  Parallel mode analysis. Default %s\n", OPT(param->bDistributeModeAnalysis));

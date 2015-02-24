@@ -210,7 +210,7 @@ inline int getTUBits(int idx, int numIdx)
     return idx + (idx < numIdx - 1);
 }
 
-class Search : public JobProvider, public Predict
+class Search : public Predict
 {
 public:
 
@@ -220,6 +220,7 @@ public:
     Quant           m_quant;
     RDCost          m_rdCost;
     const x265_param* m_param;
+    ThreadPool*     m_pool;
     Frame*          m_frame;
     const Slice*    m_slice;
 
@@ -229,13 +230,22 @@ public:
     uint8_t*        m_qtTempCbf[3];
     uint8_t*        m_qtTempTransformSkipFlag[3];
 
+    pixel*          m_fencScaled;     /* 32x32 buffer for down-scaled version of 64x64 CU fenc */
+    pixel*          m_fencTransposed; /* 32x32 buffer for transposed copy of fenc */
+    pixel*          m_intraPred;      /* 32x32 buffer for individual intra predictions */
+    pixel*          m_intraPredAngs;  /* allocation for 33 consecutive (all angular) 32x32 intra predictions */
+
+    coeff_t*        m_tsCoeff;        /* transform skip coeff 32x32 */
+    int16_t*        m_tsResidual;     /* transform skip residual 32x32 */
+    pixel*          m_tsRecon;        /* transform skip reconstructed pixels 32x32 */
+
     bool            m_bFrameParallel;
     bool            m_bEnableRDOQ;
     uint32_t        m_numLayers;
     uint32_t        m_refLagPixels;
 
 #if DETAILED_CU_STATS
-    /* Accumulate CU statistics seperately for each frame encoder */
+    /* Accumulate CU statistics separately for each frame encoder */
     CUStats         m_stats[X265_MAX_FRAME_THREADS];
 #endif
 
@@ -257,7 +267,7 @@ public:
     void     encodeIntraInInter(Mode& intraMode, const CUGeom& cuGeom);
 
     // estimation inter prediction (non-skip)
-    bool     predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bMergeOnly, bool bChroma);
+    void     predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bMergeOnly, bool bChroma);
 
     // encode residual and compute rd-cost for inter mode
     void     encodeResAndCalcRdInterCU(Mode& interMode, const CUGeom& cuGeom);
@@ -271,21 +281,34 @@ public:
     // pick be chroma mode from available using just sa8d costs
     void     getBestIntraModeChroma(Mode& intraMode, const CUGeom& cuGeom);
 
+    class PME : public BondedTaskGroup
+    {
+    public:
+
+        Search&       master;
+        Mode&         mode;
+        const CUGeom& cuGeom;
+        int           puIdx;
+
+        PME(Search& s, Mode& m, const CUGeom& g, int p) : master(s), mode(m), cuGeom(g), puIdx(p) {}
+
+        void processTasks(int workerThreadId);
+
+    protected:
+
+        PME operator=(const PME&);
+    };
+
+    void     processPME(PME& pme, Search& slave);
+    void     singleMotionEstimation(Search& master, Mode& interMode, const CUGeom& cuGeom, int part, int list, int ref);
+
 protected:
 
     /* motion estimation distribution */
     ThreadLocalData* m_tld;
-    Mode*         m_curInterMode;
-    const CUGeom* m_curGeom;
-    int           m_curPart;
+
     uint32_t      m_listSelBits[3];
-    int           m_totalNumME;
-    volatile int  m_numAcquiredME;
-    volatile int  m_numCompletedME;
-    Event         m_meCompletionEvent;
     Lock          m_meLock;
-    bool          m_bJobsQueued;
-    void     singleMotionEstimation(Search& master, Mode& interMode, const CUGeom& cuGeom, int part, int list, int ref);
 
     void     saveResidualQTData(CUData& cu, ShortYuv& resiYuv, uint32_t absPartIdx, uint32_t tuDepth);
 
