@@ -1052,6 +1052,8 @@ typedef struct x265_param
      * Default is 0, which is recommended */
     int       crQpOffset;
 
+    int opts;
+
     struct
     {
         /* Explicit mode of rate-control, necessary for API users. It must
