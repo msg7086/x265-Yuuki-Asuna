@@ -46,15 +46,39 @@ elseif(HG_EXECUTABLE AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../.hg)
     execute_process(COMMAND
         ${HG_EXECUTABLE} log -r. --template "{latesttagdistance}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE X265_TAG_DISTANCE_MOD
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+    execute_process(COMMAND
+        ${HG_EXECUTABLE} log -rdefault --template "{latesttagdistance}"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         OUTPUT_VARIABLE X265_TAG_DISTANCE
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+    math(EXPR X265_TAG_DISTANCE_MOD ${X265_TAG_DISTANCE_MOD}-${X265_TAG_DISTANCE})
+    execute_process(
+        COMMAND
+        ${HG_EXECUTABLE} log -r. --template "{branch}"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE MOD_BUILD
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE
         )
     execute_process(
         COMMAND
-        ${HG_EXECUTABLE} log -r. --template "{node|short}"
+        ${HG_EXECUTABLE} log -rdefault --template "{node|short}"
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         OUTPUT_VARIABLE HG_REVISION_ID
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+    execute_process(
+        COMMAND
+        ${HG_EXECUTABLE} log -r. --mq --template "{node|short}"
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE HG_MOD_REVISION_ID
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE
         )
@@ -63,14 +87,23 @@ elseif(HG_EXECUTABLE AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../.hg)
         string(SUBSTRING ${X265_LATEST_TAG} 1 -1 X265_LATEST_TAG)
     endif()
     if(X265_TAG_DISTANCE STREQUAL "0")
-        set(X265_VERSION "${X265_LATEST_TAG}")
+        set(X265_VERSION "${X265_LATEST_TAG}+${X265_TAG_DISTANCE_MOD}@${HG_MOD_REVISION_ID}")
     else()
-        set(X265_VERSION "${X265_LATEST_TAG}+${X265_TAG_DISTANCE}-${HG_REVISION_ID}")
+        set(X265_VERSION "${X265_LATEST_TAG}+${X265_TAG_DISTANCE}-${HG_REVISION_ID}+${X265_TAG_DISTANCE_MOD}@${HG_MOD_REVISION_ID}")
+    endif()
+    if(MOD_BUILD STREQUAL "default")
+        set(MOD_BUILD "")
+        if(X265_TAG_DISTANCE STREQUAL "0")
+            set(X265_VERSION "${X265_LATEST_TAG}")
+        else()
+            set(X265_VERSION "${X265_LATEST_TAG}+${X265_TAG_DISTANCE}-${HG_REVISION_ID}")
+        endif()
     endif()
 elseif(GIT_EXECUTABLE AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../.git)
+    find_package(Ruby)
     execute_process(
         COMMAND
-        ${GIT_EXECUTABLE} describe --tags --abbrev=0
+        ${RUBY_EXECUTABLE} version.rb light
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         OUTPUT_VARIABLE X265_LATEST_TAG
         ERROR_QUIET
@@ -79,9 +112,18 @@ elseif(GIT_EXECUTABLE AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../.git)
 
     execute_process(
         COMMAND
-        ${GIT_EXECUTABLE} describe --tags
+        ${RUBY_EXECUTABLE} version.rb
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         OUTPUT_VARIABLE X265_VERSION
+        ERROR_QUIET
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+
+    execute_process(
+        COMMAND
+        ${GIT_EXECUTABLE} symbolic-ref --short HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE MOD_BUILD
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE
         )
