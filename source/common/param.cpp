@@ -113,6 +113,7 @@ void x265_param_default(x265_param* param)
     param->rc.lambdaFileName = NULL;
     param->bLogCuStats = 0;
     param->decodedPictureHashSEI = 0;
+    param->opts = 3;
 
     /* Quality Measurement Metrics */
     param->bEnablePsnr = 0;
@@ -729,6 +730,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("hash") p->decodedPictureHashSEI = atoi(value);
     OPT("aud") p->bEnableAccessUnitDelimiters = atobool(value);
     OPT("info") p->bEmitInfoSEI = atobool(value);
+    OPT("opts") p->opts = atoi(value);
     OPT("b-pyramid") p->bBPyramid = atobool(value);
     OPT("hrd") p->bEmitHRDSEI = atobool(value);
     OPT2("ipratio", "ip-factor") p->rc.ipFactor = atof(value);
@@ -1419,6 +1421,10 @@ char *x265_param2string(x265_param* p)
     s += sprintf(s, "%dx%d", p->sourceWidth,p->sourceHeight);
     s += sprintf(s, " fps=%u/%u", p->fpsNum, p->fpsDenom);
     s += sprintf(s, " bitdepth=%d", p->internalBitDepth);
+
+    if ((p->opts & 2) == 0)
+        return buf;
+
     BOOL(p->bEnableWavefront, "wpp");
     s += sprintf(s, " ctu=%d", p->maxCUSize);
     s += sprintf(s, " min-cu-size=%d", p->minCUSize);
