@@ -1281,6 +1281,7 @@ void Analysis::checkMerge2Nx2N_rd0_4(Mode& skip, Mode& merge, const CUGeom& cuGe
         tempPred->cu.setPURefIdx(0, (int8_t)candMvField[bestSadCand][0].refIdx, 0, 0);
         tempPred->cu.setPURefIdx(1, (int8_t)candMvField[bestSadCand][1].refIdx, 0, 0);
         tempPred->sa8dCost = bestPred->sa8dCost;
+        tempPred->sa8dBits = bestPred->sa8dBits;
         tempPred->predYuv.copyFromYuv(bestPred->predYuv);
 
         encodeResAndCalcRdInterCU(*tempPred, cuGeom);
@@ -1291,12 +1292,12 @@ void Analysis::checkMerge2Nx2N_rd0_4(Mode& skip, Mode& merge, const CUGeom& cuGe
         md.bestMode = bestPred;
 
     /* broadcast sets of MV field data */
-    bestPred->cu.setPUInterDir(candDir[bestSadCand], 0, 0);
-    bestPred->cu.setPUMv(0, candMvField[bestSadCand][0].mv, 0, 0);
-    bestPred->cu.setPUMv(1, candMvField[bestSadCand][1].mv, 0, 0);
-    bestPred->cu.setPURefIdx(0, (int8_t)candMvField[bestSadCand][0].refIdx, 0, 0);
-    bestPred->cu.setPURefIdx(1, (int8_t)candMvField[bestSadCand][1].refIdx, 0, 0);
-    checkDQP(bestPred->cu, cuGeom);
+    md.bestMode->cu.setPUInterDir(candDir[bestSadCand], 0, 0);
+    md.bestMode->cu.setPUMv(0, candMvField[bestSadCand][0].mv, 0, 0);
+    md.bestMode->cu.setPUMv(1, candMvField[bestSadCand][1].mv, 0, 0);
+    md.bestMode->cu.setPURefIdx(0, (int8_t)candMvField[bestSadCand][0].refIdx, 0, 0);
+    md.bestMode->cu.setPURefIdx(1, (int8_t)candMvField[bestSadCand][1].refIdx, 0, 0);
+    checkDQP(md.bestMode->cu, cuGeom);
 }
 
 /* sets md.bestMode if a valid merge candidate is found, else leaves it NULL */
