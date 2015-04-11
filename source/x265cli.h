@@ -81,6 +81,7 @@ static const struct option long_options[] =
     { "cu-stats",             no_argument, NULL, 0 },
     { "y4m",                  no_argument, NULL, 0 },
     { "no-progress",          no_argument, NULL, 0 },
+    { "stylish",              no_argument, NULL, 0 },
     { "output",         required_argument, NULL, 'o' },
     { "output-depth",   required_argument, NULL, 'D' },
     { "input",          required_argument, NULL, 0 },
