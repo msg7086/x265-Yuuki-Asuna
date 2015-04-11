@@ -400,7 +400,7 @@ bool CLIOptions::parse(int argc, char **argv)
     if (api->param_apply_profile(param, profile))
         return true;
 
-    if (param->logLevel >= X265_LOG_INFO)
+    if (param->logLevel >= X265_LOG_INFO || param->logfLevel >= X265_LOG_INFO)
     {
         char buf[128];
         int p = sprintf(buf, "%dx%d fps %d/%d %sp%d", param->sourceWidth, param->sourceHeight,
