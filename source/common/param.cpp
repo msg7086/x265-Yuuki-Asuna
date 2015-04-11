@@ -123,6 +123,8 @@ void x265_param_default(x265_param* param)
     param->frameNumThreads = 0;
 
     param->logLevel = X265_LOG_INFO;
+    param->logfn = NULL;
+    param->logfLevel = X265_LOG_INFO;
     param->csvLogLevel = 0;
     param->csvfn = NULL;
     param->rc.lambdaFileName = NULL;
@@ -1171,6 +1173,16 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     {
         if (0) ;
         OPT("opts") p->opts = atoi(value);
+        OPT("log-file") p->logfn = strdup(value);
+        OPT("log-file-level")
+        {
+            p->logfLevel = atoi(value);
+            if (bError)
+            {
+                bError = false;
+                p->logfLevel = parseName(value, logLevelNames, bError) - 1;
+            }
+        }
         OPT("csv") p->csvfn = strdup(value);
         OPT("csv-log-level") p->csvLogLevel = atoi(value);
         OPT("qpmin") p->rc.qpMin = atoi(value);
@@ -2477,6 +2489,8 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->bEnableFades = src->bEnableFades;
     dst->bField = src->bField;
 
+    dst->logfn = src->logfn;
+    dst->logfLevel = src->logfLevel;
     dst->opts = src->opts;
 
 #ifdef SVT_HEVC
