@@ -67,6 +67,7 @@ static const struct option long_options[] =
     { "cu-stats",             no_argument, NULL, 0 },
     { "y4m",                  no_argument, NULL, 0 },
     { "no-progress",          no_argument, NULL, 0 },
+    { "stylish",              no_argument, NULL, 0 },
     { "output",         required_argument, NULL, 'o' },
     { "output-depth",   required_argument, NULL, 'D' },
     { "input",          required_argument, NULL, 0 },
@@ -340,6 +341,7 @@ static void showHelp(x265_param *param)
     H1("   --log-file <filename>         Save log to file\n" );
     H1("   --log-file-level <string>     Log-file logging level: none error warning info debug full. Default %s\n", x265::logLevelNames[param->logfLevel + 1]);
     H0("   --no-progress                 Disable CLI progress reports\n");
+    H0("   --stylish                     Enable x264-r2204 style awesome progress indicator\n");
     H0("   --csv <filename>              Comma separated log file, if csv-log-level > 0 frame level statistics, else one line per run\n");
     H0("   --csv-log-level <integer>     Level of csv logging, if csv-log-level > 0 frame level statistics, else one line per run: 0-2\n");
     H0("\nInput Options:\n");
