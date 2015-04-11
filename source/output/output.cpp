@@ -39,8 +39,17 @@ ReconFile* ReconFile::open(const char *fname, int width, int height, uint32_t bi
     else
         return new YUVOutput(fname, width, height, bitdepth, csp);
 }
+#ifdef ENABLE_LSMASH
+  #include "mp4.h"
+#endif
 
 OutputFile* OutputFile::open(const char *fname, InputFileInfo& inputInfo)
 {
+    const char * s = strrchr(fname, '.');
+
+#ifdef ENABLE_LSMASH
+    if (s && !strcmp(s, ".mp4"))
+        return new MP4Output(fname, inputInfo);
+#endif
     return new RAWOutput(fname, inputInfo);
 }
