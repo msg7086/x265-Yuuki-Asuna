@@ -64,6 +64,8 @@ static const struct option long_options[] =
     { "no-pme",               no_argument, NULL, 0 },
     { "pme",                  no_argument, NULL, 0 },
     { "log-level",      required_argument, NULL, 0 },
+    { "log-file",       required_argument, NULL, 0 },
+    { "log-file-level", required_argument, NULL, 0 },
     { "profile",        required_argument, NULL, 'P' },
     { "level-idc",      required_argument, NULL, 0 },
     { "high-tier",            no_argument, NULL, 0 },
