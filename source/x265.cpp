@@ -138,17 +138,61 @@ void CLIOptions::printStatus(uint32_t frameNum)
     int64_t elapsed = time - startTime;
     double fps = elapsed > 0 ? frameNum * 1000000. / elapsed : 0;
     float bitrate = 0.008f * totalbytes * (param->fpsNum / param->fpsDenom) / ((float)frameNum);
+
+    int eta, eta_hh = 0, eta_mm = 0, eta_ss = 0, fps_prec, bitrate_prec, file_prec, estsz_prec = 0;
+    double percentage = 0., estsz = 0., file_num, estsz_num = 0.;
+    const char *file_unit, *estsz_unit = "";
+    fps_prec     = fps > 999.5 ? 0 : fps > 99.5 ? 1 : fps > 9.95 ? 2 : 3;
+    bitrate_prec = bitrate > 9999.5 ? 0 : bitrate > 999.5 ? 1 : 2;
+    file_prec    = totalbytes < 1048576000 ? 2 : totalbytes < 10485760000 ? 1 : 0;
+    file_num     = totalbytes < 1048576 ? (double) totalbytes / 1024. : (double) totalbytes / 1048576.;
+    file_unit    = totalbytes < 1048576 ? "K": "M";
     if (framesToBeEncoded)
     {
-        int eta = (int)(elapsed * (framesToBeEncoded - frameNum) / ((int64_t)frameNum * 1000000));
-        sprintf(buf, "x265 [%.1f%%] %d/%d frames, %.2f fps, %.2f kb/s, eta %d:%02d:%02d",
-                100. * frameNum / framesToBeEncoded, frameNum, framesToBeEncoded, fps, bitrate,
-                eta / 3600, (eta / 60) % 60, eta % 60);
+        eta        = (int)(elapsed * (framesToBeEncoded - frameNum) / ((int64_t)frameNum * 1000000));
+        percentage = 100. * frameNum / framesToBeEncoded;
+        eta_hh     = eta / 3600;
+        eta_mm     = ( eta / 60 ) % 60;
+        eta_ss     = eta % 60;
+        estsz      = (double) totalbytes * framesToBeEncoded / (frameNum * 1024.);
+        estsz_prec = estsz < 1024000 ? 2 : estsz < 10240000 ? 1 : 0;
+        estsz_num  = estsz < 1024 ? estsz : estsz / 1024;
+        estsz_unit = estsz < 1024 ? "K" : "M";
+        sprintf(buf, "x265 [%.1f%%] %d/%d frames, %.*f fps, %.*f kb/s, %.*f %sB, eta %d:%02d:%02d, est.size %.*f %sB",
+                percentage, frameNum, framesToBeEncoded, fps_prec, fps, bitrate_prec, bitrate,
+                file_prec, file_num, file_unit,
+                eta_hh, eta_mm, eta_ss,
+                estsz_prec, estsz_num, estsz_unit);
     }
     else
-        sprintf(buf, "x265 %d frames: %.2f fps, %.2f kb/s", frameNum, fps, bitrate);
+        sprintf(buf, "x265 %d frames: %.*f fps, %.*f kb/s, %.*f %sB",
+                frameNum, fps_prec, fps, bitrate_prec, bitrate,
+                file_prec, file_num, file_unit);
 
-    fprintf(stderr, "%s  \r", buf + 5);
+    if( param->bStylish )
+    {
+        char buf_stylish[200];
+        int secs = elapsed / 1000000;
+        if( framesToBeEncoded )
+        {
+            sprintf( buf_stylish, "x265 [%5.1f%%]  %6d/%-6d  %5.*f  %6.*f  %3d:%02d:%02d  %3d:%02d:%02d  %6.*f %1sB  %6.*f %1sB",
+                     percentage, frameNum, framesToBeEncoded, fps_prec, fps, bitrate_prec, bitrate,
+                     secs/3600, (secs/60)%60, secs%60, eta_hh, eta_mm, eta_ss,
+                     file_prec, file_num, file_unit,
+                     estsz_prec, estsz_num, estsz_unit);
+        }
+        else
+        {
+            sprintf( buf_stylish, "x265 %6d  %5.*f  %6.*f  %3d:%02d:%02d  %6.*f %1sB",
+                     frameNum, fps_prec, fps, bitrate_prec, bitrate,
+                     secs/3600, (secs/60)%60, secs%60,
+                     file_prec, file_num, file_unit);
+        }
+        fprintf( stderr, "%s  \r", buf_stylish+5 );
+    }
+    else
+        fprintf( stderr, "%s       \r", buf+5 );
+
     SetConsoleTitle(buf);
     fflush(stderr); // needed in windows
     prevUpdateTime = time;
@@ -613,6 +657,15 @@ int main(int argc, char **argv)
             cliopt.bDither = false;
     }
 
+    if (cliopt.bProgress && param->bStylish)
+    {
+        if (cliopt.framesToBeEncoded)
+            fprintf(stderr, " %6s   %13s  %5s  %6s  %9s  %9s  %7s  %10s\n",
+                "", "frames   ", "fps ", "kb/s ", "elapsed", "remain ", "size", "est.size");
+        else
+            fprintf(stderr, "%6s  %5s  %6s  %9s  %7s\n", "frames", "fps ", "kb/s ", "elapsed", "size");
+    }
+
     // main encoder loop
     while (pic_in && !b_ctrl_c)
     {
@@ -709,7 +762,16 @@ int main(int argc, char **argv)
 
     /* clear progress report */
     if (cliopt.bProgress)
-        fprintf(stderr, "%*s\r", 80, " ");
+    {
+        if (!param->bStylish)
+            fprintf(stderr, "%*s\r", 100, " ");
+        else if (outFrameCount)
+        {
+            cliopt.prevUpdateTime = 0;
+            cliopt.printStatus(outFrameCount);
+            fprintf(stderr, "\n");
+        }
+    }
 
 fail:
 
