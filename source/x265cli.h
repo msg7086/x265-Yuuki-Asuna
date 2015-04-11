@@ -51,6 +51,8 @@ static const struct option long_options[] =
     { "no-pme",               no_argument, NULL, 0 },
     { "pme",                  no_argument, NULL, 0 },
     { "log-level",      required_argument, NULL, 0 },
+    { "log-file",       required_argument, NULL, 0 },
+    { "log-file-level", required_argument, NULL, 0 },
     { "profile",        required_argument, NULL, 'P' },
     { "level-idc",      required_argument, NULL, 0 },
     { "high-tier",            no_argument, NULL, 0 },
@@ -320,6 +322,8 @@ static void showHelp(x265_param *param)
     H0("-o/--output <filename>           Bitstream output file name\n");
     H0("-D/--output-depth 8|10|12        Output bit depth (also internal bit depth). Default %d\n", param->internalBitDepth);
     H0("   --log-level <string>          Logging level: none error warning info debug full. Default %s\n", X265_NS::logLevelNames[param->logLevel + 1]);
+    H1("   --log-file <filename>         Save log to file\n" );
+    H1("   --log-file-level <string>     Log-file logging level: none error warning info debug full. Default %s\n", x265::logLevelNames[param->logfLevel + 1]);
     H0("   --no-progress                 Disable CLI progress reports\n");
     H0("   --csv <filename>              Comma separated log file, if csv-log-level > 0 frame level statistics, else one line per run\n");
     H0("   --csv-log-level <integer>     Level of csv logging, if csv-log-level > 0 frame level statistics, else one line per run: 0-2\n");
