@@ -589,6 +589,12 @@ typedef struct x265_param
      * X265_LOG_FULL, default is X265_LOG_INFO */
     int       logLevel;
 
+    /* filename of general log */
+    char*     logfn;
+
+    /* level of general log */
+    int       logfLevel;
+
     /* Filename of CSV log. Now deprecated */
     const char* csvfn;
 

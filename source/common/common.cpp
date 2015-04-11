@@ -104,7 +104,7 @@ int x265_exp2fix8(double x)
 
 void general_log(const x265_param* param, const char* caller, int level, const char* fmt, ...)
 {
-    if (param && level > param->logLevel)
+    if (param && level > param->logLevel && level > param->logfLevel)
         return;
     const int bufferSize = 4096;
     char buffer[bufferSize];
@@ -138,7 +138,15 @@ void general_log(const x265_param* param, const char* caller, int level, const c
     va_start(arg, fmt);
     vsnprintf(buffer + p, bufferSize - p, fmt, arg);
     va_end(arg);
-    fputs(buffer, stderr);
+    if (!(param && level > param->logLevel))
+        fputs(buffer, stderr);
+    if (param && param->logfn && level <= param->logfLevel) {
+        FILE* fp = fopen(param->logfn, "ab");
+        if (fp) {
+            fputs(buffer, fp);
+            fclose(fp);
+        }
+    }
 }
 
 #if _WIN32
