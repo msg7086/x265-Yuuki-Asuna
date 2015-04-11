@@ -1469,7 +1469,7 @@ char *x265_param2string(x265_param* p)
     if (p->rc.rateControlMode == X265_RC_ABR || p->rc.rateControlMode == X265_RC_CRF)
     {
         if (p->rc.rateControlMode == X265_RC_CRF)
-            s += sprintf(s, " crf=%.1f", p->rc.rfConstant);
+            s += sprintf(s, " crf=%.4f", p->rc.rfConstant);
         else
             s += sprintf(s, " bitrate=%d", p->rc.bitrate);
         s += sprintf(s, " qcomp=%.2f qpmin=%d qpmax=%d qpstep=%d",
