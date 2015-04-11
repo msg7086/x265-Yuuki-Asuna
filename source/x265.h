@@ -1335,6 +1335,8 @@ typedef struct x265_param
 
     int opts;
 
+    bool bStylish;
+
     struct
     {
         /* Explicit mode of rate-control, necessary for API users. It must
