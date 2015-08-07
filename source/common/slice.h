@@ -26,7 +26,7 @@
 
 #include "common.h"
 
-namespace x265 {
+namespace X265_NS {
 // private namespace
 
 class Frame;
@@ -111,6 +111,7 @@ struct ProfileTierLevel
     bool     frameOnlyConstraintFlag;
     bool     profileCompatibilityFlag[32];
     bool     intraConstraintFlag;
+    bool     onePictureOnlyConstraintFlag;
     bool     lowerBitRateConstraintFlag;
     int      profileIdc;
     int      levelIdc;

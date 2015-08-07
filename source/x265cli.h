@@ -24,10 +24,13 @@
 #ifndef X265CLI_H
 #define X265CLI_H 1
 
+#include "common.h"
+#include "param.h"
+
 #include <getopt.h>
 
 #ifdef __cplusplus
-namespace x265 {
+namespace X265_NS {
 #endif
 
 static const char short_options[] = "o:D:P:p:f:F:r:I:i:b:s:t:q:m:hwV?";
@@ -54,6 +57,7 @@ static const struct option long_options[] =
     { "allow-non-conformance",no_argument, NULL, 0 },
     { "no-allow-non-conformance",no_argument, NULL, 0 },
     { "csv",            required_argument, NULL, 0 },
+    { "csv-log-level",  required_argument, NULL, 0 },
     { "no-cu-stats",          no_argument, NULL, 0 },
     { "cu-stats",             no_argument, NULL, 0 },
     { "y4m",                  no_argument, NULL, 0 },
@@ -121,6 +125,7 @@ static const struct option long_options[] =
     { "no-b-pyramid",         no_argument, NULL, 0 },
     { "b-pyramid",            no_argument, NULL, 0 },
     { "ref",            required_argument, NULL, 0 },
+    { "limit-refs",     required_argument, NULL, 0 },
     { "no-weightp",           no_argument, NULL, 0 },
     { "weightp",              no_argument, NULL, 'w' },
     { "no-weightb",           no_argument, NULL, 0 },
@@ -183,7 +188,8 @@ static const struct option long_options[] =
     { "transfer",       required_argument, NULL, 0 },
     { "colormatrix",    required_argument, NULL, 0 },
     { "chromaloc",      required_argument, NULL, 0 },
-    { "crop-rect",      required_argument, NULL, 0 },
+    { "display-window", required_argument, NULL, 0 },
+    { "crop-rect",      required_argument, NULL, 0 }, /* DEPRECATED */
     { "master-display", required_argument, NULL, 0 },
     { "max-cll",        required_argument, NULL, 0 },
     { "no-dither",            no_argument, NULL, 0 },
@@ -219,17 +225,15 @@ static const struct option long_options[] =
     { 0, 0, 0, 0 }
 };
 
-static void printVersion(x265_param *param)
+static void printVersion(x265_param *param, const x265_api* api)
 {
-    x265_log(param, X265_LOG_INFO, "HEVC encoder version %s\n", x265_version_str);
-    x265_log(param, X265_LOG_INFO, "build info %s\n", x265_build_info_str);
+    x265_log(param, X265_LOG_INFO, "HEVC encoder version %s\n", api->version_str);
+    x265_log(param, X265_LOG_INFO, "build info %s\n", api->build_info_str);
 }
 
 static void showHelp(x265_param *param)
 {
     int level = param->logLevel;
-    x265_param_default(param);
-    printVersion(param);
 
 #define OPT(value) (value ? "enabled" : "disabled")
 #define H0 printf
@@ -243,11 +247,11 @@ static void showHelp(x265_param *param)
     H0("-V/--version                     Show version info and exit\n");
     H0("\nOutput Options:\n");
     H0("-o/--output <filename>           Bitstream output file name\n");
-    H0("-D/--output-depth 8|10           Output bit depth (also internal bit depth). Default %d\n", param->internalBitDepth);
-    H0("   --log-level <string>          Logging level: none error warning info debug full. Default %s\n", x265::logLevelNames[param->logLevel + 1]);
+    H0("-D/--output-depth 8|10|12        Output bit depth (also internal bit depth). Default %d\n", param->internalBitDepth);
+    H0("   --log-level <string>          Logging level: none error warning info debug full. Default %s\n", X265_NS::logLevelNames[param->logLevel + 1]);
     H0("   --no-progress                 Disable CLI progress reports\n");
-    H0("   --[no-]cu-stats               Enable logging stats about distribution of cu across all modes. Default %s\n",OPT(param->bLogCuStats));
-    H1("   --csv <filename>              Comma separated log file, log level >= 3 frame log, else one line per run\n");
+    H0("   --csv <filename>              Comma separated log file, if csv-log-level > 0 frame level statistics, else one line per run\n");
+    H0("   --csv-log-level               Level of csv logging, if csv-log-level > 0 frame level statistics, else one line per run: 0-2\n");
     H0("\nInput Options:\n");
     H0("   --input <filename>            Raw YUV or Y4M input file name. `-` for stdin\n");
     H1("   --y4m                         Force parsing of input stream as YUV4MPEG2 regardless of file extension\n");
@@ -302,10 +306,12 @@ static void showHelp(x265_param *param)
     H0("   --[no-]signhide               Hide sign bit of one coeff per TU (rdo). Default %s\n", OPT(param->bEnableSignHiding));
     H1("   --[no-]tskip                  Enable intra 4x4 transform skipping. Default %s\n", OPT(param->bEnableTransformSkip));
     H0("\nTemporal / motion search options:\n");
+    H0("   --max-merge <1..5>            Maximum number of merge candidates. Default %d\n", param->maxNumMergeCand);
+    H0("   --ref <integer>               max number of L0 references to be allowed (1 .. 16) Default %d\n", param->maxNumReferences);
+    H0("   --limit-refs <0|1|2|3>        limit references per depth (1) or CU (2) or both (3). Default %d\n", param->limitReferences);
     H0("   --me <string>                 Motion search method dia hex umh star full. Default %d\n", param->searchMethod);
     H0("-m/--subme <integer>             Amount of subpel refinement to perform (0:least .. 7:most). Default %d \n", param->subpelRefine);
     H0("   --merange <integer>           Motion search range. Default %d\n", param->searchRange);
-    H0("   --max-merge <1..5>            Maximum number of merge candidates. Default %d\n", param->maxNumMergeCand);
     H0("   --[no-]rect                   Enable rectangular motion partitions Nx2N and 2NxN. Default %s\n", OPT(param->bEnableRectInter));
     H0("   --[no-]amp                    Enable asymmetric motion partitions, requires --rect. Default %s\n", OPT(param->bEnableAMP));
     H1("   --[no-]temporal-mvp           Enable temporal MV predictors. Default %s\n", OPT(param->bEnableTemporalMvp));
@@ -327,13 +333,6 @@ static void showHelp(x265_param *param)
     H1("   --bframe-bias <integer>       Bias towards B frame decisions. Default %d\n", param->bFrameBias);
     H0("   --b-adapt <0..2>              0 - none, 1 - fast, 2 - full (trellis) adaptive B frame scheduling. Default %d\n", param->bFrameAdaptive);
     H0("   --[no-]b-pyramid              Use B-frames as references. Default %s\n", OPT(param->bBPyramid));
-    H0("   --ref <integer>               max number of L0 references to be allowed (1 .. 16) Default %d\n", param->maxNumReferences);
-    H1("   --zones <zone0>/<zone1>/...   Tweak the bitrate of regions of the video\n");
-    H1("                                 Each zone is of the form\n");
-    H1("                                   <start frame>,<end frame>,<option>\n");
-    H1("                                   where <option> is either\n");
-    H1("                                       q=<integer> (force QP)\n");
-    H1("                                   or  b=<float> (bitrate multiplier)\n");
     H1("   --qpfile <string>             Force frametypes and QPs for some or all frames\n");
     H1("                                 Format of each line: framenumber frametype QP\n");
     H1("                                 QP is optional (none lets x265 choose). Frametypes: I,i,P,B,b.\n");
@@ -359,7 +358,7 @@ static void showHelp(x265_param *param)
     H0("   --[no-]strict-cbr             Enable stricter conditions and tolerance for bitrate deviations in CBR mode. Default %s\n", OPT(param->rc.bStrictCbr));
     H0("   --analysis-mode <string|int>  save - Dump analysis info into file, load - Load analysis buffers from the file. Default %d\n", param->analysisMode);
     H0("   --analysis-file <filename>    Specify file name used for either dumping or reading analysis data.\n");
-    H0("   --aq-mode <integer>           Mode for Adaptive Quantization - 0:none 1:uniform AQ 2:auto variance. Default %d\n", param->rc.aqMode);
+    H0("   --aq-mode <integer>           Mode for Adaptive Quantization - 0:none 1:uniform AQ 2:auto variance 3:auto variance with bias to dark scenes. Default %d\n", param->rc.aqMode);
     H0("   --aq-strength <float>         Reduces blocking and blurring in flat and textured areas (0 to 3.0). Default %.2f\n", param->rc.aqStrength);
     H0("   --qg-size <int>               Specifies the size of the quantization group (64, 32, 16). Default %d\n", param->rc.qgSize);
     H0("   --[no-]cutree                 Enable cutree for Adaptive Quantization. Default %s\n", OPT(param->rc.cuTree));
@@ -370,6 +369,12 @@ static void showHelp(x265_param *param)
     H1("   --cbqpoffs <integer>          Chroma Cb QP Offset [-12..12]. Default %d\n", param->cbQpOffset);
     H1("   --crqpoffs <integer>          Chroma Cr QP Offset [-12..12]. Default %d\n", param->crQpOffset);
     H1("   --scaling-list <string>       Specify a file containing HM style quant scaling lists or 'default' or 'off'. Default: off\n");
+    H1("   --zones <zone0>/<zone1>/...   Tweak the bitrate of regions of the video\n");
+    H1("                                 Each zone is of the form\n");
+    H1("                                   <start frame>,<end frame>,<option>\n");
+    H1("                                   where <option> is either\n");
+    H1("                                       q=<integer> (force QP)\n");
+    H1("                                   or  b=<float> (bitrate multiplier)\n");
     H1("   --lambda-file <string>        Specify a file containing replacement values for the lambda tables\n");
     H1("                                 MAX_MAX_QP+1 floats for lambda table, then again for lambda2 table\n");
     H1("                                 Blank lines and lines starting with hash(#) are ignored\n");
@@ -383,7 +388,7 @@ static void showHelp(x265_param *param)
     H0("                                 Choose from 0=undef, 1=1:1(\"square\"), 2=12:11, 3=10:11, 4=16:11,\n");
     H0("                                 5=40:33, 6=24:11, 7=20:11, 8=32:11, 9=80:33, 10=18:11, 11=15:11,\n");
     H0("                                 12=64:33, 13=160:99, 14=4:3, 15=3:2, 16=2:1 or custom ratio of <int:int>. Default %d\n", param->vui.aspectRatioIdc);
-    H1("   --crop-rect <string>          Add 'left,top,right,bottom' to the bitstream-level cropping rectangle\n");
+    H1("   --display-window <string>     Describe overscan cropping region as 'left,top,right,bottom' in pixels\n");
     H1("   --overscan <string>           Specify whether it is appropriate for decoder to show cropped region: undef, show or crop. Default undef\n");
     H0("   --videoformat <string>        Specify video format from undef, component, pal, ntsc, secam, mac. Default undef\n");
     H0("   --range <string>              Specify black level and range of luma and chroma signals as full or limited Default limited\n");
@@ -391,7 +396,7 @@ static void showHelp(x265_param *param)
     H0("                                 smpte240m, film, bt2020. Default undef\n");
     H0("   --transfer <string>           Specify transfer characteristics from undef, bt709, bt470m, bt470bg, smpte170m,\n");
     H0("                                 smpte240m, linear, log100, log316, iec61966-2-4, bt1361e, iec61966-2-1,\n");
-    H0("                                 bt2020-10, bt2020-12. Default undef\n");
+    H0("                                 bt2020-10, bt2020-12, smpte-st-2084, smpte-st-428, arib-std-b67. Default undef\n");
     H1("   --colormatrix <string>        Specify color matrix setting from undef, bt709, fcc, bt470bg, smpte170m,\n");
     H1("                                 smpte240m, GBR, YCgCo, bt2020nc, bt2020c. Default undef\n");
     H1("   --chromaloc <integer>         Specify chroma sample location (0 to 5). Default of %d\n", param->vui.chromaSampleLocTypeTopField);

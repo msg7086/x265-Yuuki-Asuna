@@ -100,6 +100,11 @@ protected:
     bool check_saoCuOrgE3_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt);
     bool check_saoCuOrgE3_32_t(saoCuOrgE3_t ref, saoCuOrgE3_t opt);
     bool check_saoCuOrgB0_t(saoCuOrgB0_t ref, saoCuOrgB0_t opt);
+    bool check_saoCuStatsBO_t(saoCuStatsBO_t ref, saoCuStatsBO_t opt);
+    bool check_saoCuStatsE0_t(saoCuStatsE0_t ref, saoCuStatsE0_t opt);
+    bool check_saoCuStatsE1_t(saoCuStatsE1_t ref, saoCuStatsE1_t opt);
+    bool check_saoCuStatsE2_t(saoCuStatsE2_t ref, saoCuStatsE2_t opt);
+    bool check_saoCuStatsE3_t(saoCuStatsE3_t ref, saoCuStatsE3_t opt);
     bool check_planecopy_sp(planecopy_sp_t ref, planecopy_sp_t opt);
     bool check_planecopy_cp(planecopy_cp_t ref, planecopy_cp_t opt);
     bool check_cutree_propagate_cost(cutree_propagate_cost ref, cutree_propagate_cost opt);
@@ -108,6 +113,8 @@ protected:
     bool check_calSign(sign_t ref, sign_t opt);
     bool check_scanPosLast(scanPosLast_t ref, scanPosLast_t opt);
     bool check_findPosFirstLast(findPosFirstLast_t ref, findPosFirstLast_t opt);
+    bool check_costCoeffNxN(costCoeffNxN_t ref, costCoeffNxN_t opt);
+    bool check_costCoeffRemain(costCoeffRemain_t ref, costCoeffRemain_t opt);
 
 public:
 

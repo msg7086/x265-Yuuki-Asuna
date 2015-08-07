@@ -25,7 +25,7 @@
 #include "slice.h"
 #include "level.h"
 
-namespace x265 {
+namespace X265_NS {
 typedef struct
 {
     uint32_t maxLumaSamples;
@@ -61,18 +61,37 @@ LevelSpec levels[] =
 /* determine minimum decoder level required to decode the described video */
 void determineLevel(const x265_param &param, VPS& vps)
 {
+    vps.ptl.onePictureOnlyConstraintFlag = param.totalFrames == 1;
+    vps.ptl.intraConstraintFlag = param.keyframeMax <= 1 || vps.ptl.onePictureOnlyConstraintFlag;
+    vps.ptl.bitDepthConstraint = param.internalBitDepth;
+    vps.ptl.chromaFormatConstraint = param.internalCsp;
+
+    /* TODO: figure out HighThroughput signaling, aka: HbrFactor in section A.4.2, only available
+     * for intra-only profiles (vps.ptl.intraConstraintFlag) */
+    vps.ptl.lowerBitRateConstraintFlag = true;
+
     vps.maxTempSubLayers = param.bEnableTemporalSubLayers ? 2 : 1;
-    if (param.internalCsp == X265_CSP_I420)
+    
+    if (param.internalCsp == X265_CSP_I420 && param.internalBitDepth <= 10)
     {
-        if (param.internalBitDepth == 8)
+        /* Probably an HEVC v1 profile, but must check to be sure */
+        if (param.internalBitDepth <= 8)
         {
-            if (param.keyframeMax == 1 && param.maxNumReferences == 1)
+            if (vps.ptl.onePictureOnlyConstraintFlag)
                 vps.ptl.profileIdc = Profile::MAINSTILLPICTURE;
+            else if (vps.ptl.intraConstraintFlag)
+                vps.ptl.profileIdc = Profile::MAINREXT; /* Main Intra */
             else 
                 vps.ptl.profileIdc = Profile::MAIN;
         }
-        else if (param.internalBitDepth == 10)
-            vps.ptl.profileIdc = Profile::MAIN10;
+        else if (param.internalBitDepth <= 10)
+        {
+            /* note there is no 10bit still picture profile */
+            if (vps.ptl.intraConstraintFlag)
+                vps.ptl.profileIdc = Profile::MAINREXT; /* Main10 Intra */
+            else
+                vps.ptl.profileIdc = Profile::MAIN10;
+        }
     }
     else
         vps.ptl.profileIdc = Profile::MAINREXT;
@@ -162,17 +181,19 @@ void determineLevel(const x265_param &param, VPS& vps)
             return;
         }
 
-#define CHECK_RANGE(value, main, high) (value > main && value <= high)
+#define CHECK_RANGE(value, main, high) (high != MAX_UINT && value > main && value <= high)
 
-        if (CHECK_RANGE(bitrate, levels[i].maxBitrateMain, levels[i].maxBitrateHigh) &&
-            CHECK_RANGE((uint32_t)param.rc.vbvBufferSize, levels[i].maxCpbSizeMain, levels[i].maxCpbSizeHigh) &&
-            levels[i].maxBitrateHigh != MAX_UINT)
+        if (CHECK_RANGE(bitrate, levels[i].maxBitrateMain, levels[i].maxBitrateHigh) ||
+            CHECK_RANGE((uint32_t)param.rc.vbvBufferSize, levels[i].maxCpbSizeMain, levels[i].maxCpbSizeHigh))
         {
-            /* If the user has not enabled high tier, continue looking to see if we can encode at a higher level, main tier */
-            if (!param.bHighTier && (levels[i].levelIdc < param.levelIdc))
-                continue;
-            else
+            /* The bitrate or buffer size are out of range for Main tier, but in
+             * range for High tier. If the user requested High tier then give
+             * them High tier at this level.  Otherwise allow the loop to
+             * progress to the Main tier of the next level */
+            if (param.bHighTier)
                 vps.ptl.tierFlag = Level::HIGH;
+            else
+                continue;
         }
         else
             vps.ptl.tierFlag = Level::MAIN;
@@ -184,29 +205,68 @@ void determineLevel(const x265_param &param, VPS& vps)
         break;
     }
 
-    vps.ptl.intraConstraintFlag = false;
-    vps.ptl.lowerBitRateConstraintFlag = true;
-    vps.ptl.bitDepthConstraint = param.internalBitDepth;
-    vps.ptl.chromaFormatConstraint = param.internalCsp;
-    
     static const char *profiles[] = { "None", "Main", "Main 10", "Main Still Picture", "RExt" };
     static const char *tiers[]    = { "Main", "High" };
 
-    const char *profile = profiles[vps.ptl.profileIdc];
+    char profbuf[64];
+    strcpy(profbuf, profiles[vps.ptl.profileIdc]);
+
+    bool bStillPicture = false;
     if (vps.ptl.profileIdc == Profile::MAINREXT)
     {
-        if (param.internalCsp == X265_CSP_I422)
-            profile = "Main 4:2:2 10";
-        if (param.internalCsp == X265_CSP_I444)
+        if (vps.ptl.bitDepthConstraint > 12 && vps.ptl.intraConstraintFlag)
+        {
+            if (vps.ptl.onePictureOnlyConstraintFlag)
+            {
+                strcpy(profbuf, "Main 4:4:4 16 Still Picture");
+                bStillPicture = true;
+            }
+            else
+                strcpy(profbuf, "Main 4:4:4 16");
+        }
+        else if (param.internalCsp == X265_CSP_I420)
+        {
+            X265_CHECK(vps.ptl.intraConstraintFlag || vps.ptl.bitDepthConstraint > 10, "rext fail\n");
+            if (vps.ptl.bitDepthConstraint <= 8)
+                strcpy(profbuf, "Main");
+            else if (vps.ptl.bitDepthConstraint <= 10)
+                strcpy(profbuf, "Main 10");
+            else if (vps.ptl.bitDepthConstraint <= 12)
+                strcpy(profbuf, "Main 12");
+        }
+        else if (param.internalCsp == X265_CSP_I422)
+        {
+            /* there is no Main 4:2:2 profile, so it must be signaled as Main10 4:2:2 */
+            if (param.internalBitDepth <= 10)
+                strcpy(profbuf, "Main 4:2:2 10");
+            else if (vps.ptl.bitDepthConstraint <= 12)
+                strcpy(profbuf, "Main 4:2:2 12");
+        }
+        else if (param.internalCsp == X265_CSP_I444)
         {
             if (vps.ptl.bitDepthConstraint <= 8)
-                profile = "Main 4:4:4 8";
+            {
+                if (vps.ptl.onePictureOnlyConstraintFlag)
+                {
+                    strcpy(profbuf, "Main 4:4:4 Still Picture");
+                    bStillPicture = true;
+                }
+                else
+                    strcpy(profbuf, "Main 4:4:4");
+            }
             else if (vps.ptl.bitDepthConstraint <= 10)
-                profile = "Main 4:4:4 10";
+                strcpy(profbuf, "Main 4:4:4 10");
+            else if (vps.ptl.bitDepthConstraint <= 12)
+                strcpy(profbuf, "Main 4:4:4 12");
         }
+        else
+            strcpy(profbuf, "Unknown");
+
+        if (vps.ptl.intraConstraintFlag && !bStillPicture)
+            strcat(profbuf, " Intra");
     }
     x265_log(&param, X265_LOG_INFO, "%s profile, Level-%s (%s tier)\n",
-             profile, levels[i].name, tiers[vps.ptl.tierFlag]);
+             profbuf, levels[i].name, tiers[vps.ptl.tierFlag]);
 }
 
 /* enforce a maximum decoder level requirement, in other words assure that a
@@ -340,80 +400,88 @@ bool enforceLevel(x265_param& param, VPS& vps)
 
     return true;
 }
+}
 
-extern "C"
+#if EXPORT_C_API
+
+/* these functions are exported as C functions (default) */
+using namespace X265_NS;
+extern "C" {
+
+#else
+
+/* these functions exist within private namespace (multilib) */
+namespace X265_NS {
+
+#endif
+
 int x265_param_apply_profile(x265_param *param, const char *profile)
 {
     if (!param || !profile)
         return 0;
 
-#if HIGH_BIT_DEPTH
-    if (!strcmp(profile, "main") || !strcmp(profile, "mainstillpicture") || !strcmp(profile, "msp") || !strcmp(profile, "main444-8"))
-    {
-        x265_log(param, X265_LOG_ERROR, "%s profile not supported, compiled for Main10.\n", profile);
-        return -1;
-    }
-#else
-    if (!strcmp(profile, "main10") || !strcmp(profile, "main422-10") || !strcmp(profile, "main444-10"))
-    {
-        x265_log(param, X265_LOG_ERROR, "%s profile not supported, compiled for Main.\n", profile);
-        return -1;
-    }
+    /* Check if profile bit-depth requirement is exceeded by internal bit depth */
+    bool bInvalidDepth = false;
+#if X265_DEPTH > 8
+    if (!strcmp(profile, "main") || !strcmp(profile, "mainstillpicture") || !strcmp(profile, "msp") ||
+        !strcmp(profile, "main444-8") || !strcmp(profile, "main-intra") ||
+        !strcmp(profile, "main444-intra") || !strcmp(profile, "main444-stillpicture"))
+        bInvalidDepth = true;
 #endif
-    
-    if (!strcmp(profile, "main"))
+#if X265_DEPTH > 10
+    if (!strcmp(profile, "main10") || !strcmp(profile, "main422-10") || !strcmp(profile, "main444-10") ||
+        !strcmp(profile, "main10-intra") || !strcmp(profile, "main422-10-intra") || !strcmp(profile, "main444-10-intra"))
+        bInvalidDepth = true;
+#endif
+#if X265_DEPTH > 12
+    if (!strcmp(profile, "main12") || !strcmp(profile, "main422-12") || !strcmp(profile, "main444-12") ||
+        !strcmp(profile, "main12-intra") || !strcmp(profile, "main422-12-intra") || !strcmp(profile, "main444-12-intra"))
+        bInvalidDepth = true;
+#endif
+
+    if (bInvalidDepth)
     {
-        if (!(param->internalCsp & X265_CSP_I420))
-        {
-            x265_log(param, X265_LOG_ERROR, "%s profile not compatible with %s input color space.\n",
-                     profile, x265_source_csp_names[param->internalCsp]);
-            return -1;
-        }
+        x265_log(param, X265_LOG_ERROR, "%s profile not supported, internal bit depth %d.\n", profile, X265_DEPTH);
+        return -1;
     }
-    else if (!strcmp(profile, "mainstillpicture") || !strcmp(profile, "msp"))
+
+    size_t l = strlen(profile);
+    bool bBoolIntra = (l > 6 && !strcmp(profile + l - 6, "-intra")) ||
+                      !strcmp(profile, "mainstillpicture") || !strcmp(profile, "msp");
+    if (bBoolIntra)
     {
-        if (!(param->internalCsp & X265_CSP_I420))
-        {
-            x265_log(param, X265_LOG_ERROR, "%s profile not compatible with %s input color space.\n",
-                     profile, x265_source_csp_names[param->internalCsp]);
-            return -1;
-        }
-
-        /* SPSs shall have sps_max_dec_pic_buffering_minus1[ sps_max_sub_layers_minus1 ] equal to 0 only */
-        param->maxNumReferences = 1;
-
-        /* The bitstream shall contain only one picture (we do not enforce this) */
-        /* just in case the user gives us more than one picture: */
+        /* The profile may be detected as still picture if param->totalFrames is 1 */
         param->keyframeMax = 1;
-        param->bOpenGOP = 0;
-        param->bRepeatHeaders = 1;
-        param->lookaheadDepth = 0;
-        param->bframes = 0;
-        param->scenecutThreshold = 0;
-        param->bFrameAdaptive = 0;
-        param->rc.cuTree = 0;
-        param->bEnableWeightedPred = 0;
-        param->bEnableWeightedBiPred = 0;
     }
-    else if (!strcmp(profile, "main10"))
+    
+    /* check that input color space is supported by profile */
+    if (!strcmp(profile, "main") || !strcmp(profile, "main-intra") ||
+        !strcmp(profile, "main10") || !strcmp(profile, "main10-intra") ||
+        !strcmp(profile, "main12") || !strcmp(profile, "main12-intra") ||
+        !strcmp(profile, "mainstillpicture") || !strcmp(profile, "msp"))
     {
-        if (!(param->internalCsp & X265_CSP_I420))
+        if (param->internalCsp != X265_CSP_I420)
         {
             x265_log(param, X265_LOG_ERROR, "%s profile not compatible with %s input color space.\n",
                      profile, x265_source_csp_names[param->internalCsp]);
             return -1;
         }
     }
-    else if (!strcmp(profile, "main422-10"))
+    else if (!strcmp(profile, "main422-10") || !strcmp(profile, "main422-10-intra") ||
+             !strcmp(profile, "main422-12") || !strcmp(profile, "main422-12-intra"))
     {
-        if (!(param->internalCsp & (X265_CSP_I420 | X265_CSP_I422)))
+        if (param->internalCsp != X265_CSP_I420 && param->internalCsp != X265_CSP_I422)
         {
             x265_log(param, X265_LOG_ERROR, "%s profile not compatible with %s input color space.\n",
                      profile, x265_source_csp_names[param->internalCsp]);
             return -1;
         }
     }
-    else if (!strcmp(profile, "main444-8") || !strcmp(profile, "main444-10"))
+    else if (!strcmp(profile, "main444-8") ||
+             !strcmp(profile, "main444-intra") || !strcmp(profile, "main444-stillpicture") ||
+             !strcmp(profile, "main444-10") || !strcmp(profile, "main444-10-intra") ||
+             !strcmp(profile, "main444-12") || !strcmp(profile, "main444-12-intra") ||
+             !strcmp(profile, "main444-16-intra") || !strcmp(profile, "main444-16-stillpicture"))
     {
         /* any color space allowed */
     }

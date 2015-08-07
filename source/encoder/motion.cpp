@@ -31,7 +31,7 @@
 #pragma warning(disable: 4127) // conditional  expression is constant (macros use this construct)
 #endif
 
-using namespace x265;
+using namespace X265_NS;
 
 namespace {
 
@@ -56,7 +56,7 @@ const SubpelWorkload workload[X265_MAX_SUBPEL_LEVEL + 1] =
     { 2, 8, 2, 8, true },  // 2x8 SATD HPEL + 2x8 SATD QPEL
 };
 
-int sizeScale[NUM_PU_SIZES];
+static int sizeScale[NUM_PU_SIZES];
 #define SAD_THRESH(v) (bcost < (((v >> 4) * sizeScale[partEnum])))
 
 /* radius 2 hexagon. repeated entries are to avoid having to compute mod6 every time. */
@@ -234,14 +234,9 @@ void MotionEstimate::setSourcePU(const Yuv& srcFencYuv, int _ctuAddr, int cuPart
                pix_base + (m1x) + (m1y) * stride, \
                pix_base + (m2x) + (m2y) * stride, \
                stride, costs); \
-        const uint16_t *base_mvx = &m_cost_mvx[(bmv.x + (m0x)) << 2]; \
-        const uint16_t *base_mvy = &m_cost_mvy[(bmv.y + (m0y)) << 2]; \
-        X265_CHECK(mvcost((bmv + MV(m0x, m0y)) << 2) == (base_mvx[((m0x) - (m0x)) << 2] + base_mvy[((m0y) - (m0y)) << 2]), "mvcost() check failure\n"); \
-        X265_CHECK(mvcost((bmv + MV(m1x, m1y)) << 2) == (base_mvx[((m1x) - (m0x)) << 2] + base_mvy[((m1y) - (m0y)) << 2]), "mvcost() check failure\n"); \
-        X265_CHECK(mvcost((bmv + MV(m2x, m2y)) << 2) == (base_mvx[((m2x) - (m0x)) << 2] + base_mvy[((m2y) - (m0y)) << 2]), "mvcost() check failure\n"); \
-        (costs)[0] += (base_mvx[((m0x) - (m0x)) << 2] + base_mvy[((m0y) - (m0y)) << 2]); \
-        (costs)[1] += (base_mvx[((m1x) - (m0x)) << 2] + base_mvy[((m1y) - (m0y)) << 2]); \
-        (costs)[2] += (base_mvx[((m2x) - (m0x)) << 2] + base_mvy[((m2y) - (m0y)) << 2]); \
+        (costs)[0] += mvcost((bmv + MV(m0x, m0y)) << 2); \
+        (costs)[1] += mvcost((bmv + MV(m1x, m1y)) << 2); \
+        (costs)[2] += mvcost((bmv + MV(m2x, m2y)) << 2); \
     }
 
 #define COST_MV_PT_DIST_X4(m0x, m0y, p0, d0, m1x, m1y, p1, d1, m2x, m2y, p2, d2, m3x, m3y, p3, d3) \
@@ -271,16 +266,10 @@ void MotionEstimate::setSourcePU(const Yuv& srcFencYuv, int _ctuAddr, int cuPart
                pix_base + (m2x) + (m2y) * stride, \
                pix_base + (m3x) + (m3y) * stride, \
                stride, costs); \
-        const uint16_t *base_mvx = &m_cost_mvx[(omv.x << 2)]; \
-        const uint16_t *base_mvy = &m_cost_mvy[(omv.y << 2)]; \
-        X265_CHECK(mvcost((omv + MV(m0x, m0y)) << 2) == (base_mvx[(m0x) << 2] + base_mvy[(m0y) << 2]), "mvcost() check failure\n"); \
-        X265_CHECK(mvcost((omv + MV(m1x, m1y)) << 2) == (base_mvx[(m1x) << 2] + base_mvy[(m1y) << 2]), "mvcost() check failure\n"); \
-        X265_CHECK(mvcost((omv + MV(m2x, m2y)) << 2) == (base_mvx[(m2x) << 2] + base_mvy[(m2y) << 2]), "mvcost() check failure\n"); \
-        X265_CHECK(mvcost((omv + MV(m3x, m3y)) << 2) == (base_mvx[(m3x) << 2] + base_mvy[(m3y) << 2]), "mvcost() check failure\n"); \
-        costs[0] += (base_mvx[(m0x) << 2] + base_mvy[(m0y) << 2]); \
-        costs[1] += (base_mvx[(m1x) << 2] + base_mvy[(m1y) << 2]); \
-        costs[2] += (base_mvx[(m2x) << 2] + base_mvy[(m2y) << 2]); \
-        costs[3] += (base_mvx[(m3x) << 2] + base_mvy[(m3y) << 2]); \
+        costs[0] += mvcost((omv + MV(m0x, m0y)) << 2); \
+        costs[1] += mvcost((omv + MV(m1x, m1y)) << 2); \
+        costs[2] += mvcost((omv + MV(m2x, m2y)) << 2); \
+        costs[3] += mvcost((omv + MV(m3x, m3y)) << 2); \
         COPY2_IF_LT(bcost, costs[0], bmv, omv + MV(m0x, m0y)); \
         COPY2_IF_LT(bcost, costs[1], bmv, omv + MV(m1x, m1y)); \
         COPY2_IF_LT(bcost, costs[2], bmv, omv + MV(m2x, m2y)); \
@@ -296,17 +285,10 @@ void MotionEstimate::setSourcePU(const Yuv& srcFencYuv, int _ctuAddr, int cuPart
                pix_base + (m2x) + (m2y) * stride, \
                pix_base + (m3x) + (m3y) * stride, \
                stride, costs); \
-        /* TODO: use restrict keyword in ICL */ \
-        const uint16_t *base_mvx = &m_cost_mvx[(bmv.x << 2)]; \
-        const uint16_t *base_mvy = &m_cost_mvy[(bmv.y << 2)]; \
-        X265_CHECK(mvcost((bmv + MV(m0x, m0y)) << 2) == (base_mvx[(m0x) << 2] + base_mvy[(m0y) << 2]), "mvcost() check failure\n"); \
-        X265_CHECK(mvcost((bmv + MV(m1x, m1y)) << 2) == (base_mvx[(m1x) << 2] + base_mvy[(m1y) << 2]), "mvcost() check failure\n"); \
-        X265_CHECK(mvcost((bmv + MV(m2x, m2y)) << 2) == (base_mvx[(m2x) << 2] + base_mvy[(m2y) << 2]), "mvcost() check failure\n"); \
-        X265_CHECK(mvcost((bmv + MV(m3x, m3y)) << 2) == (base_mvx[(m3x) << 2] + base_mvy[(m3y) << 2]), "mvcost() check failure\n"); \
-        (costs)[0] += (base_mvx[(m0x) << 2] + base_mvy[(m0y) << 2]); \
-        (costs)[1] += (base_mvx[(m1x) << 2] + base_mvy[(m1y) << 2]); \
-        (costs)[2] += (base_mvx[(m2x) << 2] + base_mvy[(m2y) << 2]); \
-        (costs)[3] += (base_mvx[(m3x) << 2] + base_mvy[(m3y) << 2]); \
+        (costs)[0] += mvcost((bmv + MV(m0x, m0y)) << 2); \
+        (costs)[1] += mvcost((bmv + MV(m1x, m1y)) << 2); \
+        (costs)[2] += mvcost((bmv + MV(m2x, m2y)) << 2); \
+        (costs)[3] += mvcost((bmv + MV(m3x, m3y)) << 2); \
     }
 
 #define DIA1_ITER(mx, my) \
@@ -639,36 +621,18 @@ int MotionEstimate::motionEstimate(ReferencePlanes *ref,
         }
     }
 
+    X265_CHECK(!(ref->isLowres && numCandidates), "lowres motion candidates not allowed\n")
     // measure SAD cost at each QPEL motion vector candidate
-    if (ref->isLowres)
+    for (int i = 0; i < numCandidates; i++)
     {
-        for (int i = 0; i < numCandidates; i++)
+        MV m = mvc[i].clipped(qmvmin, qmvmax);
+        if (m.notZero() & (m != pmv ? 1 : 0) & (m != bestpre ? 1 : 0)) // check already measured
         {
-            MV m = mvc[i].clipped(qmvmin, qmvmax);
-            if (m.notZero() && m != pmv && m != bestpre) // check already measured
+            int cost = subpelCompare(ref, m, sad) + mvcost(m);
+            if (cost < bprecost)
             {
-                int cost = ref->lowresQPelCost(fenc, blockOffset, m, sad) + mvcost(m);
-                if (cost < bprecost)
-                {
-                    bprecost = cost;
-                    bestpre = m;
-                }
-            }
-        }
-    }
-    else
-    {
-        for (int i = 0; i < numCandidates; i++)
-        {
-            MV m = mvc[i].clipped(qmvmin, qmvmax);
-            if (m.notZero() && m != pmv && m != bestpre) // check already measured
-            {
-                int cost = subpelCompare(ref, m, sad) + mvcost(m);
-                if (cost < bprecost)
-                {
-                    bprecost = cost;
-                    bestpre = m;
-                }
+                bprecost = cost;
+                bestpre = m;
             }
         }
     }

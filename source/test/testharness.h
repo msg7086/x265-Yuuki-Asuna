@@ -31,18 +31,13 @@
 #pragma warning(disable: 4324) // structure was padded due to __declspec(align())
 #endif
 
-#if HIGH_BIT_DEPTH
-#define BIT_DEPTH 10
-#else
-#define BIT_DEPTH 8
-#endif
-#define PIXEL_MAX ((1 << BIT_DEPTH) - 1)
+#define PIXEL_MAX ((1 << X265_DEPTH) - 1)
 #define PIXEL_MIN 0
 #define SHORT_MAX  32767
 #define SHORT_MIN -32767
 #define UNSIGNED_SHORT_MAX 65535
 
-using namespace x265;
+using namespace X265_NS;
 
 extern const char* lumaPartStr[NUM_PU_SIZES];
 extern const char* const* chromaPartStr[X265_CSP_COUNT];
@@ -123,14 +118,14 @@ static inline uint32_t __rdtsc(void)
 
 extern "C" {
 #if X265_ARCH_X86
-int x265_stack_pagealign(int (*func)(), int align);
+int PFX(stack_pagealign)(int (*func)(), int align);
 
 /* detect when callee-saved regs aren't saved
  * needs an explicit asm check because it only sometimes crashes in normal use. */
-intptr_t x265_checkasm_call(intptr_t (*func)(), int *ok, ...);
-float x265_checkasm_call_float(float (*func)(), int *ok, ...);
+intptr_t PFX(checkasm_call)(intptr_t (*func)(), int *ok, ...);
+float PFX(checkasm_call_float)(float (*func)(), int *ok, ...);
 #else
-#define x265_stack_pagealign(func, align) func()
+#define PFX(stack_pagealign)(func, align) func()
 #endif
 
 #if X86_64
@@ -144,24 +139,24 @@ float x265_checkasm_call_float(float (*func)(), int *ok, ...);
  * overwrite the junk written to the stack so there's no guarantee that it will always
  * detect all functions that assumes zero-extension.
  */
-void x265_checkasm_stack_clobber(uint64_t clobber, ...);
+void PFX(checkasm_stack_clobber)(uint64_t clobber, ...);
 #define checked(func, ...) ( \
         m_ok = 1, m_rand = (rand() & 0xffff) * 0x0001000100010001ULL, \
-        x265_checkasm_stack_clobber(m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, \
+        PFX(checkasm_stack_clobber)(m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, \
                                     m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, \
                                     m_rand, m_rand, m_rand, m_rand, m_rand), /* max_args+6 */ \
-        x265_checkasm_call((intptr_t(*)())func, &m_ok, 0, 0, 0, 0, __VA_ARGS__))
+        PFX(checkasm_call)((intptr_t(*)())func, &m_ok, 0, 0, 0, 0, __VA_ARGS__))
 
 #define checked_float(func, ...) ( \
         m_ok = 1, m_rand = (rand() & 0xffff) * 0x0001000100010001ULL, \
-        x265_checkasm_stack_clobber(m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, \
+        PFX(checkasm_stack_clobber)(m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, \
                                     m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, m_rand, \
                                     m_rand, m_rand, m_rand, m_rand, m_rand), /* max_args+6 */ \
-        x265_checkasm_call_float((float(*)())func, &m_ok, 0, 0, 0, 0, __VA_ARGS__))
+        PFX(checkasm_call_float)((float(*)())func, &m_ok, 0, 0, 0, 0, __VA_ARGS__))
 #define reportfail() if (!m_ok) { fflush(stdout); fprintf(stderr, "stack clobber check failed at %s:%d", __FILE__, __LINE__); abort(); }
 #elif ARCH_X86
-#define checked(func, ...) x265_checkasm_call((intptr_t(*)())func, &m_ok, __VA_ARGS__);
-#define checked_float(func, ...) x265_checkasm_call_float((float(*)())func, &m_ok, __VA_ARGS__);
+#define checked(func, ...) PFX(checkasm_call)((intptr_t(*)())func, &m_ok, __VA_ARGS__);
+#define checked_float(func, ...) PFX(checkasm_call_float)((float(*)())func, &m_ok, __VA_ARGS__);
 
 #else // if X86_64
 #define checked(func, ...) func(__VA_ARGS__)

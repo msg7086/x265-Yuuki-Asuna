@@ -106,7 +106,7 @@
 /* If compiled with CHECKED_BUILD perform run-time checks and log any that
  * fail, both to stderr and to a file */
 #if CHECKED_BUILD || _DEBUG
-extern int g_checkFailures;
+namespace X265_NS { extern int g_checkFailures; }
 #define X265_CHECK(expr, ...) if (!(expr)) { \
     x265_log(NULL, X265_LOG_ERROR, __VA_ARGS__); \
     FILE *fp = fopen("x265_check_failures.txt", "a"); \
@@ -126,14 +126,12 @@ typedef uint32_t sum_t;
 typedef uint64_t sum2_t;
 typedef uint64_t pixel4;
 typedef int64_t  ssum2_t;
-#define X265_DEPTH 10          // compile time configurable bit depth
 #else
 typedef uint8_t  pixel;
 typedef uint16_t sum_t;
 typedef uint32_t sum2_t;
 typedef uint32_t pixel4;
-typedef int32_t  ssum2_t;      //Signed sum
-#define X265_DEPTH 8           // compile time configurable bit depth
+typedef int32_t  ssum2_t; // Signed sum
 #endif // if HIGH_BIT_DEPTH
 
 #ifndef NULL
@@ -313,7 +311,7 @@ typedef int16_t  coeff_t;      // transform coefficient
 #define CHROMA_V_SHIFT(x) (x == X265_CSP_I420)
 #define X265_MAX_PRED_MODE_PER_CTU 85 * 2 * 8
 
-namespace x265 {
+namespace X265_NS {
 
 enum { SAO_NUM_OFFSET = 4 };
 
@@ -409,9 +407,7 @@ enum SignificanceMapContextType
 /* located in pixel.cpp */
 void extendPicBorder(pixel* recon, intptr_t stride, int width, int height, int marginX, int marginY);
 
-}
-
-/* outside x265 namespace, but prefixed. defined in common.cpp */
+/* located in common.cpp */
 int64_t  x265_mdate(void);
 #define  x265_log(param, ...) general_log(param, "x265", __VA_ARGS__)
 void     general_log(const x265_param* param, const char* caller, int level, const char* fmt, ...);
@@ -426,7 +422,10 @@ void*    x265_malloc(size_t size);
 void     x265_free(void *ptr);
 char*    x265_slurp_file(const char *filename);
 
-void     x265_setup_primitives(x265_param* param, int cpu); /* primitives.cpp */
+/* located in primitives.cpp */
+void     x265_setup_primitives(x265_param* param);
+void     x265_report_simd(x265_param* param);
+}
 
 #include "constants.h"
 

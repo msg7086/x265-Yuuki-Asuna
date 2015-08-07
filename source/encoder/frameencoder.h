@@ -41,7 +41,7 @@
 #include "reference.h"
 #include "nal.h"
 
-namespace x265 {
+namespace X265_NS {
 // private x265 namespace
 
 class ThreadPool;
@@ -49,8 +49,6 @@ class Encoder;
 
 #define ANGULAR_MODE_ID 2
 #define AMP_ID 3
-#define INTER_MODES 4
-#define INTRA_MODES 3
 
 struct StatisticLog
 {
@@ -156,8 +154,6 @@ public:
     MD5Context               m_state[3];
     uint32_t                 m_crc[3];
     uint32_t                 m_checksum[3];
-    StatisticLog             m_sliceTypeLog[3];     // per-slice type CU statistics
-    FrameStats               m_frameStats;          // stats of current frame for multi-pass encodes
 
     volatile int             m_activeWorkerCount;        // count of workers currently encoding or filtering CTUs
     volatile int             m_totalActiveWorkerCount;   // sum of m_activeWorkerCount sampled at end of each CTU
@@ -221,8 +217,7 @@ protected:
     void encodeSlice();
 
     void threadMain();
-    int  collectCTUStatistics(const CUData& ctu, uint32_t* qtreeInterCnt, uint32_t* qtreeIntraCnt, uint32_t* qtreeSkipCnt);
-    int  calcCTUQP(const CUData& ctu);
+    int  collectCTUStatistics(const CUData& ctu, FrameStats* frameLog);
     void noiseReductionUpdate();
 
     /* Called by WaveFront::findJob() */

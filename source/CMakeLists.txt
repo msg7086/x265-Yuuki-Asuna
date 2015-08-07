@@ -30,7 +30,7 @@ option(STATIC_LINK_CRT "Statically link C runtime for release builds" OFF)
 mark_as_advanced(FPROFILE_USE FPROFILE_GENERATE NATIVE_BUILD)
 
 # X265_BUILD must be incremented each time the public API is changed
-set(X265_BUILD 59)
+set(X265_BUILD 68)
 configure_file("${PROJECT_SOURCE_DIR}/x265.def.in"
                "${PROJECT_BINARY_DIR}/x265.def")
 configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
@@ -42,6 +42,8 @@ SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" "${CMAKE_MODULE_PATH}")
 string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" SYSPROC)
 set(X86_ALIASES x86 i386 i686 x86_64 amd64)
 list(FIND X86_ALIASES "${SYSPROC}" X86MATCH)
+set(POWER_ALIASES ppc64 ppc64le)
+list(FIND POWER_ALIASES "${SYSPROC}" POWERMATCH)
 if("${SYSPROC}" STREQUAL "" OR X86MATCH GREATER "-1")
     message(STATUS "Detected x86 target processor")
     set(X86 1)
@@ -50,6 +52,10 @@ if("${SYSPROC}" STREQUAL "" OR X86MATCH GREATER "-1")
         set(X64 1)
         add_definitions(-DX86_64=1)
     endif()
+elseif(POWERMATCH GREATER "-1")
+    message(STATUS "Detected POWER target processor")
+    set(POWER 1)
+    add_definitions(-DX265_ARCH_POWER=1)
 elseif(${SYSPROC} STREQUAL "armv6l")
     message(STATUS "Detected ARM target processor")
     set(ARM 1)
@@ -270,22 +276,53 @@ endif()
 # Build options
 set(LIB_INSTALL_DIR lib CACHE STRING "Install location of libraries")
 set(BIN_INSTALL_DIR bin CACHE STRING "Install location of executables")
+set(EXTRA_LIB "" CACHE STRING "Extra libraries to link against")
+set(EXTRA_LINK_FLAGS "" CACHE STRING "Extra link flags")
+if(EXTRA_LINK_FLAGS)
+    list(APPEND LINKER_OPTIONS ${EXTRA_LINK_FLAGS})
+endif()
+mark_as_advanced(EXTRA_LIB EXTRA_LINK_FLAGS)
 
 if(X64)
-    # NOTE: We only officially support 16bit-per-pixel compiles of x265
-    # on 64bit architectures. 16bpp plus large resolution plus slow
+    # NOTE: We only officially support high-bit-depth compiles of x265
+    # on 64bit architectures. Main10 plus large resolution plus slow
     # preset plus 32bit address space usually means malloc failure.  You
     # can disable this if(X64) check if you desparately need a 32bit
     # build with 10bit/12bit support, but this violates the "shrink wrap
     # license" so to speak.  If it breaks you get to keep both halves.
-    # You will likely need to compile without assembly
-    option(HIGH_BIT_DEPTH "Store pixels as 16bit values" OFF)
+    # You will need to disable assembly manually.
+    option(HIGH_BIT_DEPTH "Store pixel samples as 16bit values (Main10/Main12)" OFF)
 endif(X64)
 if(HIGH_BIT_DEPTH)
-    add_definitions(-DHIGH_BIT_DEPTH=1)
+    option(MAIN12 "Support Main12 instead of Main10" OFF)
+    if(MAIN12)
+        add_definitions(-DHIGH_BIT_DEPTH=1 -DX265_DEPTH=12)
+    else()
+        add_definitions(-DHIGH_BIT_DEPTH=1 -DX265_DEPTH=10)
+    endif()
 else(HIGH_BIT_DEPTH)
-    add_definitions(-DHIGH_BIT_DEPTH=0)
+    add_definitions(-DHIGH_BIT_DEPTH=0 -DX265_DEPTH=8)
 endif(HIGH_BIT_DEPTH)
+
+# this option can only be used when linking multiple libx265 libraries
+# together, and some alternate API access method is implemented.
+option(EXPORT_C_API "Implement public C programming interface" ON)
+mark_as_advanced(EXPORT_C_API)
+if(EXPORT_C_API)
+    set(X265_NS x265)
+    add_definitions(-DEXPORT_C_API=1)
+elseif(HIGH_BIT_DEPTH)
+    if(MAIN12)
+        set(X265_NS x265_12bit)
+    else()
+        set(X265_NS x265_10bit)
+    endif()
+    add_definitions(-DEXPORT_C_API=0)
+else()
+    set(X265_NS x265_8bit)
+    add_definitions(-DEXPORT_C_API=0)
+endif()
+add_definitions(-DX265_NS=${X265_NS})
 
 option(WARNINGS_AS_ERRORS "Stop compiles on first warning" OFF)
 if(WARNINGS_AS_ERRORS)
@@ -375,6 +412,9 @@ add_library(x265-static STATIC $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common
 if(NOT MSVC)
     set_target_properties(x265-static PROPERTIES OUTPUT_NAME x265)
 endif()
+if(EXTRA_LIB)
+    target_link_libraries(x265-static ${EXTRA_LIB})
+endif()
 install(TARGETS x265-static
     LIBRARY DESTINATION ${LIB_INSTALL_DIR}
     ARCHIVE DESTINATION ${LIB_INSTALL_DIR})
@@ -415,7 +455,7 @@ if(ENABLE_SHARED)
         if(APPLE)
             set_target_properties(x265-shared PROPERTIES MACOSX_RPATH 1)
         else()
-            set_target_properties(x265-shared PROPERTIES LINK_FLAGS "-Wl,-Bsymbolic,-znoexecstack")
+            list(APPEND LINKER_OPTIONS "-Wl,-Bsymbolic,-znoexecstack")
         endif()
     endif()
     set_target_properties(x265-shared PROPERTIES SOVERSION ${X265_BUILD})
@@ -428,6 +468,9 @@ if(ENABLE_SHARED)
                 LIBRARY DESTINATION ${LIB_INSTALL_DIR}
                 ARCHIVE DESTINATION ${LIB_INSTALL_DIR}
                 RUNTIME DESTINATION ${BIN_INSTALL_DIR})
+    endif()
+    if(EXTRA_LIB)
+        target_link_libraries(x265-shared ${EXTRA_LIB})
     endif()
     if(LINKER_OPTIONS)
         # set_target_properties can't do list expansion
@@ -468,16 +511,14 @@ if(NOT WIN32)
 endif()
 
 # Main CLI application
-option(ENABLE_CLI "Build standalone CLI application" ON)
+set(ENABLE_CLI ON CACHE BOOL "Build standalone CLI application")
 if(ENABLE_CLI)
     file(GLOB InputFiles input/input.cpp input/yuv.cpp input/y4m.cpp input/*.h)
     file(GLOB OutputFiles output/output.cpp output/reconplay.cpp output/*.h
                           output/yuv.cpp output/y4m.cpp # recon
                           output/raw.cpp)               # muxers
-    file(GLOB FilterFiles filters/*.cpp filters/*.h)
     source_group(input FILES ${InputFiles})
     source_group(output FILES ${OutputFiles})
-    source_group(filters FILES ${FilterFiles})
 
     check_include_files(getopt.h HAVE_GETOPT_H)
     if(NOT HAVE_GETOPT_H)
@@ -487,13 +528,18 @@ if(ENABLE_CLI)
         include_directories(compat/getopt)
         set(GETOPT compat/getopt/getopt.c compat/getopt/getopt.h)
     endif(NOT HAVE_GETOPT_H)
+    if(WIN32)
+        set(ExportDefs "${PROJECT_BINARY_DIR}/x265.def")
+    endif(WIN32)
 
     if(XCODE)
         # Xcode seems unable to link the CLI with libs, so link as one targget
-        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${FilterFiles} ${GETOPT} x265.cpp x265.h x265cli.h
-                           $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> ${YASM_OBJS} ${YASM_SRCS})
+        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT}
+                       x265.cpp x265.h x265cli.h x265-extras.h x265-extras.cpp
+                       $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> ${YASM_OBJS} ${YASM_SRCS})
     else()
-        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${FilterFiles} ${GETOPT} ${X265_RC_FILE} x265.cpp x265.h x265cli.h)
+        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT} ${X265_RC_FILE}
+                       ${ExportDefs} x265.cpp x265.h x265cli.h x265-extras.h x265-extras.cpp)
         if(WIN32 OR NOT ENABLE_SHARED OR INTEL_CXX)
             # The CLI cannot link to the shared library on Windows, it
             # requires internal APIs not exported from the DLL

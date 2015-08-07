@@ -30,7 +30,7 @@
 #include "frame.h"
 #include "entropy.h"
 
-namespace x265 {
+namespace X265_NS {
 // private namespace
 
 enum SAOTypeLen
@@ -52,12 +52,12 @@ enum SAOType
 
 class SAO
 {
-protected:
+public:
 
     enum { SAO_MAX_DEPTH = 4 };
     enum { SAO_BO_BITS  = 5 };
     enum { MAX_NUM_SAO_CLASS = 33 };
-    enum { SAO_BIT_INC = X265_MAX(X265_DEPTH - 10, 0) };
+    enum { SAO_BIT_INC = 0 }; /* in HM12.0, it wrote as X265_MAX(X265_DEPTH - 10, 0) */
     enum { OFFSET_THRESH = 1 << X265_MIN(X265_DEPTH - 5, 5) };
     enum { NUM_EDGETYPE = 5 };
     enum { NUM_PLANE = 3 };
@@ -67,6 +67,8 @@ protected:
 
     typedef int32_t (PerClass[MAX_NUM_SAO_TYPE][MAX_NUM_SAO_CLASS]);
     typedef int32_t (PerPlane[NUM_PLANE][MAX_NUM_SAO_TYPE][MAX_NUM_SAO_CLASS]);
+
+protected:
 
     /* allocated per part */
     PerClass*   m_count;
@@ -142,7 +144,6 @@ public:
                              int32_t* currentDistortionTableBo, double* currentRdCostTableBo);
     inline int64_t estSaoTypeDist(int plane, int typeIdx, double lambda, int32_t* currentDistortionTableBo, double* currentRdCostTableBo);
 
-    void rdoSaoUnitRowInit(SAOParam* saoParam);
     void rdoSaoUnitRowEnd(const SAOParam* saoParam, int numctus);
     void rdoSaoUnitRow(SAOParam* saoParam, int idxY);
 };

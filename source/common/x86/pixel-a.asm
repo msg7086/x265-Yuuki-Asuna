@@ -9,6 +9,7 @@
 ;*          Alex Izvorski <aizvorksi@gmail.com>
 ;*          Fiona Glaser <fiona@x264.com>
 ;*          Oskar Arvidsson <oskar@irock.se>
+;*          Min Chen <chenm003@163.com>
 ;*
 ;* This program is free software; you can redistribute it and/or modify
 ;* it under the terms of the GNU General Public License as published by
@@ -32,8 +33,6 @@
 %include "x86util.asm"
 
 SECTION_RODATA 32
-hmul_16p:  times 16 db 1
-           times 8 db 1, -1
 hmul_8p:   times 8 db 1
            times 4 db 1, -1
            times 8 db 1
@@ -45,16 +44,13 @@ hmul_8w:   times 4 dw 1
            times 2 dw 1, -1
            times 4 dw 1
            times 2 dw 1, -1
-ALIGN 32
-hmul_w:    times 2 dw 1, -1, 1, -1, 1, -1, 1, -1
+
 ALIGN 32
 transd_shuf1: SHUFFLE_MASK_W 0, 8, 2, 10, 4, 12, 6, 14
 transd_shuf2: SHUFFLE_MASK_W 1, 9, 3, 11, 5, 13, 7, 15
 
 sw_f0:     dq 0xfff0, 0
 pd_f0:     times 4 dd 0xffff0000
-
-pw_76543210: dw 0, 1, 2, 3, 4, 5, 6, 7
 
 SECTION .text
 
@@ -72,6 +68,9 @@ cextern pw_pmmpzzzz
 cextern pd_1
 cextern popcnt_table
 cextern pd_2
+cextern hmul_16p
+cextern pb_movemask
+cextern pw_pixel_max
 
 ;=============================================================================
 ; SATD
@@ -644,7 +643,7 @@ cglobal pixel_satd_4x16, 4, 6, 8
     lea r0, [r0+r1*2*SIZEOF_PIXEL]
     lea r2, [r2+r3*2*SIZEOF_PIXEL]
     SATD_4x8_SSE vertical, 1, add
-    HADDW m7, m1
+    HADDUW m7, m1
     movd eax, m7
     RET
 
@@ -6982,11 +6981,119 @@ cglobal pixel_sa8d_8x8, 4,6,8
     add   eax, 1
     shr   eax, 1
     RET
+
+cglobal pixel_sa8d_16x16, 4,6,8
+    SATD_START_AVX2 m6, m7, 1
+
+    call pixel_sa8d_8x8_internal ; pix[0]
+
+    sub  r0, r1
+    sub  r0, r1
+    add  r0, 8*SIZEOF_PIXEL
+    sub  r2, r3
+    sub  r2, r3
+    add  r2, 8*SIZEOF_PIXEL
+    call pixel_sa8d_8x8_internal ; pix[8]
+
+    add  r0, r4
+    add  r0, r1
+    add  r2, r5
+    add  r2, r3
+    call pixel_sa8d_8x8_internal ; pix[8*stride+8]
+
+    sub  r0, r1
+    sub  r0, r1
+    sub  r0, 8*SIZEOF_PIXEL
+    sub  r2, r3
+    sub  r2, r3
+    sub  r2, 8*SIZEOF_PIXEL
+    call pixel_sa8d_8x8_internal ; pix[8*stride]
+
+    ; TODO: analyze Dynamic Range
+    vextracti128 xm0, m6, 1
+    paddusw xm6, xm0
+    HADDUW xm6, xm0
+    movd  eax, xm6
+    add   eax, 1
+    shr   eax, 1
+    RET
+
+cglobal pixel_sa8d_16x16_internal
+    call pixel_sa8d_8x8_internal ; pix[0]
+
+    sub  r0, r1
+    sub  r0, r1
+    add  r0, 8*SIZEOF_PIXEL
+    sub  r2, r3
+    sub  r2, r3
+    add  r2, 8*SIZEOF_PIXEL
+    call pixel_sa8d_8x8_internal ; pix[8]
+
+    add  r0, r4
+    add  r0, r1
+    add  r2, r5
+    add  r2, r3
+    call pixel_sa8d_8x8_internal ; pix[8*stride+8]
+
+    sub  r0, r1
+    sub  r0, r1
+    sub  r0, 8*SIZEOF_PIXEL
+    sub  r2, r3
+    sub  r2, r3
+    sub  r2, 8*SIZEOF_PIXEL
+    call pixel_sa8d_8x8_internal ; pix[8*stride]
+
+    ; TODO: analyze Dynamic Range
+    vextracti128 xm0, m6, 1
+    paddusw xm6, xm0
+    HADDUW xm6, xm0
+    movd  eax, xm6
+    add   eax, 1
+    shr   eax, 1
+    ret
+
+%if ARCH_X86_64
+cglobal pixel_sa8d_32x32, 4,8,8
+    ; TODO: R6 is RAX on x64 platform, so we use it directly
+
+    SATD_START_AVX2 m6, m7, 1
+    xor     r7d, r7d
+
+    call    pixel_sa8d_16x16_internal   ; [0]
+    pxor    m6, m6
+    add     r7d, eax
+
+    add     r0, r4
+    add     r0, r1
+    add     r2, r5
+    add     r2, r3
+    call    pixel_sa8d_16x16_internal   ; [2]
+    pxor    m6, m6
+    add     r7d, eax
+
+    lea     eax, [r4 * 5 - 16]
+    sub     r0, rax
+    sub     r0, r1
+    lea     eax, [r5 * 5 - 16]
+    sub     r2, rax
+    sub     r2, r3
+    call    pixel_sa8d_16x16_internal   ; [1]
+    pxor    m6, m6
+    add     r7d, eax
+
+    add     r0, r4
+    add     r0, r1
+    add     r2, r5
+    add     r2, r3
+    call    pixel_sa8d_16x16_internal   ; [3]
+    add     eax, r7d
+    RET
+%endif ; ARCH_X86_64=1
 %endif ; HIGH_BIT_DEPTH
 
-; Input 16bpp, Output 8bpp
+; Input 10bit, Output 8bit
 ;------------------------------------------------------------------------------------------------------------------------
-;void planecopy_sp(uint16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, int shift, uint16_t mask)
+;void planecopy_sc(uint16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, int shift, uint16_t mask)
 ;------------------------------------------------------------------------------------------------------------------------
 INIT_XMM sse2
 cglobal downShift_16, 7,7,3
@@ -7078,7 +7185,7 @@ cglobal downShift_16, 7,7,3
 .end:
     RET
 
-; Input 16bpp, Output 8bpp
+; Input 10bit, Output 8bit
 ;-------------------------------------------------------------------------------------------------------------------------------------
 ;void planecopy_sp(uint16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, int shift, uint16_t mask)
 ;-------------------------------------------------------------------------------------------------------------------------------------
@@ -7189,99 +7296,111 @@ cglobal downShift_16, 6,7,3
 .end:
     RET
 
-; Input 8bpp, Output 16bpp
+; Input 8bit, Output 10bit
 ;---------------------------------------------------------------------------------------------------------------------
 ;void planecopy_cp(uint8_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, int shift)
 ;---------------------------------------------------------------------------------------------------------------------
 INIT_XMM sse4
-cglobal upShift_8, 7,7,3
-
-    movd        m2, r6d        ; m0 = shift
-    add         r3, r3
+cglobal upShift_8, 6,7,3
+    movd        xm2, r6m
+    add         r3d, r3d
     dec         r5d
 
 .loopH:
     xor         r6, r6
 .loopW:
     pmovzxbw    m0,[r0 + r6]
-    pmovzxbw    m1,[r0 + r6 + 8]
+    pmovzxbw    m1,[r0 + r6 + mmsize/2]
     psllw       m0, m2
     psllw       m1, m2
     movu        [r2 + r6 * 2], m0
-    movu        [r2 + r6 * 2 + 16], m1
+    movu        [r2 + r6 * 2 + mmsize], m1
 
-    add         r6, 16
+    add         r6d, mmsize
     cmp         r6d, r4d
-    jl          .loopW
+    jl         .loopW
 
     ; move to next row
     add         r0, r1
     add         r2, r3
     dec         r5d
-    jnz         .loopH
+    jg         .loopH
 
-;processing last row of every frame [To handle width which not a multiple of 16]
+    ; processing last row of every frame [To handle width which not a multiple of 16]
+    mov         r1d, (mmsize/2 - 1)
+    and         r1d, r4d
+    sub         r1, mmsize/2
 
-.loop16:
-    pmovzxbw    m0,[r0]
-    pmovzxbw    m1,[r0 + 8]
-    psllw       m0, m2
-    psllw       m1, m2
-    movu        [r2], m0
-    movu        [r2 + 16], m1
-
-    add         r0, mmsize
-    add         r2, 2 * mmsize
-    sub         r4d, 16
-    jz          .end
-    cmp         r4d, 15
-    jg          .loop16
-
-    cmp         r4d, 8
-    jl          .process4
+    ; NOTE: Width MUST BE more than or equal to 8
+    shr         r4d, 3          ; log2(mmsize)
+.loopW8:
     pmovzxbw    m0,[r0]
     psllw       m0, m2
     movu        [r2], m0
-
-    add         r0, 8
+    add         r0, mmsize/2
     add         r2, mmsize
-    sub         r4d, 8
-    jz          .end
+    dec         r4d
+    jg         .loopW8
 
-.process4:
-    cmp         r4d, 4
-    jl          .process2
-    movd        m0,[r0]
-    pmovzxbw    m0,m0
+    ; Mac OS X can't read beyond array bound, so rollback some bytes
+    pmovzxbw    m0,[r0 + r1]
     psllw       m0, m2
-    movh        [r2], m0
-
-    add         r0, 4
-    add         r2, 8
-    sub         r4d, 4
-    jz          .end
-
-.process2:
-    cmp         r4d, 2
-    jl          .process1
-    movzx       r3d, byte [r0]
-    shl         r3d, 2
-    mov         [r2], r3w
-    movzx       r3d, byte [r0 + 1]
-    shl         r3d, 2
-    mov         [r2 + 2], r3w
-
-    add         r0, 2
-    add         r2, 4
-    sub         r4d, 2
-    jz          .end
-
-.process1:
-    movzx       r3d, byte [r0]
-    shl         r3d, 2
-    mov         [r2], r3w
-.end:
+    movu        [r2 + r1 * 2], m0
     RET
+
+
+;---------------------------------------------------------------------------------------------------------------------
+;void planecopy_cp(uint8_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, int shift)
+;---------------------------------------------------------------------------------------------------------------------
+%if ARCH_X86_64
+INIT_YMM avx2
+cglobal upShift_8, 6,7,3
+    movd        xm2, r6m
+    add         r3d, r3d
+    dec         r5d
+
+.loopH:
+    xor         r6, r6
+.loopW:
+    pmovzxbw    m0,[r0 + r6]
+    pmovzxbw    m1,[r0 + r6 + mmsize/2]
+    psllw       m0, xm2
+    psllw       m1, xm2
+    movu        [r2 + r6 * 2], m0
+    movu        [r2 + r6 * 2 + mmsize], m1
+
+    add         r6d, mmsize
+    cmp         r6d, r4d
+    jl         .loopW
+
+    ; move to next row
+    add         r0, r1
+    add         r2, r3
+    dec         r5d
+    jg         .loopH
+
+    ; processing last row of every frame [To handle width which not a multiple of 32]
+    mov         r1d, (mmsize/2 - 1)
+    and         r1d, r4d
+    sub         r1, mmsize/2
+
+    ; NOTE: Width MUST BE more than or equal to 16
+    shr         r4d, 4          ; log2(mmsize)
+.loopW16:
+    pmovzxbw    m0,[r0]
+    psllw       m0, xm2
+    movu        [r2], m0
+    add         r0, mmsize/2
+    add         r2, mmsize
+    dec         r4d
+    jg         .loopW16
+
+    ; Mac OS X can't read beyond array bound, so rollback some bytes
+    pmovzxbw    m0,[r0 + r1]
+    psllw       m0, xm2
+    movu        [r2 + r1 * 2], m0
+    RET
+%endif
 
 %macro ABSD2 6 ; dst1, dst2, src1, src2, tmp, tmp
 %if cpuflag(ssse3)
@@ -7303,6 +7422,219 @@ cglobal upShift_8, 7,7,3
     pmaxsd  %2, %4
 %endif
 %endmacro
+
+
+; Input 10bit, Output 12bit
+;------------------------------------------------------------------------------------------------------------------------
+;void planecopy_sp_shl(uint16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, int shift, uint16_t mask)
+;------------------------------------------------------------------------------------------------------------------------
+INIT_XMM sse2
+cglobal upShift_16, 6,7,4
+    movd        m0, r6m        ; m0 = shift
+    mova        m3, [pw_pixel_max]
+    FIX_STRIDES r1d, r3d
+    dec         r5d
+.loopH:
+    xor         r6d, r6d
+.loopW:
+    movu        m1, [r0 + r6 * SIZEOF_PIXEL]
+    movu        m2, [r0 + r6 * SIZEOF_PIXEL + mmsize]
+    psllw       m1, m0
+    psllw       m2, m0
+    ; TODO: if input always valid, we can remove below 2 instructions.
+    pand        m1, m3
+    pand        m2, m3
+    movu        [r2 + r6 * SIZEOF_PIXEL], m1
+    movu        [r2 + r6 * SIZEOF_PIXEL + mmsize], m2
+
+    add         r6, mmsize * 2 / SIZEOF_PIXEL
+    cmp         r6d, r4d
+    jl         .loopW
+
+    ; move to next row
+    add         r0, r1
+    add         r2, r3
+    dec         r5d
+    jnz        .loopH
+
+;processing last row of every frame [To handle width which not a multiple of 16]
+
+.loop16:
+    movu        m1, [r0]
+    movu        m2, [r0 + mmsize]
+    psllw       m1, m0
+    psllw       m2, m0
+    pand        m1, m3
+    pand        m2, m3
+    movu        [r2], m1
+    movu        [r2 + mmsize], m2
+
+    add         r0, 2 * mmsize
+    add         r2, 2 * mmsize
+    sub         r4d, 16
+    jz         .end
+    jg         .loop16
+
+    cmp         r4d, 8
+    jl         .process4
+    movu        m1, [r0]
+    psrlw       m1, m0
+    pand        m1, m3
+    movu        [r2], m1
+
+    add         r0, mmsize
+    add         r2, mmsize
+    sub         r4d, 8
+    jz          .end
+
+.process4:
+    cmp         r4d, 4
+    jl         .process2
+    movh        m1,[r0]
+    psllw       m1, m0
+    pand        m1, m3
+    movh        [r2], m1
+
+    add         r0, 8
+    add         r2, 8
+    sub         r4d, 4
+    jz         .end
+
+.process2:
+    cmp         r4d, 2
+    jl         .process1
+    movd        m1, [r0]
+    psllw       m1, m0
+    pand        m1, m3
+    movd        [r2], m1
+
+    add         r0, 4
+    add         r2, 4
+    sub         r4d, 2
+    jz         .end
+
+.process1:
+    movd        m1, [r0]
+    psllw       m1, m0
+    pand        m1, m3
+    movd        r3, m1
+    mov         [r2], r3w
+.end:
+    RET
+
+; Input 10bit, Output 12bit
+;-------------------------------------------------------------------------------------------------------------------------------------
+;void planecopy_sp_shl(uint16_t *src, intptr_t srcStride, pixel *dst, intptr_t dstStride, int width, int height, int shift, uint16_t mask)
+;-------------------------------------------------------------------------------------------------------------------------------------
+; TODO: NO TEST CODE!
+INIT_YMM avx2
+cglobal upShift_16, 6,7,4
+    movd        xm0, r6m        ; m0 = shift
+    vbroadcasti128 m3, [pw_pixel_max]
+    FIX_STRIDES r1d, r3d
+    dec         r5d
+.loopH:
+    xor         r6d, r6d
+.loopW:
+    movu        m1, [r0 + r6 * SIZEOF_PIXEL]
+    movu        m2, [r0 + r6 * SIZEOF_PIXEL + mmsize]
+    psllw       m1, xm0
+    psllw       m2, xm0
+    pand        m1, m3
+    pand        m2, m3
+    movu        [r2 + r6 * SIZEOF_PIXEL], m1
+    movu        [r2 + r6 * SIZEOF_PIXEL + mmsize], m2
+
+    add         r6, mmsize * 2 / SIZEOF_PIXEL
+    cmp         r6d, r4d
+    jl         .loopW
+
+    ; move to next row
+    add         r0, r1
+    add         r2, r3
+    dec         r5d
+    jnz        .loopH
+
+; processing last row of every frame [To handle width which not a multiple of 32]
+    mov         r6d, r4d
+    and         r4d, 31
+    shr         r6d, 5
+
+.loop32:
+    movu        m1, [r0]
+    movu        m2, [r0 + mmsize]
+    psllw       m1, xm0
+    psllw       m2, xm0
+    pand        m1, m3
+    pand        m2, m3
+    movu        [r2], m1
+    movu        [r2 + mmsize], m2
+
+    add         r0, 2*mmsize
+    add         r2, 2*mmsize
+    dec         r6d
+    jnz        .loop32
+
+    cmp         r4d, 16
+    jl         .process8
+    movu        m1, [r0]
+    psllw       m1, xm0
+    pand        m1, m3
+    movu        [r2], m1
+
+    add         r0, mmsize
+    add         r2, mmsize
+    sub         r4d, 16
+    jz         .end
+
+.process8:
+    cmp         r4d, 8
+    jl         .process4
+    movu        xm1, [r0]
+    psllw       xm1, xm0
+    pand        xm1, xm3
+    movu        [r2], xm1
+
+    add         r0, 16
+    add         r2, 16
+    sub         r4d, 8
+    jz         .end
+
+.process4:
+    cmp         r4d, 4
+    jl          .process2
+    movq        xm1,[r0]
+    psllw       xm1, xm0
+    pand        xm1, xm3
+    movq        [r2], xm1
+
+    add         r0, 8
+    add         r2, 8
+    sub         r4d, 4
+    jz         .end
+
+.process2:
+    cmp         r4d, 2
+    jl         .process1
+    movd        xm1, [r0]
+    psllw       xm1, xm0
+    pand        xm1, xm3
+    movd        [r2], xm1
+
+    add         r0, 4
+    add         r2, 4
+    sub         r4d, 2
+    jz         .end
+
+.process1:
+    movd        xm1, [r0]
+    psllw       xm1, xm0
+    pand        xm1, xm3
+    movd        r3d, xm1
+    mov         [r2], r3w
+.end:
+    RET
+
 
 ;---------------------------------------------------------------------------------------------------------------------
 ;int psyCost_pp(const pixel* source, intptr_t sstride, const pixel* recon, intptr_t rstride)
@@ -8260,6 +8592,76 @@ cglobal psyCost_pp_64x64, 4, 9, 15
 %endif
 
 INIT_YMM avx2
+%if HIGH_BIT_DEPTH
+cglobal psyCost_pp_4x4, 4, 5, 6
+    add             r1d, r1d
+    add             r3d, r3d
+    lea              r4, [r1 * 3]
+    movddup         xm0, [r0]
+    movddup         xm1, [r0 + r1]
+    movddup         xm2, [r0 + r1 * 2]
+    movddup         xm3, [r0 + r4]
+
+    lea              r4, [r3 * 3]
+    movddup         xm4, [r2]
+    movddup         xm5, [r2 + r3]
+    vinserti128      m0, m0, xm4, 1
+    vinserti128      m1, m1, xm5, 1
+    movddup         xm4, [r2 + r3 * 2]
+    movddup         xm5, [r2 + r4]
+    vinserti128      m2, m2, xm4, 1
+    vinserti128      m3, m3, xm5, 1
+
+    mova             m4, [hmul_8w]
+    pmaddwd          m0, m4
+    pmaddwd          m1, m4
+    pmaddwd          m2, m4
+    pmaddwd          m3, m4
+    paddd            m5, m0, m1
+    paddd            m4, m2, m3
+    paddd            m5, m4
+    psrldq           m4, m5, 4
+    paddd            m5, m4
+    psrld            m5, 2
+
+    mova             m4, m0
+    paddd            m0, m1
+    psubd            m1, m4
+    mova             m4, m2
+    paddd            m2, m3
+    psubd            m3, m4
+    mova             m4, m0
+    paddd            m0, m2
+    psubd            m2, m4
+    mova             m4, m1
+    paddd            m1, m3
+    psubd            m3, m4
+    movaps           m4, m0
+    vshufps          m4, m4, m2, 11011101b
+    vshufps          m0, m0, m2, 10001000b
+    movaps           m2, m1
+    vshufps          m2, m2, m3, 11011101b
+    vshufps          m1, m1, m3, 10001000b
+    pabsd            m0, m0
+    pabsd            m4, m4
+    pmaxsd           m0, m4
+    pabsd            m1, m1
+    pabsd            m2, m2
+    pmaxsd           m1, m2
+    paddd            m0, m1
+
+    vpermq           m1, m0, 11110101b
+    paddd            m0, m1
+    psrldq           m1, m0, 4
+    paddd            m0, m1
+    psubd            m0, m5
+
+    vextracti128    xm1, m0, 1
+    psubd           xm1, xm0
+    pabsd           xm1, xm1
+    movd            eax, xm1
+    RET
+%else ; !HIGH_BIT_DEPTH
 cglobal psyCost_pp_4x4, 4, 5, 6
     lea             r4, [3 * r1]
     movd            xm0, [r0]
@@ -8314,6 +8716,7 @@ cglobal psyCost_pp_4x4, 4, 5, 6
     pabsd           m1, m1
     movd            eax, xm1
     RET
+%endif
 
 %macro PSY_PP_8x8 0
     movddup         m0, [r0 + r1 * 0]
@@ -8495,7 +8898,149 @@ cglobal psyCost_pp_4x4, 4, 5, 6
     pabsd           m0, m0
 %endmacro
 
+%macro PSY_PP_8x8_AVX2 0
+    lea             r4, [r1 * 3]
+    movu           xm0, [r0]
+    movu           xm1, [r0 + r1]
+    movu           xm2, [r0 + r1 * 2]
+    movu           xm3, [r0 + r4]
+    lea             r5, [r0 + r1 * 4]
+    movu           xm4, [r5]
+    movu           xm5, [r5 + r1]
+    movu           xm6, [r5 + r1 * 2]
+    movu           xm7, [r5 + r4]
+
+    lea             r4, [r3 * 3]
+    vinserti128     m0, m0, [r2], 1
+    vinserti128     m1, m1, [r2 + r3], 1
+    vinserti128     m2, m2, [r2 + r3 * 2], 1
+    vinserti128     m3, m3, [r2 + r4], 1
+    lea             r5, [r2 + r3 * 4]
+    vinserti128     m4, m4, [r5], 1
+    vinserti128     m5, m5, [r5 + r3], 1
+    vinserti128     m6, m6, [r5 + r3 * 2], 1
+    vinserti128     m7, m7, [r5 + r4], 1
+
+    paddw           m8, m0, m1
+    paddw           m8, m2
+    paddw           m8, m3
+    paddw           m8, m4
+    paddw           m8, m5
+    paddw           m8, m6
+    paddw           m8, m7
+    pmaddwd         m8, [pw_1]
+
+    psrldq          m9, m8, 8
+    paddd           m8, m9
+    psrldq          m9, m8, 4
+    paddd           m8, m9
+    psrld           m8, 2
+
+    psubw           m9, m1, m0
+    paddw           m0, m1
+    psubw           m1, m3, m2
+    paddw           m2, m3
+    punpckhwd       m3, m0, m9
+    punpcklwd       m0, m9
+    psubw           m9, m3, m0
+    paddw           m0, m3
+    punpckhwd       m3, m2, m1
+    punpcklwd       m2, m1
+    psubw           m10, m3, m2
+    paddw           m2, m3
+    psubw           m3, m5, m4
+    paddw           m4, m5
+    psubw           m5, m7, m6
+    paddw           m6, m7
+    punpckhwd       m1, m4, m3
+    punpcklwd       m4, m3
+    psubw           m7, m1, m4
+    paddw           m4, m1
+    punpckhwd       m3, m6, m5
+    punpcklwd       m6, m5
+    psubw           m1, m3, m6
+    paddw           m6, m3
+    psubw           m3, m2, m0
+    paddw           m0, m2
+    psubw           m2, m10, m9
+    paddw           m9, m10
+    punpckhdq       m5, m0, m3
+    punpckldq       m0, m3
+    psubw           m10, m5, m0
+    paddw           m0, m5
+    punpckhdq       m3, m9, m2
+    punpckldq       m9, m2
+    psubw           m5, m3, m9
+    paddw           m9, m3
+    psubw           m3, m6, m4
+    paddw           m4, m6
+    psubw           m6, m1, m7
+    paddw           m7, m1
+    punpckhdq       m2, m4, m3
+    punpckldq       m4, m3
+    psubw           m1, m2, m4
+    paddw           m4, m2
+    punpckhdq       m3, m7, m6
+    punpckldq       m7, m6
+    psubw           m2, m3, m7
+    paddw           m7, m3
+    psubw           m3, m4, m0
+    paddw           m0, m4
+    psubw           m4, m1, m10
+    paddw           m10, m1
+    punpckhqdq      m6, m0, m3
+    punpcklqdq      m0, m3
+    pabsw           m0, m0
+    pabsw           m6, m6
+    pmaxsw          m0, m6
+    punpckhqdq      m3, m10, m4
+    punpcklqdq      m10, m4
+    pabsw           m10, m10
+    pabsw           m3, m3
+    pmaxsw          m10, m3
+    psubw           m3, m7, m9
+    paddw           m9, m7
+    psubw           m7, m2, m5
+    paddw           m5, m2
+    punpckhqdq      m4, m9, m3
+    punpcklqdq      m9, m3
+    pabsw           m9, m9
+    pabsw           m4, m4
+    pmaxsw          m9, m4
+    punpckhqdq      m3, m5, m7
+    punpcklqdq      m5, m7
+    pabsw           m5, m5
+    pabsw           m3, m3
+    pmaxsw          m5, m3
+    paddd           m0, m9
+    paddd           m0, m10
+    paddd           m0, m5
+    psrld           m9, m0, 16
+    pslld           m0, 16
+    psrld           m0, 16
+    paddd           m0, m9
+    psrldq          m9, m0, 8
+    paddd           m0, m9
+    psrldq          m9, m0, 4
+    paddd           m0, m9
+    paddd           m0, [pd_1]
+    psrld           m0, 1
+    psubd           m0, m8
+
+    vextracti128   xm1, m0, 1
+    psubd          xm1, xm0
+    pabsd          xm1, xm1
+%endmacro
+
 %if ARCH_X86_64
+%if HIGH_BIT_DEPTH
+cglobal psyCost_pp_8x8, 4, 8, 11
+    add            r1d, r1d
+    add            r3d, r3d
+    PSY_PP_8x8_AVX2
+    movd           eax, xm1
+    RET
+%else ; !HIGH_BIT_DEPTH
 INIT_YMM avx2
 cglobal psyCost_pp_8x8, 4, 8, 13
     lea             r4, [3 * r1]
@@ -8507,9 +9052,33 @@ cglobal psyCost_pp_8x8, 4, 8, 13
     movd            eax, xm0
     RET
 %endif
-
+%endif
 %if ARCH_X86_64
 INIT_YMM avx2
+%if HIGH_BIT_DEPTH
+cglobal psyCost_pp_16x16, 4, 10, 12
+    add            r1d, r1d
+    add            r3d, r3d
+    pxor           m11, m11
+
+    mov            r8d, 2
+.loopH:
+    mov            r9d, 2
+.loopW:
+    PSY_PP_8x8_AVX2
+
+    paddd         xm11, xm1
+    add             r0, 16
+    add             r2, 16
+    dec            r9d
+    jnz            .loopW
+    lea             r0, [r0 + r1 * 8 - 32]
+    lea             r2, [r2 + r3 * 8 - 32]
+    dec            r8d
+    jnz            .loopH
+    movd           eax, xm11
+    RET
+%else ; !HIGH_BIT_DEPTH
 cglobal psyCost_pp_16x16, 4, 10, 14
     lea             r4, [3 * r1]
     lea             r7, [3 * r3]
@@ -8534,9 +9103,33 @@ cglobal psyCost_pp_16x16, 4, 10, 14
     movd            eax, xm13
     RET
 %endif
-
+%endif
 %if ARCH_X86_64
 INIT_YMM avx2
+%if HIGH_BIT_DEPTH
+cglobal psyCost_pp_32x32, 4, 10, 12
+    add            r1d, r1d
+    add            r3d, r3d
+    pxor           m11, m11
+
+    mov            r8d, 4
+.loopH:
+    mov            r9d, 4
+.loopW:
+    PSY_PP_8x8_AVX2
+
+    paddd         xm11, xm1
+    add             r0, 16
+    add             r2, 16
+    dec            r9d
+    jnz            .loopW
+    lea             r0, [r0 + r1 * 8 - 64]
+    lea             r2, [r2 + r3 * 8 - 64]
+    dec            r8d
+    jnz            .loopH
+    movd           eax, xm11
+    RET
+%else ; !HIGH_BIT_DEPTH
 cglobal psyCost_pp_32x32, 4, 10, 14
     lea             r4, [3 * r1]
     lea             r7, [3 * r3]
@@ -8561,9 +9154,33 @@ cglobal psyCost_pp_32x32, 4, 10, 14
     movd            eax, xm13
     RET
 %endif
-
+%endif
 %if ARCH_X86_64
 INIT_YMM avx2
+%if HIGH_BIT_DEPTH
+cglobal psyCost_pp_64x64, 4, 10, 12
+    add            r1d, r1d
+    add            r3d, r3d
+    pxor           m11, m11
+
+    mov            r8d, 8
+.loopH:
+    mov            r9d, 8
+.loopW:
+    PSY_PP_8x8_AVX2
+
+    paddd         xm11, xm1
+    add             r0, 16
+    add             r2, 16
+    dec            r9d
+    jnz            .loopW
+    lea             r0, [r0 + r1 * 8 - 128]
+    lea             r2, [r2 + r3 * 8 - 128]
+    dec            r8d
+    jnz            .loopH
+    movd           eax, xm11
+    RET
+%else ; !HIGH_BIT_DEPTH
 cglobal psyCost_pp_64x64, 4, 10, 14
     lea             r4, [3 * r1]
     lea             r7, [3 * r3]
@@ -8587,6 +9204,7 @@ cglobal psyCost_pp_64x64, 4, 10, 14
     jnz             .loopH
     movd            eax, xm13
     RET
+%endif
 %endif
 
 ;---------------------------------------------------------------------------------------------------------------------
@@ -8747,7 +9365,7 @@ cglobal psyCost_ss_4x4, 4, 5, 8
 INIT_XMM sse4
 cglobal psyCost_ss_8x8, 4, 6, 15
 
-    mova            m13, [hmul_w]
+    mova            m13, [pw_pmpmpmpm]
     mova            m14, [pw_1]
     add             r1, r1
     add             r3, r3
@@ -9897,7 +10515,7 @@ cglobal psyCost_ss_8x8, 4, 6, 15
 INIT_XMM sse4
 cglobal psyCost_ss_16x16, 4, 9, 16
 
-    mova            m13, [hmul_w]
+    mova            m13, [pw_pmpmpmpm]
     mova            m14, [pw_1]
     add             r1, r1
     add             r3, r3
@@ -9925,7 +10543,7 @@ cglobal psyCost_ss_16x16, 4, 9, 16
 INIT_XMM sse4
 cglobal psyCost_ss_32x32, 4, 9, 16
 
-    mova            m13, [hmul_w]
+    mova            m13, [pw_pmpmpmpm]
     mova            m14, [pw_1]
     add             r1, r1
     add             r3, r3
@@ -9953,7 +10571,7 @@ cglobal psyCost_ss_32x32, 4, 9, 16
 INIT_XMM sse4
 cglobal psyCost_ss_64x64, 4, 9, 16
 
-    mova            m13, [hmul_w]
+    mova            m13, [pw_pmpmpmpm]
     mova            m14, [pw_1]
     add             r1, r1
     add             r3, r3
@@ -10394,7 +11012,7 @@ cglobal psyCost_ss_8x8, 4, 7, 14
     and             rsp, ~63
 
     mova            m12, [pw_1]
-    mova            m13, [hmul_w]
+    mova            m13, [pw_pmpmpmpm]
     add             r1, r1
     add             r3, r3
 
@@ -10414,7 +11032,7 @@ cglobal psyCost_ss_16x16, 4, 9, 15
     and             rsp, ~63
 
     mova            m12, [pw_1]
-    mova            m13, [hmul_w]
+    mova            m13, [pw_pmpmpmpm]
     add             r1, r1
     add             r3, r3
     pxor            m14, m14
@@ -10448,7 +11066,7 @@ cglobal psyCost_ss_32x32, 4, 9, 15
     and             rsp, ~63
 
     mova            m12, [pw_1]
-    mova            m13, [hmul_w]
+    mova            m13, [pw_pmpmpmpm]
     add             r1, r1
     add             r3, r3
     pxor            m14, m14
@@ -10482,7 +11100,7 @@ cglobal psyCost_ss_64x64, 4, 9, 15
     and             rsp, ~63
 
     mova            m12, [pw_1]
-    mova            m13, [hmul_w]
+    mova            m13, [pw_pmpmpmpm]
     add             r1, r1
     add             r3, r3
     pxor            m14, m14

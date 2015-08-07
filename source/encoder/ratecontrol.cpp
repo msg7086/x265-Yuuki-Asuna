@@ -37,7 +37,7 @@
 #define BR_SHIFT  6
 #define CPB_SHIFT 4
 
-using namespace x265;
+using namespace X265_NS;
 
 /* Amortize the partial cost of I frames over the next N frames */
 
@@ -1087,18 +1087,6 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
     }
     m_framesDone++;
 
-    /* CQP and CRF (without capped VBV) doesn't use mid-frame statistics to 
-     * tune RateControl parameters for other frames.
-     * Hence, for these modes, update m_startEndOrder and unlock RC for previous threads waiting in
-     * RateControlEnd here.those modes here. For the rest - ABR
-     * and VBV, unlock only after rateControlUpdateStats of this frame is called */
-    if (m_param->rc.rateControlMode != X265_RC_ABR && !m_isVbv)
-    {
-        m_startEndOrder.incr();
-
-        if (rce->encodeOrder < m_param->frameNumThreads - 1)
-            m_startEndOrder.incr(); // faked rateControlEnd calls for negative frames
-    }
     return m_qp;
 }
 
@@ -2146,7 +2134,7 @@ void RateControl::updateVbv(int64_t bits, RateControlEntry* rce)
 }
 
 /* After encoding one frame, update rate control state */
-int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry* rce, FrameStats* stats)
+int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry* rce)
 {
     int orderValue = m_startEndOrder.get();
     int endOrdinal = (rce->encodeOrder + m_param->frameNumThreads) * 2 - 1;
@@ -2163,25 +2151,6 @@ int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry*
     FrameData& curEncData = *curFrame->m_encData;
     int64_t actualBits = bits;
     Slice *slice = curEncData.m_slice;
-    if (m_isAbr)
-    {
-        if (m_param->rc.rateControlMode == X265_RC_ABR && !m_param->rc.bStatRead)
-            checkAndResetABR(rce, true);
-
-        if (m_param->rc.rateControlMode == X265_RC_CRF)
-        {
-            if (int(curEncData.m_avgQpRc + 0.5) == slice->m_sliceQp)
-                curEncData.m_rateFactor = m_rateFactorConstant;
-            else
-            {
-                /* If vbv changed the frame QP recalculate the rate-factor */
-                double baseCplx = m_ncu * (m_param->bframes ? 120 : 80);
-                double mbtree_offset = m_param->rc.cuTree ? (1.0 - m_param->rc.qCompress) * 13.5 : 0;
-                curEncData.m_rateFactor = pow(baseCplx, 1 - m_qCompress) /
-                    x265_qp2qScale(int(curEncData.m_avgQpRc + 0.5) + mbtree_offset);
-            }
-        }
-    }
 
     if (m_param->rc.aqMode || m_isVbv)
     {
@@ -2207,6 +2176,26 @@ int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry*
             curEncData.m_avgQpAq = curEncData.m_avgQpRc;
     }
 
+    if (m_isAbr)
+    {
+        if (m_param->rc.rateControlMode == X265_RC_ABR && !m_param->rc.bStatRead)
+            checkAndResetABR(rce, true);
+
+        if (m_param->rc.rateControlMode == X265_RC_CRF)
+        {
+            if (int(curEncData.m_avgQpRc + 0.5) == slice->m_sliceQp)
+                curEncData.m_rateFactor = m_rateFactorConstant;
+            else
+            {
+                /* If vbv changed the frame QP recalculate the rate-factor */
+                double baseCplx = m_ncu * (m_param->bframes ? 120 : 80);
+                double mbtree_offset = m_param->rc.cuTree ? (1.0 - m_param->rc.qCompress) * 13.5 : 0;
+                curEncData.m_rateFactor = pow(baseCplx, 1 - m_qCompress) /
+                    x265_qp2qScale(int(curEncData.m_avgQpRc + 0.5) + mbtree_offset);
+            }
+        }
+    }
+
     // Write frame stats into the stats file if 2 pass is enabled.
     if (m_param->rc.bStatWrite)
     {
@@ -2217,12 +2206,12 @@ int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry*
                     "in:%d out:%d type:%c q:%.2f q-aq:%.2f tex:%d mv:%d misc:%d icu:%.2f pcu:%.2f scu:%.2f ;\n",
                     rce->poc, rce->encodeOrder,
                     cType, curEncData.m_avgQpRc, curEncData.m_avgQpAq,
-                    stats->coeffBits,
-                    stats->mvBits,
-                    stats->miscBits,
-                    stats->percentIntra * m_ncu,
-                    stats->percentInter * m_ncu,
-                    stats->percentSkip  * m_ncu) < 0)
+                    curFrame->m_encData->m_frameStats.coeffBits,
+                    curFrame->m_encData->m_frameStats.mvBits,
+                    curFrame->m_encData->m_frameStats.miscBits,
+                    curFrame->m_encData->m_frameStats.percent8x8Intra * m_ncu,
+                    curFrame->m_encData->m_frameStats.percent8x8Inter * m_ncu,
+                    curFrame->m_encData->m_frameStats.percent8x8Skip  * m_ncu) < 0)
             goto writeFailure;
         /* Don't re-write the data in multi-pass mode. */
         if (m_param->rc.cuTree && IS_REFERENCED(curFrame) && !m_param->rc.bStatRead)

@@ -60,7 +60,7 @@
 #include <numa.h>
 #endif
 
-namespace x265 {
+namespace X265_NS {
 // x265 private namespace
 
 class WorkerThread : public Thread
@@ -310,7 +310,7 @@ ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools)
     ThreadPool *pools = new ThreadPool[numPools];
     if (pools)
     {
-        int maxProviders = (p->frameNumThreads + 1 + numPools - 1) / numPools; /* +1 is Lookahead */
+        int maxProviders = (p->frameNumThreads + numPools - 1) / numPools + 1; /* +1 is Lookahead, always assigned to threadpool 0 */
         int node = 0;
         for (int i = 0; i < numPools; i++)
         {
@@ -480,4 +480,4 @@ int ThreadPool::getCpuCount()
 #endif
 }
 
-} // end namespace x265
+} // end namespace X265_NS

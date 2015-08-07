@@ -28,33 +28,33 @@
 #include "mv.h"
 #include "cudata.h"
 
-using namespace x265;
-
-namespace {
-// file private namespace
+using namespace X265_NS;
 
 /* for all bcast* and copy* functions, dst and src are aligned to MIN(size, 32) */
 
-void bcast1(uint8_t* dst, uint8_t val)  { dst[0] = val; }
+static void bcast1(uint8_t* dst, uint8_t val)  { dst[0] = val; }
 
-void copy4(uint8_t* dst, uint8_t* src)  { ((uint32_t*)dst)[0] = ((uint32_t*)src)[0]; }
-void bcast4(uint8_t* dst, uint8_t val)  { ((uint32_t*)dst)[0] = 0x01010101u * val; }
+static void copy4(uint8_t* dst, uint8_t* src)  { ((uint32_t*)dst)[0] = ((uint32_t*)src)[0]; }
+static void bcast4(uint8_t* dst, uint8_t val)  { ((uint32_t*)dst)[0] = 0x01010101u * val; }
 
-void copy16(uint8_t* dst, uint8_t* src) { ((uint64_t*)dst)[0] = ((uint64_t*)src)[0]; ((uint64_t*)dst)[1] = ((uint64_t*)src)[1]; }
-void bcast16(uint8_t* dst, uint8_t val) { uint64_t bval = 0x0101010101010101ULL * val; ((uint64_t*)dst)[0] = bval; ((uint64_t*)dst)[1] = bval; }
+static void copy16(uint8_t* dst, uint8_t* src) { ((uint64_t*)dst)[0] = ((uint64_t*)src)[0]; ((uint64_t*)dst)[1] = ((uint64_t*)src)[1]; }
+static void bcast16(uint8_t* dst, uint8_t val) { uint64_t bval = 0x0101010101010101ULL * val; ((uint64_t*)dst)[0] = bval; ((uint64_t*)dst)[1] = bval; }
 
-void copy64(uint8_t* dst, uint8_t* src) { ((uint64_t*)dst)[0] = ((uint64_t*)src)[0]; ((uint64_t*)dst)[1] = ((uint64_t*)src)[1]; 
-                                          ((uint64_t*)dst)[2] = ((uint64_t*)src)[2]; ((uint64_t*)dst)[3] = ((uint64_t*)src)[3];
-                                          ((uint64_t*)dst)[4] = ((uint64_t*)src)[4]; ((uint64_t*)dst)[5] = ((uint64_t*)src)[5];
-                                          ((uint64_t*)dst)[6] = ((uint64_t*)src)[6]; ((uint64_t*)dst)[7] = ((uint64_t*)src)[7]; }
-void bcast64(uint8_t* dst, uint8_t val) { uint64_t bval = 0x0101010101010101ULL * val;
-                                          ((uint64_t*)dst)[0] = bval; ((uint64_t*)dst)[1] = bval; ((uint64_t*)dst)[2] = bval; ((uint64_t*)dst)[3] = bval;
-                                          ((uint64_t*)dst)[4] = bval; ((uint64_t*)dst)[5] = bval; ((uint64_t*)dst)[6] = bval; ((uint64_t*)dst)[7] = bval; }
+static void copy64(uint8_t* dst, uint8_t* src) { ((uint64_t*)dst)[0] = ((uint64_t*)src)[0]; ((uint64_t*)dst)[1] = ((uint64_t*)src)[1]; 
+                                                 ((uint64_t*)dst)[2] = ((uint64_t*)src)[2]; ((uint64_t*)dst)[3] = ((uint64_t*)src)[3];
+                                                 ((uint64_t*)dst)[4] = ((uint64_t*)src)[4]; ((uint64_t*)dst)[5] = ((uint64_t*)src)[5];
+                                                 ((uint64_t*)dst)[6] = ((uint64_t*)src)[6]; ((uint64_t*)dst)[7] = ((uint64_t*)src)[7]; }
+static void bcast64(uint8_t* dst, uint8_t val) { uint64_t bval = 0x0101010101010101ULL * val;
+                                                 ((uint64_t*)dst)[0] = bval; ((uint64_t*)dst)[1] = bval; ((uint64_t*)dst)[2] = bval; ((uint64_t*)dst)[3] = bval;
+                                                 ((uint64_t*)dst)[4] = bval; ((uint64_t*)dst)[5] = bval; ((uint64_t*)dst)[6] = bval; ((uint64_t*)dst)[7] = bval; }
 
 /* at 256 bytes, memset/memcpy will probably use SIMD more effectively than our uint64_t hack,
  * but hand-written assembly would beat it. */
-void copy256(uint8_t* dst, uint8_t* src) { memcpy(dst, src, 256); }
-void bcast256(uint8_t* dst, uint8_t val) { memset(dst, val, 256); }
+static void copy256(uint8_t* dst, uint8_t* src) { memcpy(dst, src, 256); }
+static void bcast256(uint8_t* dst, uint8_t val) { memset(dst, val, 256); }
+
+namespace {
+// file private namespace
 
 /* Check whether 2 addresses point to the same column */
 inline bool isEqualCol(int addrA, int addrB, int numUnits)
@@ -111,38 +111,6 @@ inline MV scaleMv(MV mv, int scale)
 
     return MV((int16_t)mvx, (int16_t)mvy);
 }
-
-// Partition table.
-// First index is partitioning mode. Second index is partition index.
-// Third index is 0 for partition sizes, 1 for partition offsets. The 
-// sizes and offsets are encoded as two packed 4-bit values (X,Y). 
-// X and Y represent 1/4 fractions of the block size.
-const uint32_t partTable[8][4][2] =
-{
-    //        XY
-    { { 0x44, 0x00 }, { 0x00, 0x00 }, { 0x00, 0x00 }, { 0x00, 0x00 } }, // SIZE_2Nx2N.
-    { { 0x42, 0x00 }, { 0x42, 0x02 }, { 0x00, 0x00 }, { 0x00, 0x00 } }, // SIZE_2NxN.
-    { { 0x24, 0x00 }, { 0x24, 0x20 }, { 0x00, 0x00 }, { 0x00, 0x00 } }, // SIZE_Nx2N.
-    { { 0x22, 0x00 }, { 0x22, 0x20 }, { 0x22, 0x02 }, { 0x22, 0x22 } }, // SIZE_NxN.
-    { { 0x41, 0x00 }, { 0x43, 0x01 }, { 0x00, 0x00 }, { 0x00, 0x00 } }, // SIZE_2NxnU.
-    { { 0x43, 0x00 }, { 0x41, 0x03 }, { 0x00, 0x00 }, { 0x00, 0x00 } }, // SIZE_2NxnD.
-    { { 0x14, 0x00 }, { 0x34, 0x10 }, { 0x00, 0x00 }, { 0x00, 0x00 } }, // SIZE_nLx2N.
-    { { 0x34, 0x00 }, { 0x14, 0x30 }, { 0x00, 0x00 }, { 0x00, 0x00 } }  // SIZE_nRx2N.
-};
-
-// Partition Address table.
-// First index is partitioning mode. Second index is partition address.
-const uint32_t partAddrTable[8][4] =
-{
-    { 0x00, 0x00, 0x00, 0x00 }, // SIZE_2Nx2N.
-    { 0x00, 0x08, 0x08, 0x08 }, // SIZE_2NxN.
-    { 0x00, 0x04, 0x04, 0x04 }, // SIZE_Nx2N.
-    { 0x00, 0x04, 0x08, 0x0C }, // SIZE_NxN.
-    { 0x00, 0x02, 0x02, 0x02 }, // SIZE_2NxnU.
-    { 0x00, 0x0A, 0x0A, 0x0A }, // SIZE_2NxnD.
-    { 0x00, 0x01, 0x01, 0x01 }, // SIZE_nLx2N.
-    { 0x00, 0x05, 0x05, 0x05 }  // SIZE_nRx2N.
-};
 
 }
 

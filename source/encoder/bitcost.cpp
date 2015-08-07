@@ -25,7 +25,7 @@
 #include "primitives.h"
 #include "bitcost.h"
 
-using namespace x265;
+using namespace X265_NS;
 
 void BitCost::setQP(unsigned int qp)
 {
@@ -45,7 +45,7 @@ void BitCost::setQP(unsigned int qp)
 
             // estimate same cost for negative and positive MVD
             for (int i = 0; i <= 2 * BC_MAX_MV; i++)
-                s_costs[qp][i] = s_costs[qp][-i] = (uint16_t)X265_MIN(s_bitsizes[i] * lambda + 0.5f, (1 << 16) - 1);
+                s_costs[qp][i] = s_costs[qp][-i] = (uint16_t)X265_MIN(s_bitsizes[i] * lambda + 0.5f, (1 << 15) - 1);
         }
     }
 

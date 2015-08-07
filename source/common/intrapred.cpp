@@ -24,7 +24,7 @@
 #include "common.h"
 #include "primitives.h"
 
-using namespace x265;
+using namespace X265_NS;
 
 namespace {
 
@@ -50,7 +50,7 @@ void intraFilter(const pixel* samples, pixel* filtered) /* 1:2:1 filtering of le
     filtered[tuSize2 + tuSize2] = leftLast;
 }
 
-void dcPredFilter(const pixel* above, const pixel* left, pixel* dst, intptr_t dststride, int size)
+static void dcPredFilter(const pixel* above, const pixel* left, pixel* dst, intptr_t dststride, int size)
 {
     // boundary pixels processing
     dst[0] = (pixel)((above[0] + left[0] + 2 * dst[0] + 2) >> 2);
@@ -234,7 +234,7 @@ void all_angs_pred_c(pixel *dest, pixel *refPix, pixel *filtPix, int bLuma)
 }
 }
 
-namespace x265 {
+namespace X265_NS {
 // x265 private namespace
 
 void setupIntraPrimitives_c(EncoderPrimitives& p)

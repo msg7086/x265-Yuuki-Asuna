@@ -29,19 +29,18 @@
 
 #include "common.h"
 #include "primitives.h"
+#include "contexts.h"   // costCoeffNxN_c
+#include "threading.h"  // CLZ
 
-using namespace x265;
+using namespace X265_NS;
 
 #if _MSC_VER
 #pragma warning(disable: 4127) // conditional expression is constant, typical for templated functions
 #endif
 
-namespace {
-// anonymous file-static namespace
-
 // Fast DST Algorithm. Full matrix multiplication for DST and Fast DST algorithm
 // give identical results
-void fastForwardDst(const int16_t* block, int16_t* coeff, int shift)  // input block, output coeff
+static void fastForwardDst(const int16_t* block, int16_t* coeff, int shift)  // input block, output coeff
 {
     int c[4];
     int rnd_factor = 1 << (shift - 1);
@@ -61,7 +60,7 @@ void fastForwardDst(const int16_t* block, int16_t* coeff, int shift)  // input b
     }
 }
 
-void inversedst(const int16_t* tmp, int16_t* block, int shift)  // input tmp, output block
+static void inversedst(const int16_t* tmp, int16_t* block, int shift)  // input tmp, output block
 {
     int i, c[4];
     int rnd_factor = 1 << (shift - 1);
@@ -81,7 +80,7 @@ void inversedst(const int16_t* tmp, int16_t* block, int shift)  // input tmp, ou
     }
 }
 
-void partialButterfly16(const int16_t* src, int16_t* dst, int shift, int line)
+static void partialButterfly16(const int16_t* src, int16_t* dst, int shift, int line)
 {
     int j, k;
     int E[8], O[8];
@@ -134,7 +133,7 @@ void partialButterfly16(const int16_t* src, int16_t* dst, int shift, int line)
     }
 }
 
-void partialButterfly32(const int16_t* src, int16_t* dst, int shift, int line)
+static void partialButterfly32(const int16_t* src, int16_t* dst, int shift, int line)
 {
     int j, k;
     int E[16], O[16];
@@ -203,7 +202,7 @@ void partialButterfly32(const int16_t* src, int16_t* dst, int shift, int line)
     }
 }
 
-void partialButterfly8(const int16_t* src, int16_t* dst, int shift, int line)
+static void partialButterfly8(const int16_t* src, int16_t* dst, int shift, int line)
 {
     int j, k;
     int E[4], O[4];
@@ -240,7 +239,7 @@ void partialButterfly8(const int16_t* src, int16_t* dst, int shift, int line)
     }
 }
 
-void partialButterflyInverse4(const int16_t* src, int16_t* dst, int shift, int line)
+static void partialButterflyInverse4(const int16_t* src, int16_t* dst, int shift, int line)
 {
     int j;
     int E[2], O[2];
@@ -265,7 +264,7 @@ void partialButterflyInverse4(const int16_t* src, int16_t* dst, int shift, int l
     }
 }
 
-void partialButterflyInverse8(const int16_t* src, int16_t* dst, int shift, int line)
+static void partialButterflyInverse8(const int16_t* src, int16_t* dst, int shift, int line)
 {
     int j, k;
     int E[4], O[4];
@@ -301,7 +300,7 @@ void partialButterflyInverse8(const int16_t* src, int16_t* dst, int shift, int l
     }
 }
 
-void partialButterflyInverse16(const int16_t* src, int16_t* dst, int shift, int line)
+static void partialButterflyInverse16(const int16_t* src, int16_t* dst, int shift, int line)
 {
     int j, k;
     int E[8], O[8];
@@ -352,7 +351,7 @@ void partialButterflyInverse16(const int16_t* src, int16_t* dst, int shift, int 
     }
 }
 
-void partialButterflyInverse32(const int16_t* src, int16_t* dst, int shift, int line)
+static void partialButterflyInverse32(const int16_t* src, int16_t* dst, int shift, int line)
 {
     int j, k;
     int E[16], O[16];
@@ -416,7 +415,7 @@ void partialButterflyInverse32(const int16_t* src, int16_t* dst, int shift, int 
     }
 }
 
-void partialButterfly4(const int16_t* src, int16_t* dst, int shift, int line)
+static void partialButterfly4(const int16_t* src, int16_t* dst, int shift, int line)
 {
     int j;
     int E[2], O[2];
@@ -440,7 +439,7 @@ void partialButterfly4(const int16_t* src, int16_t* dst, int shift, int line)
     }
 }
 
-void dst4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
+static void dst4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
 {
     const int shift_1st = 1 + X265_DEPTH - 8;
     const int shift_2nd = 8;
@@ -457,7 +456,7 @@ void dst4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
     fastForwardDst(coef, dst, shift_2nd);
 }
 
-void dct4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
+static void dct4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
 {
     const int shift_1st = 1 + X265_DEPTH - 8;
     const int shift_2nd = 8;
@@ -474,7 +473,7 @@ void dct4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
     partialButterfly4(coef, dst, shift_2nd, 4);
 }
 
-void dct8_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
+static void dct8_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
 {
     const int shift_1st = 2 + X265_DEPTH - 8;
     const int shift_2nd = 9;
@@ -491,7 +490,7 @@ void dct8_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
     partialButterfly8(coef, dst, shift_2nd, 8);
 }
 
-void dct16_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
+static void dct16_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
 {
     const int shift_1st = 3 + X265_DEPTH - 8;
     const int shift_2nd = 10;
@@ -508,7 +507,7 @@ void dct16_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
     partialButterfly16(coef, dst, shift_2nd, 16);
 }
 
-void dct32_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
+static void dct32_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
 {
     const int shift_1st = 4 + X265_DEPTH - 8;
     const int shift_2nd = 11;
@@ -525,7 +524,7 @@ void dct32_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
     partialButterfly32(coef, dst, shift_2nd, 32);
 }
 
-void idst4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
+static void idst4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12 - (X265_DEPTH - 8);
@@ -542,7 +541,7 @@ void idst4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
     }
 }
 
-void idct4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
+static void idct4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12 - (X265_DEPTH - 8);
@@ -559,7 +558,7 @@ void idct4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
     }
 }
 
-void idct8_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
+static void idct8_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12 - (X265_DEPTH - 8);
@@ -576,7 +575,7 @@ void idct8_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
     }
 }
 
-void idct16_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
+static void idct16_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12 - (X265_DEPTH - 8);
@@ -593,7 +592,7 @@ void idct16_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
     }
 }
 
-void idct32_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
+static void idct32_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12 - (X265_DEPTH - 8);
@@ -610,10 +609,10 @@ void idct32_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
     }
 }
 
-void dequant_normal_c(const int16_t* quantCoef, int16_t* coef, int num, int scale, int shift)
+static void dequant_normal_c(const int16_t* quantCoef, int16_t* coef, int num, int scale, int shift)
 {
 #if HIGH_BIT_DEPTH
-    X265_CHECK(scale < 32768 || ((scale & 3) == 0 && shift > 2), "dequant invalid scale %d\n", scale);
+    X265_CHECK(scale < 32768 || ((scale & 3) == 0 && shift > (X265_DEPTH - 8)), "dequant invalid scale %d\n", scale);
 #else
     // NOTE: maximum of scale is (72 * 256)
     X265_CHECK(scale < 32768, "dequant invalid scale %d\n", scale);
@@ -634,7 +633,7 @@ void dequant_normal_c(const int16_t* quantCoef, int16_t* coef, int num, int scal
     }
 }
 
-void dequant_scaling_c(const int16_t* quantCoef, const int32_t* deQuantCoef, int16_t* coef, int num, int per, int shift)
+static void dequant_scaling_c(const int16_t* quantCoef, const int32_t* deQuantCoef, int16_t* coef, int num, int per, int shift)
 {
     X265_CHECK(num <= 32 * 32, "dequant num %d too large\n", num);
 
@@ -662,7 +661,7 @@ void dequant_scaling_c(const int16_t* quantCoef, const int32_t* deQuantCoef, int
     }
 }
 
-uint32_t quant_c(const int16_t* coef, const int32_t* quantCoeff, int32_t* deltaU, int16_t* qCoef, int qBits, int add, int numCoeff)
+static uint32_t quant_c(const int16_t* coef, const int32_t* quantCoeff, int32_t* deltaU, int16_t* qCoef, int qBits, int add, int numCoeff)
 {
     X265_CHECK(qBits >= 8, "qBits less than 8\n");
     X265_CHECK((numCoeff % 16) == 0, "numCoeff must be multiple of 16\n");
@@ -686,7 +685,7 @@ uint32_t quant_c(const int16_t* coef, const int32_t* quantCoeff, int32_t* deltaU
     return numSig;
 }
 
-uint32_t nquant_c(const int16_t* coef, const int32_t* quantCoeff, int16_t* qCoef, int qBits, int add, int numCoeff)
+static uint32_t nquant_c(const int16_t* coef, const int32_t* quantCoeff, int16_t* qCoef, int qBits, int add, int numCoeff)
 {
     X265_CHECK((numCoeff % 16) == 0, "number of quant coeff is not multiple of 4x4\n");
     X265_CHECK((uint32_t)add < ((uint32_t)1 << qBits), "2 ^ qBits less than add\n");
@@ -739,7 +738,7 @@ uint32_t copy_count(int16_t* coeff, const int16_t* residual, intptr_t resiStride
     return numSig;
 }
 
-void denoiseDct_c(int16_t* dctCoef, uint32_t* resSum, const uint16_t* offset, int numCoeff)
+static void denoiseDct_c(int16_t* dctCoef, uint32_t* resSum, const uint16_t* offset, int numCoeff)
 {
     for (int i = 0; i < numCoeff; i++)
     {
@@ -752,7 +751,7 @@ void denoiseDct_c(int16_t* dctCoef, uint32_t* resSum, const uint16_t* offset, in
     }
 }
 
-int scanPosLast_c(const uint16_t *scan, const coeff_t *coeff, uint16_t *coeffSign, uint16_t *coeffFlag, uint8_t *coeffNum, int numSig, const uint16_t* /*scanCG4x4*/, const int /*trSize*/)
+static int scanPosLast_c(const uint16_t *scan, const coeff_t *coeff, uint16_t *coeffSign, uint16_t *coeffFlag, uint8_t *coeffNum, int numSig, const uint16_t* /*scanCG4x4*/, const int /*trSize*/)
 {
     memset(coeffNum, 0, MLS_GRP_NUM * sizeof(*coeffNum));
     memset(coeffFlag, 0, MLS_GRP_NUM * sizeof(*coeffFlag));
@@ -785,7 +784,7 @@ int scanPosLast_c(const uint16_t *scan, const coeff_t *coeff, uint16_t *coeffSig
     return scanPosLast - 1;
 }
 
-uint32_t findPosFirstLast_c(const int16_t *dstCoeff, const intptr_t trSize, const uint16_t scanTbl[16])
+static uint32_t findPosFirstLast_c(const int16_t *dstCoeff, const intptr_t trSize, const uint16_t scanTbl[16])
 {
     int n;
 
@@ -798,11 +797,11 @@ uint32_t findPosFirstLast_c(const int16_t *dstCoeff, const intptr_t trSize, cons
             break;
     }
 
-    X265_CHECK(n >= 0, "non-zero coeff scan failuare!\n");
+    X265_CHECK(n >= -1, "non-zero coeff scan failuare!\n");
 
     uint32_t lastNZPosInCG = (uint32_t)n;
 
-    for (n = 0;; n++)
+    for (n = 0; n < SCAN_SET_SIZE; n++)
     {
         const uint32_t idx = scanTbl[n];
         const uint32_t idxY = idx / MLS_CG_SIZE;
@@ -813,12 +812,166 @@ uint32_t findPosFirstLast_c(const int16_t *dstCoeff, const intptr_t trSize, cons
 
     uint32_t firstNZPosInCG = (uint32_t)n;
 
+    // NOTE: when coeff block all ZERO, the lastNZPosInCG is undefined and firstNZPosInCG is 16
     return ((lastNZPosInCG << 16) | firstNZPosInCG);
 }
 
-}  // closing - anonymous file-static namespace
 
-namespace x265 {
+static uint32_t costCoeffNxN_c(const uint16_t *scan, const coeff_t *coeff, intptr_t trSize, uint16_t *absCoeff, const uint8_t *tabSigCtx, uint32_t scanFlagMask, uint8_t *baseCtx, int offset, int scanPosSigOff, int subPosBase)
+{
+    ALIGN_VAR_32(uint16_t, tmpCoeff[SCAN_SET_SIZE]);
+    uint32_t numNonZero = (scanPosSigOff < (SCAN_SET_SIZE - 1) ? 1 : 0);
+    uint32_t sum = 0;
+
+    // correct offset to match assembly
+    absCoeff -= numNonZero;
+
+    for (int i = 0; i < MLS_CG_SIZE; i++)
+    {
+        tmpCoeff[i * MLS_CG_SIZE + 0] = (uint16_t)abs(coeff[i * trSize + 0]);
+        tmpCoeff[i * MLS_CG_SIZE + 1] = (uint16_t)abs(coeff[i * trSize + 1]);
+        tmpCoeff[i * MLS_CG_SIZE + 2] = (uint16_t)abs(coeff[i * trSize + 2]);
+        tmpCoeff[i * MLS_CG_SIZE + 3] = (uint16_t)abs(coeff[i * trSize + 3]);
+    }
+
+    do
+    {
+        uint32_t blkPos, sig, ctxSig;
+        blkPos = scan[scanPosSigOff];
+        const uint32_t posZeroMask = (subPosBase + scanPosSigOff) ? ~0 : 0;
+        sig     = scanFlagMask & 1;
+        scanFlagMask >>= 1;
+        X265_CHECK((uint32_t)(tmpCoeff[blkPos] != 0) == sig, "sign bit mistake\n");
+        if ((scanPosSigOff != 0) || (subPosBase == 0) || numNonZero)
+        {
+            const uint32_t cnt = tabSigCtx[blkPos] + offset;
+            ctxSig = cnt & posZeroMask;
+
+            //X265_CHECK(ctxSig == Quant::getSigCtxInc(patternSigCtx, log2TrSize, trSize, codingParameters.scan[subPosBase + scanPosSigOff], bIsLuma, codingParameters.firstSignificanceMapContext), "sigCtx mistake!\n");;
+            //encodeBin(sig, baseCtx[ctxSig]);
+            const uint32_t mstate = baseCtx[ctxSig];
+            const uint32_t mps = mstate & 1;
+            const uint32_t stateBits = PFX(entropyStateBits)[mstate ^ sig];
+            uint32_t nextState = (stateBits >> 24) + mps;
+            if ((mstate ^ sig) == 1)
+                nextState = sig;
+            X265_CHECK(sbacNext(mstate, sig) == nextState, "nextState check failure\n");
+            X265_CHECK(sbacGetEntropyBits(mstate, sig) == (stateBits & 0xFFFFFF), "entropyBits check failure\n");
+            baseCtx[ctxSig] = (uint8_t)nextState;
+            sum += stateBits;
+        }
+        assert(numNonZero <= 15);
+        assert(blkPos <= 15);
+        absCoeff[numNonZero] = tmpCoeff[blkPos];
+        numNonZero += sig;
+        scanPosSigOff--;
+    }
+    while(scanPosSigOff >= 0);
+
+    return (sum & 0xFFFFFF);
+}
+
+static uint32_t costCoeffRemain_c(uint16_t *absCoeff, int numNonZero, int idx)
+{
+    uint32_t goRiceParam = 0;
+
+    uint32_t sum = 0;
+    int baseLevel = 3;
+    do
+    {
+        if (idx >= C1FLAG_NUMBER)
+            baseLevel = 1;
+
+        // TODO: the IDX is not really idx, so this check inactive
+        //X265_CHECK(baseLevel == ((idx < C1FLAG_NUMBER) ? (2 + firstCoeff2) : 1), "baseLevel check failurr\n");
+        int codeNumber = absCoeff[idx] - baseLevel;
+
+        if (codeNumber >= 0)
+        {
+            //writeCoefRemainExGolomb(absCoeff[idx] - baseLevel, goRiceParam);
+            uint32_t length = 0;
+
+            codeNumber = ((uint32_t)codeNumber >> goRiceParam) - COEF_REMAIN_BIN_REDUCTION;
+            if (codeNumber >= 0)
+            {
+                {
+                    unsigned long cidx;
+                    CLZ(cidx, codeNumber + 1);
+                    length = cidx;
+                }
+                X265_CHECK((codeNumber != 0) || (length == 0), "length check failure\n");
+
+                codeNumber = (length + length);
+            }
+            sum += (COEF_REMAIN_BIN_REDUCTION + 1 + goRiceParam + codeNumber);
+
+            if (absCoeff[idx] > (COEF_REMAIN_BIN_REDUCTION << goRiceParam))
+                goRiceParam = (goRiceParam + 1) - (goRiceParam >> 2);
+            X265_CHECK(goRiceParam <= 4, "goRiceParam check failure\n");
+        }
+        baseLevel = 2;
+        idx++;
+    }
+    while(idx < numNonZero);
+
+    return sum;
+}
+
+
+static uint32_t costC1C2Flag_c(uint16_t *absCoeff, intptr_t numC1Flag, uint8_t *baseCtxMod, intptr_t ctxOffset)
+{
+    uint32_t sum = 0;
+    uint32_t c1 = 1;
+    uint32_t firstC2Idx = 8;
+    uint32_t firstC2Flag = 2;
+    uint32_t c1Next = 0xFFFFFFFE;
+
+    int idx = 0;
+    do
+    {
+        uint32_t symbol1 = absCoeff[idx] > 1;
+        uint32_t symbol2 = absCoeff[idx] > 2;
+        //encodeBin(symbol1, baseCtxMod[c1]);
+        {
+            const uint32_t mstate = baseCtxMod[c1];
+            baseCtxMod[c1] = sbacNext(mstate, symbol1);
+            sum += sbacGetEntropyBits(mstate, symbol1);
+        }
+
+        if (symbol1)
+            c1Next = 0;
+
+        if (symbol1 + firstC2Flag == 3)
+            firstC2Flag = symbol2;
+
+        if (symbol1 + firstC2Idx == 9)
+            firstC2Idx  = idx;
+
+        c1 = (c1Next & 3);
+        c1Next >>= 2;
+        X265_CHECK(c1 <= 3, "c1 check failure\n");
+        idx++;
+    }
+    while(idx < numC1Flag);
+
+    if (!c1)
+    {
+        X265_CHECK((firstC2Flag <= 1), "firstC2FlagIdx check failure\n");
+
+        baseCtxMod += ctxOffset;
+
+        //encodeBin(firstC2Flag, baseCtxMod[0]);
+        {
+            const uint32_t mstate = baseCtxMod[0];
+            baseCtxMod[0] = sbacNext(mstate, firstC2Flag);
+            sum += sbacGetEntropyBits(mstate, firstC2Flag);
+        }
+    }
+
+    return (sum & 0x00FFFFFF) + (c1 << 26) + (firstC2Idx << 28);
+}
+
+namespace X265_NS {
 // x265 private namespace
 
 void setupDCTPrimitives_c(EncoderPrimitives& p)
@@ -850,5 +1003,8 @@ void setupDCTPrimitives_c(EncoderPrimitives& p)
 
     p.scanPosLast = scanPosLast_c;
     p.findPosFirstLast = findPosFirstLast_c;
+    p.costCoeffNxN = costCoeffNxN_c;
+    p.costCoeffRemain = costCoeffRemain_c;
+    p.costC1C2Flag = costC1C2Flag_c;
 }
 }

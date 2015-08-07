@@ -34,9 +34,20 @@
 #include <pmmintrin.h> // SSE3
 #include <tmmintrin.h> // SSSE3
 
-using namespace x265;
+#define DCT16_SHIFT1  (3 + X265_DEPTH - 8)
+#define DCT16_ADD1    (1 << ((DCT16_SHIFT1) - 1))
 
-namespace {
+#define DCT16_SHIFT2  10
+#define DCT16_ADD2    (1 << ((DCT16_SHIFT2) - 1))
+
+#define DCT32_SHIFT1  (DCT16_SHIFT1 + 1)
+#define DCT32_ADD1    (1 << ((DCT32_SHIFT1) - 1))
+
+#define DCT32_SHIFT2  (DCT16_SHIFT2 + 1)
+#define DCT32_ADD2    (1 << ((DCT32_SHIFT2) - 1))
+
+using namespace X265_NS;
+
 ALIGN_VAR_32(static const int16_t, tab_dct_8[][8]) =
 {
     { 0x0100, 0x0F0E, 0x0706, 0x0908, 0x0302, 0x0D0C, 0x0504, 0x0B0A },
@@ -99,22 +110,11 @@ ALIGN_VAR_32(static const int16_t, tab_dct_16_1[][8]) =
 #undef MAKE_COEF
 };
 
-void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
+static void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
 {
-#if HIGH_BIT_DEPTH
-#define SHIFT1  5
-#define ADD1    16
-#else
-#define SHIFT1  3
-#define ADD1    4
-#endif
-
-#define SHIFT2  10
-#define ADD2    512
-
     // Const
-    __m128i c_4     = _mm_set1_epi32(ADD1);
-    __m128i c_512   = _mm_set1_epi32(ADD2);
+    __m128i c_4     = _mm_set1_epi32(DCT16_ADD1);
+    __m128i c_512   = _mm_set1_epi32(DCT16_ADD2);
 
     int i;
 
@@ -202,29 +202,29 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
 
         T60  = _mm_madd_epi16(T50, _mm_load_si128((__m128i*)tab_dct_8[1]));
         T61  = _mm_madd_epi16(T51, _mm_load_si128((__m128i*)tab_dct_8[1]));
-        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), SHIFT1);
-        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), SHIFT1);
+        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), DCT16_SHIFT1);
+        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), DCT16_SHIFT1);
         T70  = _mm_packs_epi32(T60, T61);
         _mm_store_si128((__m128i*)&tmp[0 * 16 + i], T70);
 
         T60  = _mm_madd_epi16(T50, _mm_load_si128((__m128i*)tab_dct_8[2]));
         T61  = _mm_madd_epi16(T51, _mm_load_si128((__m128i*)tab_dct_8[2]));
-        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), SHIFT1);
-        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), SHIFT1);
+        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), DCT16_SHIFT1);
+        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), DCT16_SHIFT1);
         T70  = _mm_packs_epi32(T60, T61);
         _mm_store_si128((__m128i*)&tmp[8 * 16 + i], T70);
 
         T60  = _mm_madd_epi16(T52, _mm_load_si128((__m128i*)tab_dct_8[3]));
         T61  = _mm_madd_epi16(T53, _mm_load_si128((__m128i*)tab_dct_8[3]));
-        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), SHIFT1);
-        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), SHIFT1);
+        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), DCT16_SHIFT1);
+        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), DCT16_SHIFT1);
         T70  = _mm_packs_epi32(T60, T61);
         _mm_store_si128((__m128i*)&tmp[4 * 16 + i], T70);
 
         T60  = _mm_madd_epi16(T52, _mm_load_si128((__m128i*)tab_dct_8[4]));
         T61  = _mm_madd_epi16(T53, _mm_load_si128((__m128i*)tab_dct_8[4]));
-        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), SHIFT1);
-        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), SHIFT1);
+        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), DCT16_SHIFT1);
+        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), DCT16_SHIFT1);
         T70  = _mm_packs_epi32(T60, T61);
         _mm_store_si128((__m128i*)&tmp[12 * 16 + i], T70);
 
@@ -234,8 +234,8 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
         T63  = _mm_madd_epi16(T47, _mm_load_si128((__m128i*)tab_dct_8[5]));
         T60  = _mm_hadd_epi32(T60, T61);
         T61  = _mm_hadd_epi32(T62, T63);
-        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), SHIFT1);
-        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), SHIFT1);
+        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), DCT16_SHIFT1);
+        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), DCT16_SHIFT1);
         T70  = _mm_packs_epi32(T60, T61);
         _mm_store_si128((__m128i*)&tmp[2 * 16 + i], T70);
 
@@ -245,8 +245,8 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
         T63  = _mm_madd_epi16(T47, _mm_load_si128((__m128i*)tab_dct_8[6]));
         T60  = _mm_hadd_epi32(T60, T61);
         T61  = _mm_hadd_epi32(T62, T63);
-        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), SHIFT1);
-        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), SHIFT1);
+        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), DCT16_SHIFT1);
+        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), DCT16_SHIFT1);
         T70  = _mm_packs_epi32(T60, T61);
         _mm_store_si128((__m128i*)&tmp[6 * 16 + i], T70);
 
@@ -256,8 +256,8 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
         T63  = _mm_madd_epi16(T47, _mm_load_si128((__m128i*)tab_dct_8[7]));
         T60  = _mm_hadd_epi32(T60, T61);
         T61  = _mm_hadd_epi32(T62, T63);
-        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), SHIFT1);
-        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), SHIFT1);
+        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), DCT16_SHIFT1);
+        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), DCT16_SHIFT1);
         T70  = _mm_packs_epi32(T60, T61);
         _mm_store_si128((__m128i*)&tmp[10 * 16 + i], T70);
 
@@ -267,8 +267,8 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
         T63  = _mm_madd_epi16(T47, _mm_load_si128((__m128i*)tab_dct_8[8]));
         T60  = _mm_hadd_epi32(T60, T61);
         T61  = _mm_hadd_epi32(T62, T63);
-        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), SHIFT1);
-        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), SHIFT1);
+        T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), DCT16_SHIFT1);
+        T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), DCT16_SHIFT1);
         T70  = _mm_packs_epi32(T60, T61);
         _mm_store_si128((__m128i*)&tmp[14 * 16 + i], T70);
 
@@ -287,8 +287,8 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
     T63  = _mm_hadd_epi32(T66, T67); \
     T60  = _mm_hadd_epi32(T60, T61); \
     T61  = _mm_hadd_epi32(T62, T63); \
-    T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), SHIFT1); \
-    T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), SHIFT1); \
+    T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_4), DCT16_SHIFT1); \
+    T61  = _mm_srai_epi32(_mm_add_epi32(T61, c_4), DCT16_SHIFT1); \
     T70  = _mm_packs_epi32(T60, T61); \
     _mm_store_si128((__m128i*)&tmp[(dstPos) * 16 + i], T70);
 
@@ -352,8 +352,8 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
 
         T40  = _mm_hadd_epi32(T30, T31);
         T41  = _mm_hsub_epi32(T30, T31);
-        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), SHIFT2);
-        T41  = _mm_srai_epi32(_mm_add_epi32(T41, c_512), SHIFT2);
+        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), DCT16_SHIFT2);
+        T41  = _mm_srai_epi32(_mm_add_epi32(T41, c_512), DCT16_SHIFT2);
         T40  = _mm_packs_epi32(T40, T40);
         T41  = _mm_packs_epi32(T41, T41);
         _mm_storel_epi64((__m128i*)&dst[0 * 16 + i], T40);
@@ -377,7 +377,7 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
         T31  = _mm_hadd_epi32(T32, T33);
 
         T40  = _mm_hadd_epi32(T30, T31);
-        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), SHIFT2);
+        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), DCT16_SHIFT2);
         T40  = _mm_packs_epi32(T40, T40);
         _mm_storel_epi64((__m128i*)&dst[4 * 16 + i], T40);
 
@@ -399,7 +399,7 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
         T31  = _mm_hadd_epi32(T32, T33);
 
         T40  = _mm_hadd_epi32(T30, T31);
-        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), SHIFT2);
+        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), DCT16_SHIFT2);
         T40  = _mm_packs_epi32(T40, T40);
         _mm_storel_epi64((__m128i*)&dst[12 * 16 + i], T40);
 
@@ -421,7 +421,7 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
         T31  = _mm_hadd_epi32(T32, T33);
 
         T40  = _mm_hadd_epi32(T30, T31);
-        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), SHIFT2);
+        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), DCT16_SHIFT2);
         T40  = _mm_packs_epi32(T40, T40);
         _mm_storel_epi64((__m128i*)&dst[2 * 16 + i], T40);
 
@@ -443,7 +443,7 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
         T31  = _mm_hadd_epi32(T32, T33);
 
         T40  = _mm_hadd_epi32(T30, T31);
-        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), SHIFT2);
+        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), DCT16_SHIFT2);
         T40  = _mm_packs_epi32(T40, T40);
         _mm_storel_epi64((__m128i*)&dst[6 * 16 + i], T40);
 
@@ -465,7 +465,7 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
         T31  = _mm_hadd_epi32(T32, T33);
 
         T40  = _mm_hadd_epi32(T30, T31);
-        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), SHIFT2);
+        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), DCT16_SHIFT2);
         T40  = _mm_packs_epi32(T40, T40);
         _mm_storel_epi64((__m128i*)&dst[10 * 16 + i], T40);
 
@@ -487,7 +487,7 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
         T31  = _mm_hadd_epi32(T32, T33);
 
         T40  = _mm_hadd_epi32(T30, T31);
-        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), SHIFT2);
+        T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), DCT16_SHIFT2);
         T40  = _mm_packs_epi32(T40, T40);
         _mm_storel_epi64((__m128i*)&dst[14 * 16 + i], T40);
 
@@ -510,7 +510,7 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
     T31  = _mm_hadd_epi32(T32, T33); \
         \
     T40  = _mm_hadd_epi32(T30, T31); \
-    T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), SHIFT2); \
+    T40  = _mm_srai_epi32(_mm_add_epi32(T40, c_512), DCT16_SHIFT2); \
     T40  = _mm_packs_epi32(T40, T40); \
     _mm_storel_epi64((__m128i*)&dst[(dstPos) * 16 + i], T40);
 
@@ -524,10 +524,6 @@ void dct16(const int16_t *src, int16_t *dst, intptr_t stride)
         MAKE_ODD(28, 15);
 #undef MAKE_ODD
     }
-#undef SHIFT1
-#undef ADD1
-#undef SHIFT2
-#undef ADD2
 }
 
 ALIGN_VAR_32(static const int16_t, tab_dct_32_0[][8]) =
@@ -680,22 +676,11 @@ ALIGN_VAR_32(static const int16_t, tab_dct_32_1[][8]) =
 #undef MAKE_COEF16
 };
 
-void dct32(const int16_t *src, int16_t *dst, intptr_t stride)
+static void dct32(const int16_t *src, int16_t *dst, intptr_t stride)
 {
-#if HIGH_BIT_DEPTH
-#define SHIFT1  6
-#define ADD1    32
-#else
-#define SHIFT1  4
-#define ADD1    8
-#endif
-
-#define SHIFT2  11
-#define ADD2    1024
-
     // Const
-    __m128i c_8     = _mm_set1_epi32(ADD1);
-    __m128i c_1024  = _mm_set1_epi32(ADD2);
+    __m128i c_8     = _mm_set1_epi32(DCT32_ADD1);
+    __m128i c_1024  = _mm_set1_epi32(DCT32_ADD2);
 
     int i;
 
@@ -840,15 +825,15 @@ void dct32(const int16_t *src, int16_t *dst, intptr_t stride)
 
         T50  = _mm_hadd_epi32(T40, T41);
         T51  = _mm_hadd_epi32(T42, T43);
-        T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), SHIFT1);
-        T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), SHIFT1);
+        T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), DCT32_SHIFT1);
+        T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), DCT32_SHIFT1);
         T60  = _mm_packs_epi32(T50, T51);
         im[0][i] = T60;
 
         T50  = _mm_hsub_epi32(T40, T41);
         T51  = _mm_hsub_epi32(T42, T43);
-        T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), SHIFT1);
-        T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), SHIFT1);
+        T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), DCT32_SHIFT1);
+        T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), DCT32_SHIFT1);
         T60  = _mm_packs_epi32(T50, T51);
         im[16][i] = T60;
 
@@ -868,8 +853,8 @@ void dct32(const int16_t *src, int16_t *dst, intptr_t stride)
 
         T50  = _mm_hadd_epi32(T40, T41);
         T51  = _mm_hadd_epi32(T42, T43);
-        T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), SHIFT1);
-        T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), SHIFT1);
+        T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), DCT32_SHIFT1);
+        T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), DCT32_SHIFT1);
         T60  = _mm_packs_epi32(T50, T51);
         im[8][i] = T60;
 
@@ -889,8 +874,8 @@ void dct32(const int16_t *src, int16_t *dst, intptr_t stride)
 
         T50  = _mm_hadd_epi32(T40, T41);
         T51  = _mm_hadd_epi32(T42, T43);
-        T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), SHIFT1);
-        T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), SHIFT1);
+        T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), DCT32_SHIFT1);
+        T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), DCT32_SHIFT1);
         T60  = _mm_packs_epi32(T50, T51);
         im[24][i] = T60;
 
@@ -911,8 +896,8 @@ void dct32(const int16_t *src, int16_t *dst, intptr_t stride)
         \
     T50  = _mm_hadd_epi32(T40, T41); \
     T51  = _mm_hadd_epi32(T42, T43); \
-    T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), SHIFT1); \
-    T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), SHIFT1); \
+    T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), DCT32_SHIFT1); \
+    T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), DCT32_SHIFT1); \
     T60  = _mm_packs_epi32(T50, T51); \
     im[(dstPos)][i] = T60;
 
@@ -974,8 +959,8 @@ void dct32(const int16_t *src, int16_t *dst, intptr_t stride)
         \
     T50  = _mm_hadd_epi32(T50, T51); \
     T51  = _mm_hadd_epi32(T52, T53); \
-    T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), SHIFT1); \
-    T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), SHIFT1); \
+    T50  = _mm_srai_epi32(_mm_add_epi32(T50, c_8), DCT32_SHIFT1); \
+    T51  = _mm_srai_epi32(_mm_add_epi32(T51, c_8), DCT32_SHIFT1); \
     T60  = _mm_packs_epi32(T50, T51); \
     im[(dstPos)][i] = T60;
 
@@ -1083,7 +1068,7 @@ void dct32(const int16_t *src, int16_t *dst, intptr_t stride)
         \
     T60  = _mm_hadd_epi32(T60, T61); \
         \
-    T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_1024), SHIFT2); \
+    T60  = _mm_srai_epi32(_mm_add_epi32(T60, c_1024), DCT32_SHIFT2); \
     T60  = _mm_packs_epi32(T60, T60); \
     _mm_storel_epi64((__m128i*)&dst[(dstPos) * 32 + (i * 4) + 0], T60); \
 
@@ -1125,14 +1110,9 @@ void dct32(const int16_t *src, int16_t *dst, intptr_t stride)
         MAKE_ODD(158, 159, 160, 161, 31);
 #undef MAKE_ODD
     }
-#undef SHIFT1
-#undef ADD1
-#undef SHIFT2
-#undef ADD2
-}
 }
 
-namespace x265 {
+namespace X265_NS {
 void setupIntrinsicDCT_ssse3(EncoderPrimitives &p)
 {
     /* Note: We have AVX2 assembly for these two functions, but since AVX2 is

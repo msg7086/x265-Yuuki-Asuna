@@ -28,11 +28,60 @@
 #include "slice.h"
 #include "cudata.h"
 
-namespace x265 {
+namespace X265_NS {
 // private namespace
 
 class PicYuv;
 class JobProvider;
+
+#define INTER_MODES 4 // 2Nx2N, 2NxN, Nx2N, AMP modes
+#define INTRA_MODES 3 // DC, Planar, Angular modes
+
+/* Current frame stats for 2 pass */
+struct FrameStats
+{
+    int         mvBits;    /* MV bits (MV+Ref+Block Type) */
+    int         coeffBits; /* Texture bits (DCT coefs) */
+    int         miscBits;
+
+    int         intra8x8Cnt;
+    int         inter8x8Cnt;
+    int         skip8x8Cnt;
+
+    /* CU type counts stored as percentage */
+    double      percent8x8Intra;
+    double      percent8x8Inter;
+    double      percent8x8Skip;
+    double      avgLumaDistortion;
+    double      avgChromaDistortion;
+    double      avgPsyEnergy;
+    double      avgLumaLevel;
+    double      lumaLevel;
+    double      percentIntraNxN;
+    double      percentSkipCu[NUM_CU_DEPTH];
+    double      percentMergeCu[NUM_CU_DEPTH];
+    double      percentIntraDistribution[NUM_CU_DEPTH][INTRA_MODES];
+    double      percentInterDistribution[NUM_CU_DEPTH][3];           // 2Nx2N, RECT, AMP modes percentage
+
+    uint64_t    cntIntraNxN;
+    uint64_t    totalCu;
+    uint64_t    totalCtu;
+    uint64_t    lumaDistortion;
+    uint64_t    chromaDistortion;
+    uint64_t    psyEnergy;
+    uint64_t    cntSkipCu[NUM_CU_DEPTH];
+    uint64_t    cntMergeCu[NUM_CU_DEPTH];
+    uint64_t    cntInter[NUM_CU_DEPTH];
+    uint64_t    cntIntra[NUM_CU_DEPTH];
+    uint64_t    cuInterDistribution[NUM_CU_DEPTH][INTER_MODES];
+    uint64_t    cuIntraDistribution[NUM_CU_DEPTH][INTRA_MODES];
+    uint16_t    maxLumaLevel;
+
+    FrameStats()
+    {
+        memset(this, 0, sizeof(FrameStats));
+    }
+};
 
 /* Per-frame data that is used during encodes and referenced while the picture
  * is available for reference. A FrameData instance is attached to a Frame as it
@@ -85,6 +134,7 @@ public:
 
     RCStatCU*      m_cuStat;
     RCStatRow*     m_rowStat;
+    FrameStats     m_frameStats; // stats of current frame for multi-pass encodes
 
     double         m_avgQpRc;    /* avg QP as decided by rate-control */
     double         m_avgQpAq;    /* avg QP as decided by AQ in addition to rate-control */

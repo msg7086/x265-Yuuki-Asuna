@@ -28,7 +28,7 @@ consider this an error and abort.
 
 Generally, when an option expects a string value from a list of strings
 the user may specify the integer ordinal of the value they desire. ie:
-:option:`--log-level` 4 is equivalent to :option:`--log-level` debug.
+:option:`--log-level` 3 is equivalent to :option:`--log-level` debug.
 
 Executable Options
 ==================
@@ -52,6 +52,7 @@ Command line executable return codes::
 	2. unable to open encoder
 	3. unable to generate stream headers
 	4. encoder abort
+	5. unable to open csv file
 
 Logging/Statistic Options
 =========================
@@ -67,9 +68,8 @@ Logging/Statistic Options
 	0. error
 	1. warning
 	2. info **(default)**
-	3. frame
-	4. debug
-	5. full
+	3. debug
+	4. full
 
 .. option:: --no-progress
 
@@ -80,9 +80,9 @@ Logging/Statistic Options
 .. option:: --csv <filename>
 
 	Writes encoding results to a comma separated value log file. Creates
-	the file if it doesnt already exist, else adds one line per run.  if
-	:option:`--log-level` is frame or above, it writes one line per
-	frame. Default none
+	the file if it doesnt already exist. If :option:`--csv-log-level` is 0, 
+	it adds one line per run. If :option:`--csv-log-level` is greater than
+	0, it writes one line per frame. Default none
 
 	When frame level logging is enabled, several frame performance
 	statistics are listed:
@@ -123,13 +123,17 @@ Logging/Statistic Options
 	enough ahead for the necessary reference data to be available. This
 	is more of a problem for P frames where some blocks are much more
 	expensive than others.
+	
+	**CLI ONLY**
 
+.. option:: --csv-log-level <integer>
 
-.. option:: --cu-stats, --no-cu-stats
+        CSV logging level. Default 0
+        0. summary
+        1. frame level logging
+        2. frame level logging with performance statistics
 
-	Records statistics on how each CU was coded (split depths and other
-	mode decisions) and reports those statistics at the end of the
-	encode. Default disabled
+        **CLI ONLY**
 
 .. option:: --ssim, --no-ssim
 
@@ -349,6 +353,13 @@ frame counts) are only applicable to the CLI application.
 
 	**CLI ONLY**
 
+.. option:: --total-frames <integer>
+
+	The number of frames intended to be encoded.  It may be left
+	unspecified, but when it is specified rate control can make use of
+	this information. It is also used to determine if an encode is
+	actually a stillpicture profile encode (single frame)
+
 .. option:: --dither
 
 	Enable high quality downscaling. Dithering is based on the diffusion
@@ -419,12 +430,13 @@ frame counts) are only applicable to the CLI application.
 
 	**CLI ONLY**
 
-.. option:: --output-depth, -D 8|10
+.. option:: --output-depth, -D 8|10|12
 
 	Bitdepth of output HEVC bitstream, which is also the internal bit
 	depth of the encoder. If the requested bit depth is not the bit
 	depth of the linked libx265, it will attempt to bind libx265_main
-	for an 8bit encoder, or libx265_main10 for a 10bit encoder, with the
+	for an 8bit encoder, libx265_main10 for a 10bit encoder, or
+	libx265_main12 for a 12bit encoder (EXPERIMENTAL), with the
 	same API version as the linked libx265.
 
 	**CLI ONLY**
@@ -439,15 +451,45 @@ Profile, Level, Tier
 	profile.  May abort the encode if the specified profile is
 	impossible to be supported by the compile options chosen for the
 	encoder (a high bit depth encoder will be unable to output
-	bitstreams compliant with Main or Mainstillpicture).
+	bitstreams compliant with Main or MainStillPicture).
 
-	API users must use x265_param_apply_profile() after configuring
+	The first version of the HEVC specification only described Main,
+	Main10, and MainStillPicture. All other profiles were added by the
+	Range Extensions additions in HEVC version two.
+
+	8bit profiles::
+
+	main, main-intra, mainstillpicture (or msp for short)
+	main444-8 main444-intra main444-stillpicture
+
+	10bit profiles::
+
+	main10, main10-intra
+	main422-10, main422-10-intra
+	main444-10, main444-10-intra
+
+	12bit profiles::
+
+	main12, main12-intra
+	main422-12, main422-12-intra
+	main444-12, main444-12-intra
+
+	16bit profiles::
+
+	main444-16-intra main444-16-stillpicture
+
+	**CLI ONLY**
+
+	API users must call x265_param_apply_profile() after configuring
 	their param structure. Any changes made to the param structure after
 	this call might make the encode non-compliant.
 
-	**Values:** main, main10, mainstillpicture, main422-8, main422-10, main444-8, main444-10
+.. note::
 
-	**CLI ONLY**
+	All 12bit presets are extremely unstable, do not use them yet.
+	16bit is not supported at all, but those profiles are included
+	because it is possible for libx265 to make bitstreams compatible
+	with them.
 
 .. option:: --level-idc <integer|float>
 
@@ -478,6 +520,9 @@ Profile, Level, Tier
 	but not --high-tier, then the encoder will attempt to encode at the 
 	specified level, main tier first, turning on high tier only if 
 	necessary and available at that level.
+
+	If :option:`--level-idc` has not been specified, this argument is
+	ignored.
 
 .. option:: --ref <1..16>
 
@@ -511,6 +556,7 @@ Profile, Level, Tier
 	Default: disabled
 
 .. note::
+
 	:option:`--profile`, :option:`--level-idc`, and
 	:option:`--high-tier` are only intended for use when you are
 	targeting a particular decoder (or decoders) with fixed resource
@@ -518,6 +564,29 @@ Profile, Level, Tier
 	Specifying a profile or level may lower the encode quality
 	parameters to meet those requirements but it will never raise
 	them. It may enable VBV constraints on a CRF encode.
+
+	Also note that x265 determines the decoder requirement profile and
+	level in three steps.  First, the user configures an x265_param
+	structure with their suggested encoder options and then optionally
+	calls x265_param_apply_profile() to enforce a specific profile
+	(main, main10, etc). Second, an encoder is created from this
+	x265_param instance and the :option:`--level-idc` and
+	:option:`--high-tier` parameters are used to reduce bitrate or other
+	features in order to enforce the target level. Finally, the encoder
+	re-examines the final set of parameters and detects the actual
+	minimum decoder requirement level and this is what is signaled in
+	the bitstream headers. The detected decoder level will only use High
+	tier if the user specified a High tier level.
+
+	The signaled profile will be determined by the encoder's internal
+	bitdepth and input color space. If :option:`--keyint` is 0 or 1,
+	then an intra variant of the profile will be signaled.
+
+	If :option:`--total-frames` is 1, then a stillpicture variant will
+	be signaled, but this parameter is not always set by applications,
+	particularly not when the CLI uses stdin streaming or when libx265
+	is used by third-party applications.
+
 
 Mode decision / Analysis
 ========================
@@ -580,6 +649,33 @@ the prediction quad-tree.
 	the CU size range. :option:`--ctu` and :option:`--min-cu-size` must
 	be consistent for all of them since the encoder configures several
 	key global data structures based on this range.
+
+.. option:: --limit-refs <0|1|2|3>
+
+	When set to X265_REF_LIMIT_DEPTH (1) x265 will limit the references
+	analyzed at the current depth based on the references used to code
+	the 4 sub-blocks at the next depth.  For example, a 16x16 CU will
+	only use the references used to code its four 8x8 CUs.
+
+	When set to X265_REF_LIMIT_CU (2), the rectangular and asymmetrical
+	partitions will only use references selected by the 2Nx2N motion
+	search (including at the lowest depth which is otherwise unaffected
+	by the depth limit).
+
+	When set to 3 (X265_REF_LIMIT_DEPTH && X265_REF_LIMIT_CU), the 2Nx2N 
+	motion search at each depth will only use references from the split 
+	CUs and the rect/amp motion searches at that depth will only use the 
+	reference(s) selected by 2Nx2N. 
+
+	For all non-zero values of limit-refs, the current depth will evaluate
+	intra mode (in inter slices), only if intra mode was chosen as the best
+	mode for atleast one of the 4 sub-blocks.
+
+	You can often increase the number of references you are using
+	(within your decoder level limits) if you enable one or
+	both of these flags.
+
+	This feature is EXPERIMENTAL and functional at all RD levels.
 
 .. option:: --rect, --no-rect
 
@@ -1137,7 +1233,7 @@ Quality, rate control and rate distortion options
 	ignored. Slower presets will generally achieve better compression
 	efficiency (and generate smaller bitstreams). Default disabled.
 
-.. option:: --aq-mode <0|1|2>
+.. option:: --aq-mode <0|1|2|3>
 
 	Adaptive Quantization operating mode. Raise or lower per-block
 	quantization based on complexity analysis of the source image. The
@@ -1148,6 +1244,7 @@ Quality, rate control and rate distortion options
 	0. disabled
 	1. AQ enabled **(default)**
 	2. AQ enabled with auto-variance
+	3. AQ enabled with auto-variance and bias to dark scenes
 
 .. option:: --aq-strength <float>
 
@@ -1414,13 +1511,19 @@ VUI fields must be manually specified.
 	15. 3:2
 	16. 2:1
 
-.. option:: --crop-rect <left,top,right,bottom>
+.. option:: --display-window <left,top,right,bottom>
 
 	Define the (overscan) region of the image that does not contain
 	information because it was added to achieve certain resolution or
-	aspect ratio. The decoder may be directed to crop away this region
-	before displaying the images via the :option:`--overscan` option.
-	Default undefined (not signaled)
+	aspect ratio (the areas are typically black bars). The decoder may
+	be directed to crop away this region before displaying the images
+	via the :option:`--overscan` option.  Default undefined (not
+	signaled).
+
+	Note that this has nothing to do with padding added internally by
+	the encoder to ensure the pictures size is a multiple of the minimum
+	coding unit (4x4). That padding is signaled in a separate
+	"conformance window" and is not user-configurable.
 
 .. option:: --overscan <show|crop>
 
@@ -1480,6 +1583,7 @@ VUI fields must be manually specified.
 	15. bt2020-12
 	16. smpte-st-2084
 	17. smpte-st-428
+	18. arib-std-b67
 
 .. option:: --colormatrix <integer|string>
 
@@ -1513,7 +1617,7 @@ VUI fields must be manually specified.
 	integers. The SEI includes X,Y display primaries for RGB channels,
 	white point X,Y and max,min luminance values. (HDR)
 
-	Example for P65D3 1000-nits:
+	Example for D65P3 1000-nits:
 
 		G(13200,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1)
 
