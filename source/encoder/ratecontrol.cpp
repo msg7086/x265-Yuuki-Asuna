@@ -181,6 +181,7 @@ RateControl::RateControl(x265_param& p)
     m_bTerminated = false;
     m_finalFrameCount = 0;
     m_numEntries = 0;
+    m_isSceneTransition = false;
     if (m_param->rc.rateControlMode == X265_RC_CRF)
     {
         m_param->rc.qp = (int)m_param->rc.rfConstant;
@@ -273,7 +274,6 @@ RateControl::RateControl(x265_param& p)
     if(m_param->rc.bStrictCbr)
         m_rateTolerance = 0.7;
 
-    m_leadingBframes = m_param->bframes;
     m_bframeBits = 0;
     m_leadingNoBSatd = 0;
     m_ipOffset = 6.0 * X265_LOG2(m_param->rc.ipFactor);
@@ -282,6 +282,7 @@ RateControl::RateControl(x265_param& p)
     /* Adjust the first frame in order to stabilize the quality level compared to the rest */
 #define ABR_INIT_QP_MIN (24)
 #define ABR_INIT_QP_MAX (40)
+#define ABR_SCENECUT_INIT_QP_MIN (12)
 #define CRF_INIT_QP (int)m_param->rc.rfConstant
     for (int i = 0; i < 3; i++)
         m_lastQScaleFor[i] = x265_qp2qScale(m_param->rc.rateControlMode == X265_RC_CRF ? CRF_INIT_QP : ABR_INIT_QP_MIN);
@@ -960,10 +961,22 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
         copyRceData(rce, &m_rce2Pass[rce->poc]);
     }
     rce->isActive = true;
-    if (m_sliceType == B_SLICE)
-        rce->bframes = m_leadingBframes;
-    else
-        m_leadingBframes = curFrame->m_lowres.leadingBframes;
+    bool isframeAfterKeyframe = m_sliceType != I_SLICE && m_curSlice->m_refFrameList[0][0]->m_encData->m_slice->m_sliceType == I_SLICE;
+    if (curFrame->m_lowres.bScenecut)
+    {
+        m_isSceneTransition = true;
+        /* Frame Predictors and Row predictors used in vbv */
+        for (int i = 0; i < 4; i++)
+        {
+            m_pred[i].coeff = 1.0;
+            m_pred[i].count = 1.0;
+            m_pred[i].decay = 0.5;
+            m_pred[i].offset = 0.0;
+        }
+        m_pred[0].coeff = m_pred[3].coeff = 0.75;
+    }
+    else if (m_sliceType != B_SLICE && !isframeAfterKeyframe)
+        m_isSceneTransition = false;
 
     rce->bLastMiniGopBFrame = curFrame->m_lowres.bLastMiniGopBFrame;
     rce->bufferRate = m_bufferRate;
@@ -1040,6 +1053,10 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
                 }
             }
         }
+        /* For a scenecut that occurs within the mini-gop, enable scene transition
+         * switch until the next mini-gop to ensure a min qp for all the frames within 
+         * the scene-transition mini-gop */
+
         double q = x265_qScale2qp(rateEstimateQscale(curFrame, rce));
         q = x265_clip3((double)QP_MIN, (double)QP_MAX_MAX, q);
         m_qp = int(q + 0.5);
@@ -1382,6 +1399,13 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         else
             q += m_pbOffset;
 
+        /* Set a min qp at scenechanges and transitions */
+        if (m_isSceneTransition)
+        {
+            q = X265_MAX(ABR_SCENECUT_INIT_QP_MIN, q);
+            double minScenecutQscale =x265_qp2qScale(ABR_SCENECUT_INIT_QP_MIN); 
+            m_lastQScaleFor[P_SLICE] = X265_MAX(minScenecutQscale, m_lastQScaleFor[P_SLICE]);
+        }
         double qScale = x265_qp2qScale(q);
         rce->qpNoVbv = q;
         double lmin = 0, lmax = 0;
@@ -1544,6 +1568,13 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                 q = X265_MIN(lqmax, q);
             }
             q = x265_clip3(MIN_QPSCALE, MAX_MAX_QPSCALE, q);
+            /* Set a min qp at scenechanges and transitions */
+            if (m_isSceneTransition)
+            {
+               double minScenecutQscale =x265_qp2qScale(ABR_SCENECUT_INIT_QP_MIN); 
+               q = X265_MAX(minScenecutQscale, q);
+               m_lastQScaleFor[P_SLICE] = X265_MAX(minScenecutQscale, m_lastQScaleFor[P_SLICE]);
+            }
             rce->qpNoVbv = x265_qScale2qp(q);
             q = clipQscale(curFrame, rce, q);
             /*  clip qp to permissible range after vbv-lookahead estimation to avoid possible
@@ -1750,7 +1781,7 @@ double RateControl::clipQscale(Frame* curFrame, RateControlEntry* rce, double q)
                 }
                 /* Try to get the buffer not more than 80% filled, but don't set an impossible goal. */
                 targetFill = x265_clip3(m_bufferSize * (1 - 0.2 * finalDur), m_bufferSize, m_bufferFill - totalDuration * m_vbvMaxRate * 0.5);
-                if (m_isCbr && bufferFillCur > targetFill)
+                if (m_isCbr && bufferFillCur > targetFill && !m_isSceneTransition)
                 {
                     q /= 1.01;
                     loopTerminate |= 2;
@@ -2196,35 +2227,6 @@ int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry*
         }
     }
 
-    // Write frame stats into the stats file if 2 pass is enabled.
-    if (m_param->rc.bStatWrite)
-    {
-        char cType = rce->sliceType == I_SLICE ? (rce->poc > 0 && m_param->bOpenGOP ? 'i' : 'I')
-            : rce->sliceType == P_SLICE ? 'P'
-            : IS_REFERENCED(curFrame) ? 'B' : 'b';
-        if (fprintf(m_statFileOut,
-                    "in:%d out:%d type:%c q:%.2f q-aq:%.2f tex:%d mv:%d misc:%d icu:%.2f pcu:%.2f scu:%.2f ;\n",
-                    rce->poc, rce->encodeOrder,
-                    cType, curEncData.m_avgQpRc, curEncData.m_avgQpAq,
-                    curFrame->m_encData->m_frameStats.coeffBits,
-                    curFrame->m_encData->m_frameStats.mvBits,
-                    curFrame->m_encData->m_frameStats.miscBits,
-                    curFrame->m_encData->m_frameStats.percent8x8Intra * m_ncu,
-                    curFrame->m_encData->m_frameStats.percent8x8Inter * m_ncu,
-                    curFrame->m_encData->m_frameStats.percent8x8Skip  * m_ncu) < 0)
-            goto writeFailure;
-        /* Don't re-write the data in multi-pass mode. */
-        if (m_param->rc.cuTree && IS_REFERENCED(curFrame) && !m_param->rc.bStatRead)
-        {
-            uint8_t sliceType = (uint8_t)rce->sliceType;
-            for (int i = 0; i < m_ncu; i++)
-                    m_cuTreeStats.qpBuffer[0][i] = (uint16_t)(curFrame->m_lowres.qpCuTreeOffset[i] * 256.0);
-            if (fwrite(&sliceType, 1, 1, m_cutreeStatFileOut) < 1)
-                goto writeFailure;
-            if (fwrite(m_cuTreeStats.qpBuffer[0], sizeof(uint16_t), m_ncu, m_cutreeStatFileOut) < (size_t)m_ncu)
-                goto writeFailure;
-        }
-    }
     if (m_isAbr && !m_isAbrReset)
     {
         /* amortize part of each I slice over the next several frames, up to
@@ -2306,12 +2308,43 @@ int RateControl::rateControlEnd(Frame* curFrame, int64_t bits, RateControlEntry*
     // Allow rateControlStart of next frame only when rateControlEnd of previous frame is over
     m_startEndOrder.incr();
     return 0;
+}
 
-writeFailure:
+/* called to write out the rate control frame stats info in multipass encodes */
+int RateControl::writeRateControlFrameStats(Frame* curFrame, RateControlEntry* rce)
+{
+    FrameData& curEncData = *curFrame->m_encData;
+    char cType = rce->sliceType == I_SLICE ? (rce->poc > 0 && m_param->bOpenGOP ? 'i' : 'I')
+        : rce->sliceType == P_SLICE ? 'P'
+        : IS_REFERENCED(curFrame) ? 'B' : 'b';
+    if (fprintf(m_statFileOut,
+                "in:%d out:%d type:%c q:%.2f q-aq:%.2f tex:%d mv:%d misc:%d icu:%.2f pcu:%.2f scu:%.2f ;\n",
+                rce->poc, rce->encodeOrder,
+                cType, curEncData.m_avgQpRc, curEncData.m_avgQpAq,
+                curFrame->m_encData->m_frameStats.coeffBits,
+                curFrame->m_encData->m_frameStats.mvBits,
+                curFrame->m_encData->m_frameStats.miscBits,
+                curFrame->m_encData->m_frameStats.percent8x8Intra * m_ncu,
+                curFrame->m_encData->m_frameStats.percent8x8Inter * m_ncu,
+                curFrame->m_encData->m_frameStats.percent8x8Skip  * m_ncu) < 0)
+        goto writeFailure;
+    /* Don't re-write the data in multi-pass mode. */
+    if (m_param->rc.cuTree && IS_REFERENCED(curFrame) && !m_param->rc.bStatRead)
+    {
+        uint8_t sliceType = (uint8_t)rce->sliceType;
+        for (int i = 0; i < m_ncu; i++)
+                m_cuTreeStats.qpBuffer[0][i] = (uint16_t)(curFrame->m_lowres.qpCuTreeOffset[i] * 256.0);
+        if (fwrite(&sliceType, 1, 1, m_cutreeStatFileOut) < 1)
+            goto writeFailure;
+        if (fwrite(m_cuTreeStats.qpBuffer[0], sizeof(uint16_t), m_ncu, m_cutreeStatFileOut) < (size_t)m_ncu)
+            goto writeFailure;
+    }
+    return 0;
+
+    writeFailure:
     x265_log(m_param, X265_LOG_ERROR, "RatecontrolEnd: stats file write failure\n");
     return 1;
 }
-
 #if defined(_MSC_VER)
 #pragma warning(disable: 4996) // POSIX function names are just fine, thank you
 #endif
