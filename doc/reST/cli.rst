@@ -395,7 +395,7 @@ frame counts) are only applicable to the CLI application.
 
 	**Range of values:** positive int or float, or num/denom
 
-.. option:: --interlaceMode <false|tff|bff>, --no-interlaceMode
+.. option:: --interlace <false|tff|bff>, --no-interlace
 
 	0. progressive pictures **(default)**
 	1. top field first 
@@ -438,6 +438,9 @@ frame counts) are only applicable to the CLI application.
 	for an 8bit encoder, libx265_main10 for a 10bit encoder, or
 	libx265_main12 for a 12bit encoder, with the same API version as the
 	linked libx265.
+
+	If the output depth is not specified but :option:`--profile` is
+	specified, the output depth will be derived from the profile name.
 
 	**CLI ONLY**
 
@@ -483,6 +486,9 @@ Profile, Level, Tier
 	API users must call x265_param_apply_profile() after configuring
 	their param structure. Any changes made to the param structure after
 	this call might make the encode non-compliant.
+
+	The CLI application will derive the output bit depth from the
+	profile name if :option:`--output-depth` is not specified.
 
 .. option:: --level-idc <integer|float>
 
