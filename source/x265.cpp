@@ -981,7 +981,10 @@ int main(int argc, char **argv)
             goto fail;
         }
         else
+        {
+            cliopt.output->setPS(encoder);
             cliopt.totalbytes += cliopt.output->writeHeaders(p_nal, nal);
+        }
     }
 
     if (param->bField && param->interlaceMode)
