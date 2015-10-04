@@ -682,8 +682,17 @@ if(ENABLE_MKV)
     add_definitions(-DENABLE_MKV)
 endif(ENABLE_MKV)
 
+option(ENABLE_LAVF "Enable LAVF decoder" OFF)
+if(ENABLE_LAVF AND ENABLE_CLI)
+    find_package(FF)
+    if(FFMPEG_FOUND)
+        add_definitions(-DENABLE_LAVF)
+        list(APPEND PLATFORM_LIBS ${FFMPEG_LIBRARIES})
+    endif()
+endif()
+
 if(ENABLE_CLI)
-    file(GLOB InputFiles input/input.cpp input/yuv.cpp input/y4m.cpp input/*.h)
+    file(GLOB InputFiles input/input.cpp input/yuv.cpp input/y4m.cpp input/lavf.cpp input/*.h)
     file(GLOB OutputFiles output/output.cpp output/reconplay.cpp output/*.h
                           output/yuv.cpp output/y4m.cpp # recon
                           output/mp4.cpp
