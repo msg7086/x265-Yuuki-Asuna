@@ -32,6 +32,10 @@
 #ifdef ENABLE_LSMASH
 #include <lsmash.h>
 #endif
+#ifdef ENABLE_LAVF
+#include "libavformat/version.h"
+#include "libavcodec/version.h"
+#endif
 
 #ifdef __cplusplus
 namespace X265_NS {
@@ -308,6 +312,11 @@ static void printVersion(x265_param *param, const x265_api* api)
     x265_log(param, X265_LOG_INFO, "build info %s\n", api->build_info_str);
 #ifdef ENABLE_LSMASH
     x265_log(param, X265_LOG_INFO, "(lsmash %d.%d.%d)\n", LSMASH_VERSION_MAJOR, LSMASH_VERSION_MINOR, LSMASH_VERSION_MICRO);
+#endif
+#ifdef ENABLE_LAVF
+    x265_log(param, X265_LOG_INFO, "(libavformat %d.%d.%d)\n", LIBAVFORMAT_VERSION_MAJOR, LIBAVFORMAT_VERSION_MINOR, LIBAVFORMAT_VERSION_MICRO);
+    x265_log(param, X265_LOG_INFO, "(libavcodec  %d.%d.%d)\n", LIBAVCODEC_VERSION_MAJOR, LIBAVCODEC_VERSION_MINOR, LIBAVCODEC_VERSION_MICRO);
+    x265_log(param, X265_LOG_INFO, "(libavutil   %d.%d.%d)\n", LIBAVUTIL_VERSION_MAJOR, LIBAVUTIL_VERSION_MINOR, LIBAVUTIL_VERSION_MICRO);
 #endif
 }
 
