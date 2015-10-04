@@ -27,6 +27,7 @@
 
 #include "x265.h"
 #include "input/input.h"
+#include "encoder.h"
 
 namespace X265_NS {
 // private x265 namespace
@@ -74,6 +75,8 @@ public:
     virtual const char* getName() const = 0;
 
     virtual void setParam(x265_param* param) = 0;
+
+    virtual void setPS(x265_encoder*) { }
 
     virtual int writeHeaders(const x265_nal* nal, uint32_t nalcount) = 0;
 

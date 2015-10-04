@@ -556,7 +556,10 @@ ret:
                     goto fail;
                 }
                 else
+                {
+                    m_cliopt.output->setPS(m_encoder);
                     m_cliopt.totalbytes += m_cliopt.output->writeHeaders(p_nal, nal);
+                }
             }
 
             if (m_param->bField && m_param->interlaceMode)
