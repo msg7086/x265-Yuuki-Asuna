@@ -469,6 +469,42 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->rc.aqStrength = 0.3;
             param->rc.qCompress = 0.8;
         }
+        else if (!strncmp(tune, "littlepox", 9) || !strncmp(tune, "lp", 2)) {
+            // --merange 44 --no-rect --no-amp --aq-mode 1 --aq-strength 1.0 --rd 4 --psy-rd 1.6 --psy-rdoq 5.0 --rdoq-level 1 --no-sao --qcomp 0.75 --no-strong-intra-smoothing --rdpenalty 1 --tu-inter-depth 2 --tu-intra-depth 2 --ctu 32 --max-tu-size 16
+            param->rc.rfConstant = 18;
+            param->searchRange = 44;
+            param->bEnableAMP = 0;
+            param->bEnableRectInter = 0;
+            param->rc.aqStrength = 1.0;
+            param->rdLevel = 4;
+            param->rdoqLevel = 1;
+            param->psyRd = 1.6;
+            param->psyRdoq = 5.0;
+            param->bEnableSAO = 0;
+            param->rc.qCompress = 0.75;
+            param->bEnableStrongIntraSmoothing = 0;
+            param->tuQTMaxInterDepth = 2;
+            param->tuQTMaxIntraDepth = 2;
+            if (param->maxNumMergeCand > 3)
+                param->maxNumMergeCand -= 1;
+            param->keyframeMin = 1;
+            param->keyframeMax = 360;
+            param->bOpenGOP = 0;
+            param->deblockingFilterBetaOffset = -1;
+            param->deblockingFilterTCOffset = -1;
+            param->rdPenalty = 1;
+            param->maxCUSize = 32;
+            param->maxTUSize = 16;
+            if (param->bframes > 6)
+                param->bframes = 6;
+            if (!strcmp(tune, "littlepox++") || !strcmp(tune, "lp++")) {
+                param->subpelRefine = 4;
+                param->bIntraInBFrames = 1;
+                param->maxNumReferences = 5;
+                param->bEnableWeightedBiPred = 1;
+                param->lookaheadDepth = param->lookaheadDepth * 2;
+            }
+        }
         else
             return -1;
     }

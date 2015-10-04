@@ -324,7 +324,7 @@ static void showHelp(x265_param *param)
     H0("-p/--preset <string>             Trade off performance for compression efficiency. Default medium\n");
     H0("                                 ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow, or placebo\n");
     H0("-t/--tune <string>               Tune the settings for a particular type of source or situation:\n");
-    H0("                                 psnr, ssim, grain, zerolatency, fastdecode\n");
+    H0("                                 psnr, ssim, grain, zerolatency, fastdecode, littlepox/lp, littlepox++/lp++\n");
     H0("\nQuad-Tree size and depth:\n");
     H0("-s/--ctu <64|32|16>              Maximum CU size (WxH). Default %d\n", param->maxCUSize);
     H0("   --min-cu-size <64|32|16|8>    Minimum CU size (WxH). Default %d\n", param->minCUSize);
