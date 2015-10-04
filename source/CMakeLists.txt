@@ -739,6 +739,11 @@ if(ENABLE_LSMASH)
     list(APPEND PLATFORM_LIBS lsmash)
 endif(ENABLE_LSMASH)
 
+option(ENABLE_MKV "Enable Haali Matroska muxer" OFF)
+if(ENABLE_MKV)
+    add_definitions(-DENABLE_MKV)
+endif(ENABLE_MKV)
+
 if(ENABLE_CLI)
     file(GLOB InputFiles input/input.cpp input/yuv.cpp input/y4m.cpp input/*.h)
     file(GLOB OutputFiles output/output.cpp output/reconplay.cpp output/*.h
@@ -748,6 +753,9 @@ if(ENABLE_CLI)
     source_group(output FILES ${OutputFiles})
     if(ENABLE_LSMASH)
         list(APPEND OutputFiles output/mp4.cpp)
+    endif()
+    if(ENABLE_MKV)
+        list(APPEND OutputFiles output/mkv.cpp output/matroska_ebml.cpp)
     endif()
 
     check_include_files(getopt.h HAVE_GETOPT_H)
