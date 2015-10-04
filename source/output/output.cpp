@@ -42,6 +42,9 @@ ReconFile* ReconFile::open(const char *fname, int width, int height, uint32_t bi
 #ifdef ENABLE_LSMASH
   #include "mp4.h"
 #endif
+#ifdef ENABLE_MKV
+  #include "mkv.h"
+#endif
 
 OutputFile* OutputFile::open(const char *fname, InputFileInfo& inputInfo)
 {
@@ -51,5 +54,10 @@ OutputFile* OutputFile::open(const char *fname, InputFileInfo& inputInfo)
     if (s && !strcmp(s, ".mp4"))
         return new MP4Output(fname, inputInfo);
 #endif
+#ifdef ENABLE_MKV
+    if (s && !strcmp(s, ".mkv"))
+        return new MKVOutput(fname, inputInfo);
+#endif
+
     return new RAWOutput(fname, inputInfo);
 }
