@@ -649,7 +649,10 @@ int main(int argc, char **argv)
             goto fail;
         }
         else
+        {
+            cliopt.output->setPS(encoder);
             cliopt.totalbytes += cliopt.output->writeHeaders(p_nal, nal);
+        }
     }
 
     api->picture_init(param, pic_in);

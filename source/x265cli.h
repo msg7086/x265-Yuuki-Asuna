@@ -337,6 +337,9 @@ static void showHelp(x265_param *param)
 #ifdef ENABLE_LSMASH
         ", MP4 if *.mp4"
 #endif
+#ifdef ENABLE_MKV
+        ", MKV if *.mkv"
+#endif
         "\n");
     H0("-D/--output-depth 8|10|12        Output bit depth (also internal bit depth). Default %d\n", param->internalBitDepth);
     H0("   --log-level <string>          Logging level: none error warning info debug full. Default %s\n", X265_NS::logLevelNames[param->logLevel + 1]);
