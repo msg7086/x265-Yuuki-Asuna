@@ -26,24 +26,28 @@
 ;*****************************************************************************/
 
 %include "x86inc.asm"
+%include "x86util.asm"
 
 SECTION_RODATA 32
 pb_31:      times 32 db 31
 pb_124:     times 32 db 124
 pb_15:      times 32 db 15
-pb_movemask_32:  times 32 db 0x00
-                 times 32 db 0xFF
 
 SECTION .text
 cextern pb_1
-cextern pb_128
 cextern pb_2
+cextern pb_3
+cextern pb_4
+cextern pb_01
+cextern pb_128
+cextern pw_1
+cextern pw_n1
 cextern pw_2
+cextern pw_4
 cextern pw_pixel_max
 cextern pb_movemask
-cextern pw_1
+cextern pb_movemask_32
 cextern hmul_16p
-cextern pb_4
 
 
 ;============================================================================================================
@@ -1989,78 +1993,93 @@ cglobal calSign, 4, 5, 6
 %endif
 
 ;--------------------------------------------------------------------------------------------------------------------------
-; saoCuStatsBO_c(const pixel *fenc, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count)
+; saoCuStatsBO_c(const int16_t *diff, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count)
 ;--------------------------------------------------------------------------------------------------------------------------
 %if ARCH_X86_64
 INIT_XMM sse4
-cglobal saoCuStatsBO, 7,12,6
-    mova        m3, [hmul_16p + 16]
-    mova        m4, [pb_124]
-    mova        m5, [pb_4]
-    xor         r7d, r7d
+cglobal saoCuStatsBO, 7,13,2
+    mova        m0, [pb_124]
+    add         r5, 4
+    add         r6, 4
 
 .loopH:
-    mov         r10, r0
+    mov         r12, r0
     mov         r11, r1
     mov         r9d, r3d
+
 .loopL:
     movu        m1, [r11]
-    movu        m0, [r10]
+    psrlw       m1, 1                   ; rec[x] >> boShift
+    pand        m1, m0
 
-    punpckhbw   m2, m0, m1
-    punpcklbw   m0, m1
-    psrlw       m1, 1               ; rec[x] >> boShift
-    pmaddubsw   m2, m3
-    pmaddubsw   m0, m3
-    pand        m1, m4
-    paddb       m1, m5
+    cmp         r9d, 8
+    jle        .proc8
 
+    movq        r10, m1
 %assign x 0
-%rep 16
-    pextrb      r7d, m1, x
+%rep 8
+    movzx       r7d, r10b
+    shr         r10, 8
 
-%if (x < 8)
-    pextrw      r8d, m0, (x % 8)
-%else
-    pextrw      r8d, m2, (x % 8)
-%endif
-    movsx       r8d, r8w
-    inc         dword  [r6 + r7]    ; count[classIdx]++
-    add         [r5 + r7], r8d      ; stats[classIdx] += (fenc[x] - rec[x]);
+    movsx       r8d, word [r12 + x*2]   ; diff[x]
+    inc         dword  [r6 + r7]        ; count[classIdx]++
+    add         [r5 + r7], r8d          ; stats[classIdx] += (fenc[x] - rec[x]);
+%assign x x+1
+%endrep
+    movhlps     m1, m1
+    sub         r9d, 8
+    add         r12, 8*2
+
+.proc8:
+    movq        r10, m1
+%assign x 0
+%rep 8
+    movzx       r7d, r10b
+    shr         r10, 8
+
+    movsx       r8d, word [r12 + x*2]   ; diff[x]
+    inc         dword  [r6 + r7]        ; count[classIdx]++
+    add         [r5 + r7], r8d          ; stats[classIdx] += (fenc[x] - rec[x]);
     dec         r9d
-    jz          .next
+    jz         .next
 %assign x x+1
 %endrep
 
-    add         r10, 16
+    add         r12, 8*2
     add         r11, 16
-    jmp         .loopL
+    jmp        .loopL
 
 .next:
-    add         r0, r2
+    add         r0, 64*2                ; MAX_CU_SIZE
     add         r1, r2
     dec         r4d
-    jnz         .loopH
+    jnz        .loopH
     RET
 %endif
 
 ;-----------------------------------------------------------------------------------------------------------------------
-; saoCuStatsE0(const pixel *fenc, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count)
+; saoCuStatsE0(const int16_t *diff, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count)
 ;-----------------------------------------------------------------------------------------------------------------------
 %if ARCH_X86_64
 INIT_XMM sse4
-cglobal saoCuStatsE0, 5,9,8, 0-32
+cglobal saoCuStatsE0, 3,10,6, 0-32
     mov         r3d, r3m
-    mov         r8, r5mp
+    mov         r4d, r4m
+    mov         r9, r5mp
 
     ; clear internal temporary buffer
     pxor        m0, m0
     mova        [rsp], m0
     mova        [rsp + mmsize], m0
     mova        m4, [pb_128]
-    mova        m5, [hmul_16p + 16]
-    mova        m6, [pb_2]
+    mova        m5, [pb_2]
     xor         r7d, r7d
+
+    ; correct stride for diff[] and rec
+    mov         r6d, r3d
+    and         r6d, ~15
+    sub         r2, r6
+    lea         r8, [(r6 - 64) * 2]             ; 64 = MAX_CU_SIZE
 
 .loopH:
     mov         r5d, r3d
@@ -2075,100 +2094,257 @@ cglobal saoCuStatsE0, 5,9,8, 0-32
     pinsrb      m0, r7d, 15
 
 .loopL:
-    movu        m7, [r1]
+    movu        m3, [r1]
     movu        m2, [r1 + 1]
 
-    pxor        m1, m7, m4
-    pxor        m3, m2, m4
-    pcmpgtb     m2, m1, m3
-    pcmpgtb     m3, m1
-    pand        m2, [pb_1]
-    por         m2, m3              ; signRight
+    pxor        m1, m3, m4
+    pxor        m2, m4
+    pcmpgtb     m3, m1, m2
+    pcmpgtb     m2, m1
+    pand        m3, [pb_1]
+    por         m2, m3                          ; signRight
 
     palignr     m3, m2, m0, 15
-    psignb      m3, m4              ; signLeft
+    psignb      m3, m4                          ; signLeft
 
     mova        m0, m2
     paddb       m2, m3
-    paddb       m2, m6              ; edgeType
+    paddb       m2, m5                          ; edgeType
 
     ; stats[edgeType]
-    movu        m3, [r0]            ; fenc[0-15]
-    punpckhbw   m1, m3, m7
-    punpcklbw   m3, m7
-    pmaddubsw   m1, m5
-    pmaddubsw   m3, m5
-
 %assign x 0
 %rep 16
     pextrb      r7d, m2, x
 
-%if (x < 8)
-    pextrw      r6d, m3, (x % 8)
-%else
-    pextrw      r6d, m1, (x % 8)
-%endif
-    movsx       r6d, r6w
+    movsx       r6d, word [r0 + x * 2]
     inc         word [rsp + r7 * 2]             ; tmp_count[edgeType]++
     add         [rsp + 5 * 2 + r7 * 4], r6d     ; tmp_stats[edgeType] += (fenc[x] - rec[x])
     dec         r5d
-    jz          .next
+    jz         .next
 %assign x x+1
 %endrep
 
-    add         r0q, 16
-    add         r1q, 16
-    jmp         .loopL
+    add         r0, 16*2
+    add         r1, 16
+    jmp        .loopL
 
 .next:
-    mov         r6d, r3d
-    and         r6d, 15
-
-    sub         r6, r3
-    add         r6, r2
-    add         r0, r6
-    add         r1, r6
+    sub         r0, r8
+    add         r1, r2
 
     dec         r4d
-    jnz         .loopH
+    jnz        .loopH
 
     ; sum to global buffer
     mov         r0, r6mp
 
     ; s_eoTable = {1, 2, 0, 3, 4}
-    movzx       r5d, word [rsp + 0 * 2]
-    add         [r0 + 1 * 4], r5d
-    movzx       r6d, word [rsp + 1 * 2]
-    add         [r0 + 2 * 4], r6d
-    movzx       r5d, word [rsp + 2 * 2]
-    add         [r0 + 0 * 4], r5d
-    movzx       r6d, word [rsp + 3 * 2]
-    add         [r0 + 3 * 4], r6d
+    pmovzxwd    m0, [rsp + 0 * 2]
+    pshufd      m0, m0, q3102
+    movu        m1, [r0]
+    paddd       m0, m1
+    movu        [r0], m0
     movzx       r5d, word [rsp + 4 * 2]
     add         [r0 + 4 * 4], r5d
 
-    mov         r6d, [rsp + 5 * 2 + 0 * 4]
-    add         [r8 + 1 * 4], r6d
-    mov         r5d, [rsp + 5 * 2 + 1 * 4]
-    add         [r8 + 2 * 4], r5d
-    mov         r6d, [rsp + 5 * 2 + 2 * 4]
-    add         [r8 + 0 * 4], r6d
-    mov         r5d, [rsp + 5 * 2 + 3 * 4]
-    add         [r8 + 3 * 4], r5d
+    movu        m0, [rsp + 5 * 2 + 0 * 4]
+    pshufd      m0, m0, q3102
+    movu        m1, [r9]
+    paddd       m0, m1
+    movu        [r9], m0
     mov         r6d, [rsp + 5 * 2 + 4 * 4]
-    add         [r8 + 4 * 4], r6d
+    add         [r9 + 4 * 4], r6d
+    RET
+
+
+;-----------------------------------------------------------------------------------------------------------------------
+; saoCuStatsE0(const int16_t *diff, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count)
+;-----------------------------------------------------------------------------------------------------------------------
+INIT_YMM avx2
+; spending rbp register to avoid x86inc stack alignment problem
+cglobal saoCuStatsE0, 3,11,16
+    mov         r3d, r3m
+    mov         r4d, r4m
+    mov         r9, r5mp
+
+    ; clear internal temporary buffer
+    pxor        xm6, xm6                        ; count[0]
+    pxor        xm7, xm7                        ; count[1]
+    pxor        xm8, xm8                        ; count[2]
+    pxor        xm9, xm9                        ; count[3]
+    pxor        xm10, xm10                      ; count[4]
+    pxor        xm11, xm11                      ; stats[0]
+    pxor        xm12, xm12                      ; stats[1]
+    pxor        xm13, xm13                      ; stats[2]
+    pxor        xm14, xm14                      ; stats[3]
+    pxor        xm15, xm15                      ; stats[4]
+    xor         r7d, r7d
+
+    ; correct stride for diff[] and rec
+    mov         r6d, r3d
+    and         r6d, ~15
+    sub         r2, r6
+    lea         r8, [(r6 - 64) * 2]             ; 64 = MAX_CU_SIZE
+    lea         r10, [pb_movemask_32 + 32]
+
+.loopH:
+    mov         r5d, r3d
+
+    ; calculate signLeft
+    mov         r7b, [r1]
+    sub         r7b, [r1 - 1]
+    seta        r7b
+    setb        r6b
+    sub         r7b, r6b
+    neg         r7b
+    pinsrb      xm0, r7d, 15
+
+.loopL:
+    mova        m4, [pb_128]                    ; lower performance, but we haven't enough register for stats[]
+    movu        xm3, [r1]
+    movu        xm2, [r1 + 1]
+
+    pxor        xm1, xm3, xm4
+    pxor        xm2, xm4
+    pcmpgtb     xm3, xm1, xm2
+    pcmpgtb     xm2, xm1
+    pand        xm3, [pb_1]
+    por         xm2, xm3                        ; signRight
+
+    palignr     xm3, xm2, xm0, 15
+    psignb      xm3, xm4                        ; signLeft
+
+    mova        xm0, xm2
+    paddb       xm2, xm3
+    paddb       xm2, [pb_2]                     ; edgeType
+
+    ; get current process mask
+    mov         r7d, 16
+    mov         r6d, r5d
+    cmp         r5d, r7d
+    cmovge      r6d, r7d
+    neg         r6
+    movu        xm1, [r10 + r6]
+
+    ; tmp_count[edgeType]++
+    ; tmp_stats[edgeType] += (fenc[x] - rec[x])
+    pxor        xm3, xm3
+    por         xm1, xm2                        ; apply unavailable pixel mask
+    movu        m5, [r0]                        ; up to 14bits
+
+    pcmpeqb     xm3, xm1, xm3
+    psubb       xm6, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m4, m5, m2
+    paddd       m11, m4
+
+    pcmpeqb     xm3, xm1, [pb_1]
+    psubb       xm7, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m4, m5, m2
+    paddd       m12, m4
+
+    pcmpeqb     xm3, xm1, [pb_2]
+    psubb       xm8, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m4, m5, m2
+    paddd       m13, m4
+
+    pcmpeqb     xm3, xm1, [pb_3]
+    psubb       xm9, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m4, m5, m2
+    paddd       m14, m4
+
+    pcmpeqb     xm3, xm1, [pb_4]
+    psubb       xm10, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m4, m5, m2
+    paddd       m15, m4
+
+    sub         r5d, r7d
+    jle        .next
+
+    add         r0, 16*2
+    add         r1, 16
+    jmp        .loopL
+
+.next:
+    sub         r0, r8
+    add         r1, r2
+
+    dec         r4d
+    jnz        .loopH
+
+    ; sum to global buffer
+    mov         r0, r6mp
+
+    ; sum into word
+    ; WARNING: There have a ovberflow bug on case Block64x64 with ALL pixels are SAME type (HM algorithm never pass Block64x64 into here)
+    pxor        xm0, xm0
+    psadbw      xm1, xm6, xm0
+    psadbw      xm2, xm7, xm0
+    psadbw      xm3, xm8, xm0
+    psadbw      xm4, xm9, xm0
+    psadbw      xm5, xm10, xm0
+    pshufd      xm1, xm1, q3120
+    pshufd      xm2, xm2, q3120
+    pshufd      xm3, xm3, q3120
+    pshufd      xm4, xm4, q3120
+
+    ; sum count[4] only
+    movhlps     xm6, xm5
+    paddd       xm5, xm6
+
+    ; sum count[s_eoTable]
+    ; s_eoTable = {1, 2, 0, 3, 4}
+    punpcklqdq  xm3, xm1
+    punpcklqdq  xm2, xm4
+    phaddd      xm3, xm2
+    movu        xm1, [r0]
+    paddd       xm3, xm1
+    movu        [r0], xm3
+    movd        r5d, xm5
+    add         [r0 + 4 * 4], r5d
+
+    ; sum stats[s_eoTable]
+    vextracti128 xm1, m11, 1
+    paddd       xm1, xm11
+    vextracti128 xm2, m12, 1
+    paddd       xm2, xm12
+    vextracti128 xm3, m13, 1
+    paddd       xm3, xm13
+    vextracti128 xm4, m14, 1
+    paddd       xm4, xm14
+    vextracti128 xm5, m15, 1
+    paddd       xm5, xm15
+
+    ; s_eoTable = {1, 2, 0, 3, 4}
+    phaddd      xm3, xm1
+    phaddd      xm2, xm4
+    phaddd      xm3, xm2
+    psubd       xm3, xm0, xm3               ; negtive for compensate PMADDWD sign algorithm problem
+
+    ; sum stats[4] only
+    HADDD       xm5, xm6
+    psubd       xm5, xm0, xm5
+
+    movu        xm1, [r9]
+    paddd       xm3, xm1
+    movu        [r9], xm3
+    movd        r6d, xm5
+    add         [r9 + 4 * 4], r6d
     RET
 %endif
 
 ;-------------------------------------------------------------------------------------------------------------------------------------------
-; saoCuStatsE1_c(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count)
+; saoCuStatsE1_c(const int16_t *diff, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count)
 ;-------------------------------------------------------------------------------------------------------------------------------------------
 %if ARCH_X86_64
 INIT_XMM sse4
-cglobal saoCuStatsE1, 4,12,9,0-32    ; Stack: 5 of stats and 5 of count
+cglobal saoCuStatsE1, 4,12,8,0-32    ; Stack: 5 of stats and 5 of count
     mov         r5d, r5m
     mov         r4d, r4m
-    mov         r11d, r5d
 
     ; clear internal temporary buffer
     pxor        m0, m0
@@ -2177,7 +2353,6 @@ cglobal saoCuStatsE1, 4,12,9,0-32    ; Stack: 5 of stats and 5 of count
     mova        m0, [pb_128]
     mova        m5, [pb_1]
     mova        m6, [pb_2]
-    mova        m8, [hmul_16p + 16]
     movh        m7, [r3 + r4]
 
 .loopH:
@@ -2194,11 +2369,11 @@ cglobal saoCuStatsE1, 4,12,9,0-32    ; Stack: 5 of stats and 5 of count
     pxor        m1, m0
     pxor        m2, m0
     pcmpgtb     m3, m1, m2
-    pand        m3, m5
     pcmpgtb     m2, m1
+    pand        m3, m5
     por         m2, m3
     pxor        m3, m3
-    psubb       m3, m2      ; -signDown
+    psubb       m3, m2                          ; -signDown
 
     ; edgeType
     movu        m4, [r11]
@@ -2208,26 +2383,14 @@ cglobal saoCuStatsE1, 4,12,9,0-32    ; Stack: 5 of stats and 5 of count
     ; update upBuff1
     movu        [r11], m3
 
-    ; stats[edgeType]
-    pxor        m1, m0
-    movu        m3, [r9]
-    punpckhbw   m4, m3, m1
-    punpcklbw   m3, m1
-    pmaddubsw   m3, m8
-    pmaddubsw   m4, m8
-
     ; 16 pixels
 %assign x 0
 %rep 16
     pextrb      r7d, m2, x
     inc         word [rsp + r7 * 2]
 
-  %if (x < 8)
-    pextrw      r8d, m3, (x % 8)
-  %else
-    pextrw      r8d, m4, (x % 8)
-  %endif
-    movsx       r8d, r8w
+    ; stats[edgeType]
+    movsx       r8d, word [r9 + x * 2]
     add         [rsp + 5 * 2 + r7 * 4], r8d
 
     dec         r6d
@@ -2235,14 +2398,14 @@ cglobal saoCuStatsE1, 4,12,9,0-32    ; Stack: 5 of stats and 5 of count
 %assign x x+1
 %endrep
 
-    add         r9, 16
+    add         r9, 16*2
     add         r10, 16
     add         r11, 16
-    jmp         .loopW
+    jmp        .loopW
 
 .next:
     ; restore pointer upBuff1
-    add         r0, r2
+    add         r0, 64*2                        ; MAX_CU_SIZE
     add         r1, r2
 
     dec         r5d
@@ -2256,26 +2419,1111 @@ cglobal saoCuStatsE1, 4,12,9,0-32    ; Stack: 5 of stats and 5 of count
     mov         r0, r7m
 
     ; s_eoTable = {1,2,0,3,4}
-    movzx       r6d, word [rsp + 0 * 2]
-    add         [r0 + 1 * 4], r6d
-    movzx       r6d, word [rsp + 1 * 2]
-    add         [r0 + 2 * 4], r6d
-    movzx       r6d, word [rsp + 2 * 2]
-    add         [r0 + 0 * 4], r6d
-    movzx       r6d, word [rsp + 3 * 2]
-    add         [r0 + 3 * 4], r6d
-    movzx       r6d, word [rsp + 4 * 2]
-    add         [r0 + 4 * 4], r6d
+    pmovzxwd    m0, [rsp + 0 * 2]
+    pshufd      m0, m0, q3102
+    movu        m1, [r0]
+    paddd       m0, m1
+    movu        [r0], m0
+    movzx       r5d, word [rsp + 4 * 2]
+    add         [r0 + 4 * 4], r5d
 
-    mov         r6d, [rsp + 5 * 2 + 0 * 4]
-    add         [r1 + 1 * 4], r6d
-    mov         r6d, [rsp + 5 * 2 + 1 * 4]
-    add         [r1 + 2 * 4], r6d
-    mov         r6d, [rsp + 5 * 2 + 2 * 4]
-    add         [r1 + 0 * 4], r6d
-    mov         r6d, [rsp + 5 * 2 + 3 * 4]
-    add         [r1 + 3 * 4], r6d
+    movu        m0, [rsp + 5 * 2 + 0 * 4]
+    pshufd      m0, m0, q3102
+    movu        m1, [r1]
+    paddd       m0, m1
+    movu        [r1], m0
     mov         r6d, [rsp + 5 * 2 + 4 * 4]
     add         [r1 + 4 * 4], r6d
+    RET
+
+
+INIT_YMM avx2
+cglobal saoCuStatsE1, 4,13,16       ; Stack: 5 of stats and 5 of count
+    mov         r5d, r5m
+    mov         r4d, r4m
+
+    ; clear internal temporary buffer
+    pxor        xm6, xm6                            ; count[0]
+    pxor        xm7, xm7                            ; count[1]
+    pxor        xm8, xm8                            ; count[2]
+    pxor        xm9, xm9                            ; count[3]
+    pxor        xm10, xm10                          ; count[4]
+    pxor        xm11, xm11                          ; stats[0]
+    pxor        xm12, xm12                          ; stats[1]
+    pxor        xm13, xm13                          ; stats[2]
+    pxor        xm14, xm14                          ; stats[3]
+    pxor        xm15, xm15                          ; stats[4]
+    mova        m0, [pb_128]
+    mova        m5, [pb_1]
+
+    ; save unavailable bound pixel
+    push  qword [r3 + r4]
+
+    ; unavailable mask
+    lea         r12, [pb_movemask_32 + 32]
+
+.loopH:
+    mov         r6d, r4d
+    mov         r9, r0
+    mov         r10, r1
+    mov         r11, r3
+
+.loopW:
+    movu        xm1, [r10]
+    movu        xm2, [r10 + r2]
+
+    ; signDown
+    pxor        xm1, xm0
+    pxor        xm2, xm0
+    pcmpgtb     xm3, xm1, xm2
+    pcmpgtb     xm2, xm1
+    pand        xm3, xm5
+    por         xm2, xm3
+    psignb      xm3, xm2, xm0                       ; -signDown
+
+    ; edgeType
+    movu        xm4, [r11]
+    paddb       xm4, [pb_2]
+    paddb       xm2, xm4
+
+    ; update upBuff1 (must be delay, above code modify memory[r11])
+    movu        [r11], xm3
+
+    ; m[1-4] free in here
+
+    ; get current process group mask
+    mov         r7d, 16
+    mov         r8d, r6d
+    cmp         r6d, r7d
+    cmovge      r8d, r7d
+    neg         r8
+    movu        xm1, [r12 + r8]
+
+    ; tmp_count[edgeType]++
+    ; tmp_stats[edgeType] += (fenc[x] - rec[x])
+    pxor        xm3, xm3
+    por         xm1, xm2                            ; apply unavailable pixel mask
+    movu        m4, [r9]                            ; up to 14bits
+
+    pcmpeqb     xm3, xm1, xm3
+    psubb       xm6, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m11, m3
+
+    pcmpeqb     xm3, xm1, xm5
+    psubb       xm7, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m12, m3
+
+    pcmpeqb     xm3, xm1, [pb_2]
+    psubb       xm8, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m13, m3
+
+    pcmpeqb     xm3, xm1, [pb_3]
+    psubb       xm9, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m14, m3
+
+    pcmpeqb     xm3, xm1, [pb_4]
+    psubb       xm10, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m15, m3
+
+    sub         r6d, r7d
+    jle        .next
+
+    add         r9, 16*2
+    add         r10, 16
+    add         r11, 16
+    jmp        .loopW
+
+.next:
+    ; restore pointer upBuff1
+    add         r0, 64*2                            ; MAX_CU_SIZE
+    add         r1, r2
+
+    dec         r5d
+    jg         .loopH
+
+    ; restore unavailable pixels
+    pop   qword [r3 + r4]
+
+    ; sum to global buffer
+    mov         r1, r6m
+    mov         r0, r7m
+
+    ; sum into word
+    ; WARNING: There have a ovberflow bug on case Block64x64 with ALL pixels are SAME type (HM algorithm never pass Block64x64 into here)
+    pxor        xm0, xm0
+    psadbw      xm1, xm6, xm0
+    psadbw      xm2, xm7, xm0
+    psadbw      xm3, xm8, xm0
+    psadbw      xm4, xm9, xm0
+    psadbw      xm5, xm10, xm0
+    pshufd      xm1, xm1, q3120
+    pshufd      xm2, xm2, q3120
+    pshufd      xm3, xm3, q3120
+    pshufd      xm4, xm4, q3120
+
+    ; sum count[4] only
+    movhlps     xm6, xm5
+    paddd       xm5, xm6
+
+    ; sum count[s_eoTable]
+    ; s_eoTable = {1, 2, 0, 3, 4}
+    punpcklqdq  xm3, xm1
+    punpcklqdq  xm2, xm4
+    phaddd      xm3, xm2
+    movu        xm1, [r0]
+    paddd       xm3, xm1
+    movu        [r0], xm3
+    movd        r5d, xm5
+    add         [r0 + 4 * 4], r5d
+
+    ; sum stats[s_eoTable]
+    vextracti128 xm1, m11, 1
+    paddd       xm1, xm11
+    vextracti128 xm2, m12, 1
+    paddd       xm2, xm12
+    vextracti128 xm3, m13, 1
+    paddd       xm3, xm13
+    vextracti128 xm4, m14, 1
+    paddd       xm4, xm14
+    vextracti128 xm5, m15, 1
+    paddd       xm5, xm15
+
+    ; s_eoTable = {1, 2, 0, 3, 4}
+    phaddd      xm3, xm1
+    phaddd      xm2, xm4
+    phaddd      xm3, xm2
+    psubd       xm3, xm0, xm3               ; negtive for compensate PMADDWD sign algorithm problem
+
+    ; sum stats[4] only
+    HADDD       xm5, xm6
+    psubd       xm5, xm0, xm5
+
+    movu        xm1, [r1]
+    paddd       xm3, xm1
+    movu        [r1], xm3
+    movd        r6d, xm5
+    add         [r1 + 4 * 4], r6d
+    RET
+%endif ; ARCH_X86_64
+
+
+;void saoCuStatsE2_c(const int16_t *fenc, const pixel *rec, intptr_t stride, int8_t *upBuff1, int8_t *upBufft, int endX, int endY, int32_t *stats, int32_t *count)
+;{
+;    X265_CHECK(endX < MAX_CU_SIZE, "endX check failure\n");
+;    X265_CHECK(endY < MAX_CU_SIZE, "endY check failure\n");
+;    int x, y;
+;    int32_t tmp_stats[SAO::NUM_EDGETYPE];
+;    int32_t tmp_count[SAO::NUM_EDGETYPE];
+;    memset(tmp_stats, 0, sizeof(tmp_stats));
+;    memset(tmp_count, 0, sizeof(tmp_count));
+;    for (y = 0; y < endY; y++)
+;    {
+;        upBufft[0] = signOf(rec[stride] - rec[-1]);
+;        for (x = 0; x < endX; x++)
+;        {
+;            int signDown = signOf2(rec[x], rec[x + stride + 1]);
+;            X265_CHECK(signDown == signOf(rec[x] - rec[x + stride + 1]), "signDown check failure\n");
+;            uint32_t edgeType = signDown + upBuff1[x] + 2;
+;            upBufft[x + 1] = (int8_t)(-signDown);
+;            tmp_stats[edgeType] += diff[x];
+;            tmp_count[edgeType]++;
+;        }
+;        std::swap(upBuff1, upBufft);
+;        rec += stride;
+;        fenc += stride;
+;    }
+;    for (x = 0; x < SAO::NUM_EDGETYPE; x++)
+;    {
+;        stats[SAO::s_eoTable[x]] += tmp_stats[x];
+;        count[SAO::s_eoTable[x]] += tmp_count[x];
+;    }
+;}
+
+%if ARCH_X86_64
+; TODO: x64 only because I need temporary register r7,r8, easy portab to x86
+INIT_XMM sse4
+cglobal saoCuStatsE2, 5,9,8,0-32    ; Stack: 5 of stats and 5 of count
+    mov         r5d, r5m
+
+    ; clear internal temporary buffer
+    pxor        m0, m0
+    mova        [rsp], m0
+    mova        [rsp + mmsize], m0
+    mova        m0, [pb_128]
+    mova        m5, [pb_1]
+    mova        m6, [pb_2]
+
+.loopH:
+    ; TODO: merge into SIMD in below
+    ; get upBuffX[0]
+    mov         r6b, [r1 + r2]
+    sub         r6b, [r1 -  1]
+    seta        r6b
+    setb        r7b
+    sub         r6b, r7b
+    mov         [r4], r6b
+
+    ; backup unavailable pixels
+    movh        m7, [r4 + r5 + 1]
+
+    mov         r6d, r5d
+.loopW:
+    movu        m1, [r1]
+    movu        m2, [r1 + r2 + 1]
+
+    ; signDown
+    ; stats[edgeType]
+    pxor        m1, m0
+    pxor        m2, m0
+    pcmpgtb     m3, m1, m2
+    pand        m3, m5
+    pcmpgtb     m2, m1
+    por         m2, m3
+    pxor        m3, m3
+    psubb       m3, m2
+
+    ; edgeType
+    movu        m4, [r3]
+    paddb       m4, m6
+    paddb       m2, m4
+
+    ; update upBuff1
+    movu        [r4 + 1], m3
+
+    ; 16 pixels
+%assign x 0
+%rep 16
+    pextrb      r7d, m2, x
+    inc    word [rsp + r7 * 2]
+
+    movsx       r8d, word [r0 + x * 2]
+    add         [rsp + 5 * 2 + r7 * 4], r8d
+
+    dec         r6d
+    jz         .next
+%assign x x+1
+%endrep
+
+    add         r0, 16*2
+    add         r1, 16
+    add         r3, 16
+    add         r4, 16
+    jmp        .loopW
+
+.next:
+    xchg        r3, r4
+
+    ; restore pointer upBuff1
+    mov         r6d, r5d
+    and         r6d, ~15
+    neg         r6                              ; MUST BE 64-bits, it is Negtive
+
+    ; move to next row
+
+    ; move back to start point
+    add         r3, r6
+    add         r4, r6
+
+    ; adjust with stride
+    lea         r0, [r0 + (r6 + 64) * 2]        ; 64 = MAX_CU_SIZE
+    add         r1, r2
+    add         r1, r6
+
+    ; restore unavailable pixels
+    movh        [r3 + r5 + 1], m7
+
+    dec    byte r6m
+    jg         .loopH
+
+    ; sum to global buffer
+    mov         r1, r7m
+    mov         r0, r8m
+
+    ; s_eoTable = {1,2,0,3,4}
+    pmovzxwd    m0, [rsp + 0 * 2]
+    pshufd      m0, m0, q3102
+    movu        m1, [r0]
+    paddd       m0, m1
+    movu        [r0], m0
+    movzx       r5d, word [rsp + 4 * 2]
+    add         [r0 + 4 * 4], r5d
+
+    movu        m0, [rsp + 5 * 2 + 0 * 4]
+    pshufd      m0, m0, q3102
+    movu        m1, [r1]
+    paddd       m0, m1
+    movu        [r1], m0
+    mov         r6d, [rsp + 5 * 2 + 4 * 4]
+    add         [r1 + 4 * 4], r6d
+    RET
+
+
+INIT_YMM avx2
+cglobal saoCuStatsE2, 5,10,16                        ; Stack: 5 of stats and 5 of count
+    mov         r5d, r5m
+
+    ; clear internal temporary buffer
+    pxor        xm6, xm6                            ; count[0]
+    pxor        xm7, xm7                            ; count[1]
+    pxor        xm8, xm8                            ; count[2]
+    pxor        xm9, xm9                            ; count[3]
+    pxor        xm10, xm10                          ; count[4]
+    pxor        xm11, xm11                          ; stats[0]
+    pxor        xm12, xm12                          ; stats[1]
+    pxor        xm13, xm13                          ; stats[2]
+    pxor        xm14, xm14                          ; stats[3]
+    pxor        xm15, xm15                          ; stats[4]
+    mova        m0, [pb_128]
+
+    ; unavailable mask
+    lea         r9, [pb_movemask_32 + 32]
+
+.loopH:
+    ; TODO: merge into SIMD in below
+    ; get upBuffX[0]
+    mov         r6b, [r1 + r2]
+    sub         r6b, [r1 -  1]
+    seta        r6b
+    setb        r7b
+    sub         r6b, r7b
+    mov         [r4], r6b
+
+    ; backup unavailable pixels
+    movq        xm5, [r4 + r5 + 1]
+
+    mov         r6d, r5d
+.loopW:
+    movu        m1, [r1]
+    movu        m2, [r1 + r2 + 1]
+
+    ; signDown
+    ; stats[edgeType]
+    pxor        xm1, xm0
+    pxor        xm2, xm0
+    pcmpgtb     xm3, xm1, xm2
+    pand        xm3, [pb_1]
+    pcmpgtb     xm2, xm1
+    por         xm2, xm3
+    psignb      xm3, xm2, xm0
+
+    ; edgeType
+    movu        xm4, [r3]
+    paddb       xm4, [pb_2]
+    paddb       xm2, xm4
+
+    ; update upBuff1
+    movu        [r4 + 1], xm3
+
+    ; m[1-4] free in here
+
+    ; get current process group mask
+    mov         r7d, 16
+    mov         r8d, r6d
+    cmp         r6d, r7d
+    cmovge      r8d, r7d
+    neg         r8
+    movu        xm1, [r9 + r8]
+
+    ; tmp_count[edgeType]++
+    ; tmp_stats[edgeType] += (fenc[x] - rec[x])
+    pxor        xm3, xm3
+    por         xm1, xm2                            ; apply unavailable pixel mask
+    movu        m4, [r0]                            ; up to 14bits
+
+    pcmpeqb     xm3, xm1, xm3
+    psubb       xm6, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m11, m3
+
+    pcmpeqb     xm3, xm1, [pb_1]
+    psubb       xm7, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m12, m3
+
+    pcmpeqb     xm3, xm1, [pb_2]
+    psubb       xm8, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m13, m3
+
+    pcmpeqb     xm3, xm1, [pb_3]
+    psubb       xm9, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m14, m3
+
+    pcmpeqb     xm3, xm1, [pb_4]
+    psubb       xm10, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m15, m3
+
+    sub         r6d, r7d
+    jle        .next
+
+    add         r0, 16*2
+    add         r1, 16
+    add         r3, 16
+    add         r4, 16
+    jmp        .loopW
+
+.next:
+    xchg        r3, r4
+
+    ; restore pointer upBuff1
+    ; TODO: BZHI
+    mov         r6d, r5d
+    and         r6d, ~15
+    neg         r6                              ; MUST BE 64-bits, it is Negtive
+
+    ; move to next row
+
+    ; move back to start point
+    add         r3, r6
+    add         r4, r6
+
+    ; adjust with stride
+    lea         r0, [r0 + (r6 + 64) * 2]        ; 64 = MAX_CU_SIZE
+    add         r1, r2
+    add         r1, r6
+
+    ; restore unavailable pixels
+    movq        [r3 + r5 + 1], xm5
+
+    dec    byte r6m
+    jg         .loopH
+
+    ; sum to global buffer
+    mov         r1, r7m
+    mov         r0, r8m
+
+    ; sum into word
+    ; WARNING: There have a ovberflow bug on case Block64x64 with ALL pixels are SAME type (HM algorithm never pass Block64x64 into here)
+    pxor        xm0, xm0
+    psadbw      xm1, xm6, xm0
+    psadbw      xm2, xm7, xm0
+    psadbw      xm3, xm8, xm0
+    psadbw      xm4, xm9, xm0
+    psadbw      xm5, xm10, xm0
+    pshufd      xm1, xm1, q3120
+    pshufd      xm2, xm2, q3120
+    pshufd      xm3, xm3, q3120
+    pshufd      xm4, xm4, q3120
+
+    ; sum count[4] only
+    movhlps     xm6, xm5
+    paddd       xm5, xm6
+
+    ; sum count[s_eoTable]
+    ; s_eoTable = {1, 2, 0, 3, 4}
+    punpcklqdq  xm3, xm1
+    punpcklqdq  xm2, xm4
+    phaddd      xm3, xm2
+    movu        xm1, [r0]
+    paddd       xm3, xm1
+    movu        [r0], xm3
+    movd        r5d, xm5
+    add         [r0 + 4 * 4], r5d
+
+    ; sum stats[s_eoTable]
+    vextracti128 xm1, m11, 1
+    paddd       xm1, xm11
+    vextracti128 xm2, m12, 1
+    paddd       xm2, xm12
+    vextracti128 xm3, m13, 1
+    paddd       xm3, xm13
+    vextracti128 xm4, m14, 1
+    paddd       xm4, xm14
+    vextracti128 xm5, m15, 1
+    paddd       xm5, xm15
+
+    ; s_eoTable = {1, 2, 0, 3, 4}
+    phaddd      xm3, xm1
+    phaddd      xm2, xm4
+    phaddd      xm3, xm2
+    psubd       xm3, xm0, xm3               ; negtive for compensate PMADDWD sign algorithm problem
+
+    ; sum stats[4] only
+    HADDD       xm5, xm6
+    psubd       xm5, xm0, xm5
+
+    movu        xm1, [r1]
+    paddd       xm3, xm1
+    movu        [r1], xm3
+    movd        r6d, xm5
+    add         [r1 + 4 * 4], r6d
+    RET
+%endif ; ARCH_X86_64
+
+
+;void saoStatE3(const int16_t *diff, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count);
+;{
+;    memset(tmp_stats, 0, sizeof(tmp_stats));
+;    memset(tmp_count, 0, sizeof(tmp_count));
+;    for (y = startY; y < endY; y++)
+;    {
+;        for (x = startX; x < endX; x++)
+;        {
+;            int signDown = signOf2(rec[x], rec[x + stride - 1]);
+;            uint32_t edgeType = signDown + upBuff1[x] + 2;
+;            upBuff1[x - 1] = (int8_t)(-signDown);
+;            tmp_stats[edgeType] += diff[x];
+;            tmp_count[edgeType]++;
+;        }
+;        upBuff1[endX - 1] = signOf(rec[endX - 1 + stride] - rec[endX]);
+;        rec += stride;
+;        fenc += stride;
+;    }
+;    for (x = 0; x < NUM_EDGETYPE; x++)
+;    {
+;        stats[s_eoTable[x]] += tmp_stats[x];
+;        count[s_eoTable[x]] += tmp_count[x];
+;    }
+;}
+
+%if ARCH_X86_64
+INIT_XMM sse4
+cglobal saoCuStatsE3, 4,9,8,0-32    ; Stack: 5 of stats and 5 of count
+    mov         r4d, r4m
+    mov         r5d, r5m
+
+    ; clear internal temporary buffer
+    pxor        m0, m0
+    mova        [rsp], m0
+    mova        [rsp + mmsize], m0
+    mova        m0, [pb_128]
+    mova        m5, [pb_1]
+    mova        m6, [pb_2]
+    movh        m7, [r3 + r4]
+
+.loopH:
+    mov         r6d, r4d
+
+.loopW:
+    movu        m1, [r1]
+    movu        m2, [r1 + r2 - 1]
+
+    ; signDown
+    pxor        m1, m0
+    pxor        m2, m0
+    pcmpgtb     m3, m1, m2
+    pand        m3, m5
+    pcmpgtb     m2, m1
+    por         m2, m3
+    pxor        m3, m3
+    psubb       m3, m2
+
+    ; edgeType
+    movu        m4, [r3]
+    paddb       m4, m6
+    paddb       m2, m4
+
+    ; update upBuff1
+    movu        [r3 - 1], m3
+
+    ; stats[edgeType]
+    pxor        m1, m0
+
+    ; 16 pixels
+%assign x 0
+%rep 16
+    pextrb      r7d, m2, x
+    inc    word [rsp + r7 * 2]
+
+    movsx       r8d, word [r0 + x * 2]
+    add         [rsp + 5 * 2 + r7 * 4], r8d
+
+    dec         r6d
+    jz         .next
+%assign x x+1
+%endrep
+
+    add         r0, 16*2
+    add         r1, 16
+    add         r3, 16
+    jmp         .loopW
+
+.next:
+    ; restore pointer upBuff1
+    mov         r6d, r4d
+    and         r6d, ~15
+    neg         r6                              ; MUST BE 64-bits, it is Negtive
+
+    ; move to next row
+
+    ; move back to start point
+    add         r3, r6
+
+    ; adjust with stride
+    lea         r0, [r0 + (r6 + 64) * 2]        ; 64 = MAX_CU_SIZE
+    add         r1, r2
+    add         r1, r6
+
+    dec         r5d
+    jg         .loopH
+
+    ; restore unavailable pixels
+    movh        [r3 + r4], m7
+
+    ; sum to global buffer
+    mov         r1, r6m
+    mov         r0, r7m
+
+    ; s_eoTable = {1,2,0,3,4}
+    pmovzxwd    m0, [rsp + 0 * 2]
+    pshufd      m0, m0, q3102
+    movu        m1, [r0]
+    paddd       m0, m1
+    movu        [r0], m0
+    movzx       r5d, word [rsp + 4 * 2]
+    add         [r0 + 4 * 4], r5d
+
+    movu        m0, [rsp + 5 * 2 + 0 * 4]
+    pshufd      m0, m0, q3102
+    movu        m1, [r1]
+    paddd       m0, m1
+    movu        [r1], m0
+    mov         r6d, [rsp + 5 * 2 + 4 * 4]
+    add         [r1 + 4 * 4], r6d
+    RET
+
+
+INIT_YMM avx2
+cglobal saoCuStatsE3, 4,10,16           ; Stack: 5 of stats and 5 of count
+    mov         r4d, r4m
+    mov         r5d, r5m
+
+    ; clear internal temporary buffer
+    pxor        xm6, xm6                            ; count[0]
+    pxor        xm7, xm7                            ; count[1]
+    pxor        xm8, xm8                            ; count[2]
+    pxor        xm9, xm9                            ; count[3]
+    pxor        xm10, xm10                          ; count[4]
+    pxor        xm11, xm11                          ; stats[0]
+    pxor        xm12, xm12                          ; stats[1]
+    pxor        xm13, xm13                          ; stats[2]
+    pxor        xm14, xm14                          ; stats[3]
+    pxor        xm15, xm15                          ; stats[4]
+    mova        m0, [pb_128]
+
+    ; unavailable mask
+    lea         r9, [pb_movemask_32 + 32]
+    push  qword [r3 + r4]
+
+.loopH:
+    mov         r6d, r4d
+
+.loopW:
+    movu        m1, [r1]
+    movu        m2, [r1 + r2 - 1]
+
+    ; signDown
+    ; stats[edgeType]
+    pxor        xm1, xm0
+    pxor        xm2, xm0
+    pcmpgtb     xm3, xm1, xm2
+    pand        xm3, [pb_1]
+    pcmpgtb     xm2, xm1
+    por         xm2, xm3
+    pxor        xm3, xm3
+    psubb       xm3, xm2
+
+    ; edgeType
+    movu        xm4, [r3]
+    paddb       xm4, [pb_2]
+    paddb       xm2, xm4
+
+    ; update upBuff1
+    movu        [r3 - 1], xm3
+
+    ; m[1-4] free in here
+
+    ; get current process group mask
+    mov         r7d, 16
+    mov         r8d, r6d
+    cmp         r6d, r7d
+    cmovge      r8d, r7d
+    neg         r8
+    movu        xm1, [r9 + r8]
+
+    ; tmp_count[edgeType]++
+    ; tmp_stats[edgeType] += (fenc[x] - rec[x])
+    pxor        xm3, xm3
+    por         xm1, xm2                            ; apply unavailable pixel mask
+    movu        m4, [r0]                            ; up to 14bits
+
+    pcmpeqb     xm3, xm1, xm3
+    psubb       xm6, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m11, m3
+
+    pcmpeqb     xm3, xm1, [pb_1]
+    psubb       xm7, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m12, m3
+
+    pcmpeqb     xm3, xm1, [pb_2]
+    psubb       xm8, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m13, m3
+
+    pcmpeqb     xm3, xm1, [pb_3]
+    psubb       xm9, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m14, m3
+
+    pcmpeqb     xm3, xm1, [pb_4]
+    psubb       xm10, xm3
+    pmovsxbw    m2, xm3
+    pmaddwd     m3, m4, m2
+    paddd       m15, m3
+
+    sub         r6d, r7d
+    jle        .next
+
+    add         r0, 16*2
+    add         r1, 16
+    add         r3, 16
+    jmp        .loopW
+
+.next:
+    ; restore pointer upBuff1
+    mov         r6d, r4d
+    and         r6d, ~15
+    neg         r6                              ; MUST BE 64-bits, it is Negtive
+
+    ; move to next row
+
+    ; move back to start point
+    add         r3, r6
+
+    ; adjust with stride
+    lea         r0, [r0 + (r6 + 64) * 2]        ; 64 = MAX_CU_SIZE
+    add         r1, r2
+    add         r1, r6
+
+    dec         r5d
+    jg         .loopH
+
+    ; restore unavailable pixels
+    pop   qword [r3 + r4]
+
+    ; sum to global buffer
+    mov         r1, r6m
+    mov         r0, r7m
+
+    ; sum into word
+    ; WARNING: There have a ovberflow bug on case Block64x64 with ALL pixels are SAME type (HM algorithm never pass Block64x64 into here)
+    pxor        xm0, xm0
+    psadbw      xm1, xm6, xm0
+    psadbw      xm2, xm7, xm0
+    psadbw      xm3, xm8, xm0
+    psadbw      xm4, xm9, xm0
+    psadbw      xm5, xm10, xm0
+    pshufd      xm1, xm1, q3120
+    pshufd      xm2, xm2, q3120
+    pshufd      xm3, xm3, q3120
+    pshufd      xm4, xm4, q3120
+
+    ; sum count[4] only
+    movhlps     xm6, xm5
+    paddd       xm5, xm6
+
+    ; sum count[s_eoTable]
+    ; s_eoTable = {1, 2, 0, 3, 4}
+    punpcklqdq  xm3, xm1
+    punpcklqdq  xm2, xm4
+    phaddd      xm3, xm2
+    movu        xm1, [r0]
+    paddd       xm3, xm1
+    movu        [r0], xm3
+    movd        r5d, xm5
+    add         [r0 + 4 * 4], r5d
+
+    ; sum stats[s_eoTable]
+    vextracti128 xm1, m11, 1
+    paddd       xm1, xm11
+    vextracti128 xm2, m12, 1
+    paddd       xm2, xm12
+    vextracti128 xm3, m13, 1
+    paddd       xm3, xm13
+    vextracti128 xm4, m14, 1
+    paddd       xm4, xm14
+    vextracti128 xm5, m15, 1
+    paddd       xm5, xm15
+
+    ; s_eoTable = {1, 2, 0, 3, 4}
+    phaddd      xm3, xm1
+    phaddd      xm2, xm4
+    phaddd      xm3, xm2
+    psubd       xm3, xm0, xm3               ; negtive for compensate PMADDWD sign algorithm problem
+
+    ; sum stats[4] only
+    HADDD       xm5, xm6
+    psubd       xm5, xm0, xm5
+
+    movu        xm1, [r1]
+    paddd       xm3, xm1
+    movu        [r1], xm3
+    movd        r6d, xm5
+    add         [r1 + 4 * 4], r6d
+    RET
+%endif ; ARCH_X86_64
+
+
+%if ARCH_X86_64
+;; argument registers used -
+; r0    - src
+; r1    - srcStep
+; r2    - offset
+; r3    - tcP
+; r4    - tcQ
+
+INIT_XMM sse4
+cglobal pelFilterLumaStrong_H, 5,7,10
+    mov             r1, r2
+    neg             r3d
+    neg             r4d
+    neg             r1
+
+    lea             r5, [r2 * 3]
+    lea             r6, [r1 * 3]
+
+    pmovzxbw        m4, [r0]                ; src[0]
+    pmovzxbw        m3, [r0 + r1]           ; src[-offset]
+    pmovzxbw        m2, [r0 + r1 * 2]       ; src[-offset * 2]
+    pmovzxbw        m1, [r0 + r6]           ; src[-offset * 3]
+    pmovzxbw        m0, [r0 + r1 * 4]       ; src[-offset * 4]
+    pmovzxbw        m5, [r0 + r2]           ; src[offset]
+    pmovzxbw        m6, [r0 + r2 * 2]       ; src[offset * 2]
+    pmovzxbw        m7, [r0 + r5]           ; src[offset * 3]
+
+    paddw           m0, m0                  ; m0*2
+    mova            m8, m2
+    paddw           m8, m3                  ; m2 + m3
+    paddw           m8, m4                  ; m2 + m3 + m4
+    mova            m9, m8
+    paddw           m9, m9                  ; 2*m2 + 2*m3 + 2*m4
+    paddw           m8, m1                  ; m2 + m3 + m4 + m1
+    paddw           m0, m8                  ; 2*m0 + m2+ m3 + m4 + m1
+    paddw           m9, m1
+    paddw           m0, m1
+    paddw           m9, m5                  ; m1 + 2*m2 + 2*m3 + 2*m4 + m5
+    paddw           m0, m1                  ; 2*m0 + 3*m1 + m2 + m3 + m4
+
+    punpcklqdq      m0, m9
+    punpcklqdq      m1, m3
+
+    paddw           m3, m4
+    mova            m9, m5
+    paddw           m9, m6
+    paddw           m7, m7                  ; 2*m7
+    paddw           m9, m3                  ; m3 + m4 + m5 + m6
+    mova            m3, m9
+    paddw           m3, m3                  ; 2*m3 + 2*m4 + 2*m5 + 2*m6
+    paddw           m7, m9                  ; 2*m7 + m3 + m4 + m5 + m6
+    paddw           m7, m6
+    psubw           m3, m6                  ; 2*m3 + 2*m4 + 2*m5 + m6
+    paddw           m7, m6                  ; m3 + m4 + m5 + 3*m6 + 2*m7
+    paddw           m3, m2                  ; m2 + 2*m3 + 2*m4 + 2*m5 + m6
+
+    punpcklqdq      m9, m8
+    punpcklqdq      m3, m7
+    punpcklqdq      m5, m2
+    punpcklqdq      m4, m6
+
+    movd            m7, r3d                 ; -tcP
+    movd            m2, r4d                 ; -tcQ
+    pshufb          m7, [pb_01]
+    pshufb          m2, [pb_01]
+    mova            m6, m2
+    punpcklqdq      m6, m7
+
+    paddw           m0, [pw_4]
+    paddw           m3, [pw_4]
+    paddw           m9, [pw_2]
+
+    psraw           m0, 3
+    psraw           m3, 3
+    psraw           m9, 2
+
+    psubw           m0, m1
+    psubw           m3, m4
+    psubw           m9, m5
+
+    pmaxsw          m0, m7
+    pmaxsw          m3, m2
+    pmaxsw          m9, m6
+    psignw          m7, [pw_n1]
+    psignw          m2, [pw_n1]
+    psignw          m6, [pw_n1]
+    pminsw          m0, m7
+    pminsw          m3, m2
+    pminsw          m9, m6
+
+    paddw           m0, m1
+    paddw           m3, m4
+    paddw           m9, m5
+    packuswb        m0, m0
+    packuswb        m3, m9
+
+    movd            [r0 + r6], m0
+    pextrd          [r0 + r1], m0, 1
+    movd            [r0], m3
+    pextrd          [r0 + r2 * 2], m3, 1
+    pextrd          [r0 + r2 * 1], m3, 2
+    pextrd          [r0 + r1 * 2], m3, 3
+    RET
+
+INIT_XMM sse4
+cglobal pelFilterLumaStrong_V, 5,5,10
+    neg             r3d
+    neg             r4d
+    lea             r2, [r1 * 3]
+
+    movh            m0, [r0 - 4]            ; src[-offset * 4] row 0
+    movh            m1, [r0 + r1 * 1 - 4]   ; src[-offset * 4] row 1
+    movh            m2, [r0 + r1 * 2 - 4]   ; src[-offset * 4] row 2
+    movh            m3, [r0 + r2 * 1 - 4]   ; src[-offset * 4] row 3
+
+    punpcklbw       m0, m1
+    punpcklbw       m2, m3
+    mova            m4, m0
+    punpcklwd       m0, m2
+    punpckhwd       m4, m2
+    mova            m1, m0
+    mova            m2, m0
+    mova            m3, m0
+    pshufd          m0, m0, 0
+    pshufd          m1, m1, 1
+    pshufd          m2, m2, 2
+    pshufd          m3, m3, 3
+    mova            m5, m4
+    mova            m6, m4
+    mova            m7, m4
+    pshufd          m4, m4, 0
+    pshufd          m5, m5, 1
+    pshufd          m6, m6, 2
+    pshufd          m7, m7, 3
+    pmovzxbw        m0, m0
+    pmovzxbw        m1, m1
+    pmovzxbw        m2, m2
+    pmovzxbw        m3, m3
+    pmovzxbw        m4, m4
+    pmovzxbw        m5, m5
+    pmovzxbw        m6, m6
+    pmovzxbw        m7, m7
+
+    paddw           m0, m0                  ; m0*2
+    mova            m8, m2
+    paddw           m8, m3                  ; m2 + m3
+    paddw           m8, m4                  ; m2 + m3 + m4
+    mova            m9, m8
+    paddw           m9, m9                  ; 2*m2 + 2*m3 + 2*m4
+    paddw           m8, m1                  ; m2 + m3 + m4 + m1
+    paddw           m0, m8                  ; 2*m0 + m2+ m3 + m4 + m1
+    paddw           m9, m1
+    paddw           m0, m1
+    paddw           m9, m5                  ; m1 + 2*m2 + 2*m3 + 2*m4 + m5
+    paddw           m0, m1                  ; 2*m0 + 3*m1 + m2 + m3 + m4
+
+    punpcklqdq      m0, m9
+    punpcklqdq      m1, m3
+
+    paddw           m3, m4
+    mova            m9, m5
+    paddw           m9, m6
+    paddw           m7, m7                  ; 2*m7
+    paddw           m9, m3                  ; m3 + m4 + m5 + m6
+    mova            m3, m9
+    paddw           m3, m3                  ; 2*m3 + 2*m4 + 2*m5 + 2*m6
+    paddw           m7, m9                  ; 2*m7 + m3 + m4 + m5 + m6
+    paddw           m7, m6
+    psubw           m3, m6                  ; 2*m3 + 2*m4 + 2*m5 + m6
+    paddw           m7, m6                  ; m3 + m4 + m5 + 3*m6 + 2*m7
+    paddw           m3, m2                  ; m2 + 2*m3 + 2*m4 + 2*m5 + m6
+
+    punpcklqdq      m9, m8
+    punpcklqdq      m3, m7
+    punpcklqdq      m5, m2
+    punpcklqdq      m4, m6
+
+    movd            m7, r3d                 ; -tcP
+    movd            m2, r4d                 ; -tcQ
+    pshufb          m7, [pb_01]
+    pshufb          m2, [pb_01]
+    mova            m6, m2
+    punpcklqdq      m6, m7
+
+    paddw           m0, [pw_4]
+    paddw           m3, [pw_4]
+    paddw           m9, [pw_2]
+
+    psraw           m0, 3
+    psraw           m3, 3
+    psraw           m9, 2
+
+    psubw           m0, m1
+    psubw           m3, m4
+    psubw           m9, m5
+
+    pmaxsw          m0, m7
+    pmaxsw          m3, m2
+    pmaxsw          m9, m6
+    psignw          m7, [pw_n1]
+    psignw          m2, [pw_n1]
+    psignw          m6, [pw_n1]
+    pminsw          m0, m7
+    pminsw          m3, m2
+    pminsw          m9, m6
+
+    paddw           m0, m1
+    paddw           m3, m4
+    paddw           m9, m5
+    packuswb        m0, m0
+    packuswb        m3, m9
+
+    ; 4x6 output rows -
+    ; m0 - col 0
+    ; m3 - col 3
+    mova            m1, m0
+    mova            m2, m3
+    mova            m4, m3
+    mova            m5, m3
+    pshufd          m1, m1, 1               ; col 2
+    pshufd          m2, m2, 1               ; col 5
+    pshufd          m4, m4, 2               ; col 4
+    pshufd          m5, m5, 3               ; col 1
+
+    ; transpose 4x6 to 6x4
+    punpcklbw       m0, m5
+    punpcklbw       m1, m3
+    punpcklbw       m4, m2
+    punpcklwd       m0, m1
+
+    movd            [r0 + r1 * 0 - 3], m0
+    pextrd          [r0 + r1 * 1 - 3], m0, 1
+    pextrd          [r0 + r1 * 2 - 3], m0, 2
+    pextrd          [r0 + r2 * 1 - 3], m0, 3
+    pextrw          [r0 + r1 * 0 + 1], m4, 0
+    pextrw          [r0 + r1 * 1 + 1], m4, 1
+    pextrw          [r0 + r1 * 2 + 1], m4, 2
+    pextrw          [r0 + r2 * 1 + 1], m4, 3
     RET
 %endif ; ARCH_X86_64

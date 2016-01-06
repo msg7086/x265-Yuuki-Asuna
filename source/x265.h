@@ -2,6 +2,7 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Steve Borho <steve@borho.org>
+ *          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -91,13 +92,15 @@ typedef struct x265_nal
 /* Stores all analysis data for a single frame */
 typedef struct x265_analysis_data
 {
-    void*            interData;
-    void*            intraData;
+    int64_t          satdCost;
     uint32_t         frameRecordSize;
     uint32_t         poc;
     uint32_t         sliceType;
     uint32_t         numCUsInFrame;
     uint32_t         numPartitions;
+    void*            interData;
+    void*            intraData;
+    int              bScenecut;
 } x265_analysis_data;
 
 /* cu statistics */
@@ -132,6 +135,7 @@ typedef struct x265_frame_stats
     double           avgLumaDistortion;
     double           avgChromaDistortion;
     double           avgPsyEnergy;
+    double           avgResEnergy;
     double           avgLumaLevel;
     uint64_t         bits;
     int              encoderOrder;
@@ -141,6 +145,8 @@ typedef struct x265_frame_stats
     int              list1POC[16];
     uint16_t         maxLumaLevel;
     char             sliceType;
+    int              bScenecut;
+    int              frameLatency;
     x265_cu_stats    cuStats;
 } x265_frame_stats;
 
@@ -204,6 +210,13 @@ typedef struct x265_picture
      * member pointers are valid, the encoder will write output analysis into
      * this data structure */
     x265_analysis_data analysisData;
+
+    /* An array of quantizer offsets to be applied to this image during encoding.
+     * These are added on top of the decisions made by rateControl.
+     * Adaptive quantization must be enabled to use this feature. These quantizer 
+     * offsets should be given for each 16x16 block. Behavior if quant
+     * offsets differ between encoding passes is undefined. */
+    float            *quantOffsets;
 
     /* Frame level statistics */
     x265_frame_stats frameData;
@@ -378,6 +391,8 @@ typedef struct x265_stats
     x265_sliceType_stats  statsI;               /* statistics of I slice */
     x265_sliceType_stats  statsP;               /* statistics of P slice */
     x265_sliceType_stats  statsB;               /* statistics of B slice */
+    uint16_t              maxCLL;               /* maximum content light level */
+    uint16_t              maxFALL;              /* maximum frame average light level */
 } x265_stats;
 
 /* String values accepted by x265_param_parse() (and CLI) for various parameters */
@@ -664,9 +679,9 @@ typedef struct x265_param
     int       bBPyramid;
 
     /* A value which is added to the cost estimate of B frames in the lookahead.
-     * It may be a positive value (making B frames appear more expensive, which
-     * causes the lookahead to chose more P frames) or negative, which makes the
-     * lookahead chose more B frames. Default is 0, there are no limits */
+     * It may be a positive value (making B frames appear less expensive, which
+     * biases the lookahead to choose more B frames) or negative, which makes the
+     * lookahead choose more P frames. Default is 0, there are no limits */
     int       bFrameBias;
 
     /* The number of frames that must be queued in the lookahead before it may
@@ -690,6 +705,11 @@ typedef struct x265_param
     /* An arbitrary threshold which determines how aggressively the lookahead
      * should detect scene cuts. The default (40) is recommended. */
     int       scenecutThreshold;
+
+    /* Replace keyframes by using a column of intra blocks that move across the video
+     * from one side to the other, thereby "refreshing" the image. In effect, instead of a
+     * big keyframe, the keyframe is "spread" over many frames. */
+    int       bIntraRefresh;
 
     /*== Coding Unit (CU) definitions ==*/
 
@@ -809,6 +829,9 @@ typedef struct x265_param
      * only use references that were selected by the best motion searches of the
      * 4 split CUs at the next lower CU depth.  The two flags may be combined */
     uint32_t  limitReferences;
+
+    /* Limit modes analyzed for each CU using cost metrics from the 4 sub-CUs */
+    uint32_t limitModes;
 
     /* ME search method (DIA, HEX, UMH, STAR, FULL). The search patterns
      * (methods) are sorted in increasing complexity, with diamond being the
@@ -1165,12 +1188,27 @@ typedef struct x265_param
      * max,min luminance values. */
     const char* masteringDisplayColorVolume;
 
-    /* Content light level info SEI, specified as a string which is parsed when
-     * the stream header SEI are emitted. The string format is "%hu,%hu" where
-     * %hu are unsigned 16bit integers. The first value is the max content light
-     * level (or 0 if no maximum is indicated), the second value is the maximum
-     * picture average light level (or 0). */
-    const char* contentLightLevelInfo;
+    /* Maximum Content light level(MaxCLL), specified as integer that indicates the
+     * maximum pixel intensity level in units of 1 candela per square metre of the
+     * bitstream. x265 will also calculate MaxCLL programmatically from the input
+     * pixel values and set in the Content light level info SEI */
+    uint16_t maxCLL;
+
+    /* Maximum Frame Average Light Level(MaxFALL), specified as integer that indicates
+     * the maximum frame average intensity level in units of 1 candela per square
+     * metre of the bitstream. x265 will also calculate MaxFALL programmatically
+     * from the input pixel values and set in the Content light level info SEI */
+    uint16_t maxFALL;
+
+    /* Minimum luma level of input source picture, specified as a integer which
+     * would automatically increase any luma values below the specified --min-luma
+     * value to that value. */
+    uint16_t minLuma;
+
+    /* Maximum luma level of input source picture, specified as a integer which
+     * would automatically decrease any luma values above the specified --max-luma
+     * value to that value. */
+    uint16_t maxLuma;
 
 } x265_param;
 
@@ -1211,7 +1249,7 @@ static const char * const x265_profile_names[] = {
     "main422-10", "main422-10-intra",
     "main444-10", "main444-10-intra",
 
-    "main12",     "main12-intra",                  /* Highly Experimental */
+    "main12",     "main12-intra",
     "main422-12", "main422-12-intra",
     "main444-12", "main444-12-intra",
 
@@ -1347,6 +1385,22 @@ void x265_encoder_log(x265_encoder *encoder, int argc, char **argv);
  *      close an encoder handler */
 void x265_encoder_close(x265_encoder *);
 
+/* x265_encoder_intra_refresh:
+ *      If an intra refresh is not in progress, begin one with the next P-frame.
+ *      If an intra refresh is in progress, begin one as soon as the current one finishes.
+ *      Requires bIntraRefresh to be set.
+ *
+ *      Useful for interactive streaming where the client can tell the server that packet loss has
+ *      occurred.  In this case, keyint can be set to an extremely high value so that intra refreshes
+ *      occur only when calling x265_encoder_intra_refresh.
+ *
+ *      In multi-pass encoding, if x265_encoder_intra_refresh is called differently in each pass,
+ *      behavior is undefined.
+ *
+ *      Should not be called during an x265_encoder_encode. */
+
+int x265_encoder_intra_refresh(x265_encoder *);
+
 /* x265_cleanup:
  *       release library static allocations, reset configured CTU size */
 void x265_cleanup(void);
@@ -1394,6 +1448,7 @@ typedef struct x265_api
     void          (*cleanup)(void);
 
     int           sizeof_frame_stats;   /* sizeof(x265_frame_stats) */
+    int           (*encoder_intra_refresh)(x265_encoder*);
     /* add new pointers to the end, or increment X265_MAJOR_VERSION */
 } x265_api;
 

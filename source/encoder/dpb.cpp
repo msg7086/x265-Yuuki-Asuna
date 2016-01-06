@@ -47,16 +47,16 @@ DPB::~DPB()
         delete curFrame;
     }
 
-    while (m_picSymFreeList)
+    while (m_frameDataFreeList)
     {
-        FrameData* next = m_picSymFreeList->m_freeListNext;
-        m_picSymFreeList->destroy();
+        FrameData* next = m_frameDataFreeList->m_freeListNext;
+        m_frameDataFreeList->destroy();
 
-        m_picSymFreeList->m_reconPic->destroy();
-        delete m_picSymFreeList->m_reconPic;
+        m_frameDataFreeList->m_reconPic->destroy();
+        delete m_frameDataFreeList->m_reconPic;
 
-        delete m_picSymFreeList;
-        m_picSymFreeList = next;
+        delete m_frameDataFreeList;
+        m_frameDataFreeList = next;
     }
 }
 
@@ -74,13 +74,19 @@ void DPB::recycleUnreferenced()
             curFrame->m_reconRowCount.set(0);
             curFrame->m_bChromaExtended = false;
 
+            // Reset column counter
+            X265_CHECK(curFrame->m_reconColCount != NULL, "curFrame->m_reconColCount check failure");
+            X265_CHECK(curFrame->m_numRows > 0, "curFrame->m_numRows check failure");
+            for(int32_t col = 0; col < curFrame->m_numRows; col++)
+                curFrame->m_reconColCount[col].set(0);
+
             // iterator is invalidated by remove, restart scan
             m_picList.remove(*curFrame);
             iterFrame = m_picList.first();
 
             m_freeList.pushBack(*curFrame);
-            curFrame->m_encData->m_freeListNext = m_picSymFreeList;
-            m_picSymFreeList = curFrame->m_encData;
+            curFrame->m_encData->m_freeListNext = m_frameDataFreeList;
+            m_frameDataFreeList = curFrame->m_encData;
             curFrame->m_encData = NULL;
             curFrame->m_reconPic = NULL;
         }
@@ -171,7 +177,7 @@ void DPB::prepareEncode(Frame *newFrame)
     {
         for (int ref = 0; ref < slice->m_numRefIdx[l]; ref++)
         {
-            Frame *refpic = slice->m_refPicList[l][ref];
+            Frame *refpic = slice->m_refFrameList[l][ref];
             ATOMIC_INC(&refpic->m_countRefEncoders);
         }
     }

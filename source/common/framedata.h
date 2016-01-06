@@ -55,8 +55,7 @@ struct FrameStats
     double      avgLumaDistortion;
     double      avgChromaDistortion;
     double      avgPsyEnergy;
-    double      avgLumaLevel;
-    double      lumaLevel;
+    double      avgResEnergy;
     double      percentIntraNxN;
     double      percentSkipCu[NUM_CU_DEPTH];
     double      percentMergeCu[NUM_CU_DEPTH];
@@ -69,13 +68,13 @@ struct FrameStats
     uint64_t    lumaDistortion;
     uint64_t    chromaDistortion;
     uint64_t    psyEnergy;
+    uint64_t    resEnergy;
     uint64_t    cntSkipCu[NUM_CU_DEPTH];
     uint64_t    cntMergeCu[NUM_CU_DEPTH];
     uint64_t    cntInter[NUM_CU_DEPTH];
     uint64_t    cntIntra[NUM_CU_DEPTH];
     uint64_t    cuInterDistribution[NUM_CU_DEPTH][INTER_MODES];
     uint64_t    cuIntraDistribution[NUM_CU_DEPTH][INTRA_MODES];
-    uint16_t    maxLumaLevel;
 
     FrameStats()
     {
@@ -96,7 +95,7 @@ public:
 
     Slice*         m_slice;
     SAOParam*      m_saoParam;
-    x265_param*    m_param;
+    const x265_param* m_param;
 
     FrameData*     m_freeListNext;
     PicYuv*        m_reconPic;
@@ -135,19 +134,44 @@ public:
     RCStatCU*      m_cuStat;
     RCStatRow*     m_rowStat;
     FrameStats     m_frameStats; // stats of current frame for multi-pass encodes
+    /* data needed for periodic intra refresh */
+    struct PeriodicIR
+    {
+        uint32_t   pirStartCol;
+        uint32_t   pirEndCol;
+        int        framesSinceLastPir;
+    };
 
+    PeriodicIR     m_pir;
     double         m_avgQpRc;    /* avg QP as decided by rate-control */
     double         m_avgQpAq;    /* avg QP as decided by AQ in addition to rate-control */
     double         m_rateFactor; /* calculated based on the Frame QP */
 
     FrameData();
 
-    bool create(x265_param *param, const SPS& sps);
+    bool create(const x265_param& param, const SPS& sps);
     void reinit(const SPS& sps);
     void destroy();
+    inline CUData* getPicCTU(uint32_t ctuAddr) { return &m_picCTU[ctuAddr]; }
+};
 
-    CUData* getPicCTU(uint32_t ctuAddr) { return &m_picCTU[ctuAddr]; }
+/* Stores intra analysis data for a single frame. This struct needs better packing */
+struct analysis_intra_data
+{
+    uint8_t*  depth;
+    uint8_t*  modes;
+    char*     partSizes;
+    uint8_t*  chromaModes;
+};
+
+/* Stores inter analysis data for a single frame */
+struct analysis_inter_data
+{
+    MV*         mv;
+    int32_t*    ref;
+    uint8_t*    depth;
+    uint8_t*    modes;
+    uint32_t*   bestMergeCand;
 };
 }
-
 #endif // ifndef X265_FRAMEDATA_H

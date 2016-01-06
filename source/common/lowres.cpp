@@ -52,6 +52,7 @@ bool Lowres::create(PicYuv *origPic, int _bframes, bool bAQEnabled)
         CHECKED_MALLOC(qpAqOffset, double, cuCount);
         CHECKED_MALLOC(invQscaleFactor, int, cuCount);
         CHECKED_MALLOC(qpCuTreeOffset, double, cuCount);
+        CHECKED_MALLOC(blockVariance, uint32_t, cuCount);
     }
     CHECKED_MALLOC(propagateCost, uint16_t, cuCount);
 
@@ -120,18 +121,17 @@ void Lowres::destroy()
     X265_FREE(invQscaleFactor);
     X265_FREE(qpCuTreeOffset);
     X265_FREE(propagateCost);
+    X265_FREE(blockVariance);
 }
 
 // (re) initialize lowres state
 void Lowres::init(PicYuv *origPic, int poc)
 {
     bLastMiniGopBFrame = false;
-    bScenecut = false;  // could be a scene-cut, until ruled out by flash detection
     bKeyframe = false; // Not a keyframe unless identified by lookahead
     frameNum = poc;
     leadingBframes = 0;
     indB = 0;
-    satdCost = (int64_t)-1;
     memset(costEst, -1, sizeof(costEst));
     memset(weightedCostDelta, 0, sizeof(weightedCostDelta));
 

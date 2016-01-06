@@ -62,6 +62,7 @@ public:
     enum { NUM_EDGETYPE = 5 };
     enum { NUM_PLANE = 3 };
     enum { NUM_MERGE_MODE = 3 };
+    enum { SAO_DEPTHRATE_SIZE = 4 };
 
     static const uint32_t s_eoTable[NUM_EDGETYPE];
 
@@ -71,18 +72,19 @@ public:
 protected:
 
     /* allocated per part */
-    PerClass*   m_count;
-    PerClass*   m_offset;
-    PerClass*   m_offsetOrg;
+    PerPlane    m_count;
+    PerPlane    m_offset;
+    PerPlane    m_offsetOrg;
 
     /* allocated per CTU */
     PerPlane*   m_countPreDblk;
     PerPlane*   m_offsetOrgPreDblk;
 
-    double      m_depthSaoRate[2][4];
-    int8_t      m_offsetBo[SAO_NUM_BO_CLASSES];
-    int8_t      m_offsetEo[NUM_EDGETYPE];
+    double*     m_depthSaoRate;
+    int8_t      m_offsetBo[NUM_PLANE][SAO_NUM_BO_CLASSES];
+    int8_t      m_offsetEo[NUM_PLANE][NUM_EDGETYPE];
 
+    int         m_chromaFormat;
     int         m_numCuInWidth;
     int         m_numCuInHeight;
     int         m_hChromaShift;
@@ -91,10 +93,9 @@ protected:
     pixel*      m_clipTable;
     pixel*      m_clipTableBase;
 
-    pixel*      m_tmpU1[3];
-    pixel*      m_tmpU2[3];
-    pixel*      m_tmpL1;
-    pixel*      m_tmpL2;
+    pixel*      m_tmpU[3];
+    pixel*      m_tmpL1[3];
+    pixel*      m_tmpL2[3];
 
 public:
 
@@ -119,8 +120,9 @@ public:
 
     SAO();
 
-    bool create(x265_param* param);
-    void destroy();
+    bool create(x265_param* param, int initCommon);
+    void createFromRootNode(SAO *root);
+    void destroy(int destoryCommon);
 
     void allocSaoParam(SAOParam* saoParam) const;
 
@@ -131,6 +133,8 @@ public:
     // CTU-based SAO process without slice granularity
     void processSaoCu(int addr, int typeIdx, int plane);
     void processSaoUnitRow(SaoCtuParam* ctuParam, int idxY, int plane);
+    void processSaoUnitCuLuma(SaoCtuParam* ctuParam, int idxY, int idxX);
+    void processSaoUnitCuChroma(SaoCtuParam* ctuParam[3], int idxY, int idxX);
 
     void copySaoUnit(SaoCtuParam* saoUnitDst, const SaoCtuParam* saoUnitSrc);
 
@@ -146,6 +150,9 @@ public:
 
     void rdoSaoUnitRowEnd(const SAOParam* saoParam, int numctus);
     void rdoSaoUnitRow(SAOParam* saoParam, int idxY);
+    void rdoSaoUnitCu(SAOParam* saoParam, int rowBaseAddr, int idxX, int addr);
+
+    friend class FrameFilter;
 };
 
 }

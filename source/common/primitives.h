@@ -112,9 +112,9 @@ enum ChromaCU422
 
 typedef int  (*pixelcmp_t)(const pixel* fenc, intptr_t fencstride, const pixel* fref, intptr_t frefstride); // fenc is aligned
 typedef int  (*pixelcmp_ss_t)(const int16_t* fenc, intptr_t fencstride, const int16_t* fref, intptr_t frefstride);
-typedef sse_ret_t (*pixel_sse_t)(const pixel* fenc, intptr_t fencstride, const pixel* fref, intptr_t frefstride); // fenc is aligned
-typedef sse_ret_t (*pixel_sse_ss_t)(const int16_t* fenc, intptr_t fencstride, const int16_t* fref, intptr_t frefstride);
-typedef sse_ret_t (*pixel_ssd_s_t)(const int16_t* fenc, intptr_t fencstride);
+typedef sse_t (*pixel_sse_t)(const pixel* fenc, intptr_t fencstride, const pixel* fref, intptr_t frefstride); // fenc is aligned
+typedef sse_t (*pixel_sse_ss_t)(const int16_t* fenc, intptr_t fencstride, const int16_t* fref, intptr_t frefstride);
+typedef sse_t (*pixel_ssd_s_t)(const int16_t* fenc, intptr_t fencstride);
 typedef void (*pixelcmp_x4_t)(const pixel* fenc, const pixel* fref0, const pixel* fref1, const pixel* fref2, const pixel* fref3, intptr_t frefstride, int32_t* res);
 typedef void (*pixelcmp_x3_t)(const pixel* fenc, const pixel* fref0, const pixel* fref1, const pixel* fref2, intptr_t frefstride, int32_t* res);
 typedef void (*blockfill_s_t)(int16_t* dst, intptr_t dstride, int16_t val);
@@ -176,15 +176,16 @@ typedef void (*saoCuOrgE2_t)(pixel* rec, int8_t* pBufft, int8_t* pBuff1, int8_t*
 typedef void (*saoCuOrgE3_t)(pixel* rec, int8_t* upBuff1, int8_t* m_offsetEo, intptr_t stride, int startX, int endX);
 typedef void (*saoCuOrgB0_t)(pixel* rec, const int8_t* offsetBo, int ctuWidth, int ctuHeight, intptr_t stride);
 
-typedef void (*saoCuStatsBO_t)(const pixel *fenc, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count);
-typedef void (*saoCuStatsE0_t)(const pixel *fenc, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count);
-typedef void (*saoCuStatsE1_t)(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count);
-typedef void (*saoCuStatsE2_t)(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t *upBuff1, int8_t *upBuff, int endX, int endY, int32_t *stats, int32_t *count);
-typedef void (*saoCuStatsE3_t)(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count);
+typedef void (*saoCuStatsBO_t)(const int16_t *diff, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count);
+typedef void (*saoCuStatsE0_t)(const int16_t *diff, const pixel *rec, intptr_t stride, int endX, int endY, int32_t *stats, int32_t *count);
+typedef void (*saoCuStatsE1_t)(const int16_t *diff, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count);
+typedef void (*saoCuStatsE2_t)(const int16_t *diff, const pixel *rec, intptr_t stride, int8_t *upBuff1, int8_t *upBuff, int endX, int endY, int32_t *stats, int32_t *count);
+typedef void (*saoCuStatsE3_t)(const int16_t *diff, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count);
 
 typedef void (*sign_t)(int8_t *dst, const pixel *src1, const pixel *src2, const int endX);
 typedef void (*planecopy_cp_t) (const uint8_t* src, intptr_t srcStride, pixel* dst, intptr_t dstStride, int width, int height, int shift);
 typedef void (*planecopy_sp_t) (const uint16_t* src, intptr_t srcStride, pixel* dst, intptr_t dstStride, int width, int height, int shift, uint16_t mask);
+typedef pixel (*planeClipAndMax_t)(pixel *src, intptr_t stride, int width, int height, uint64_t *outsum, const pixel minPix, const pixel maxPix);
 
 typedef void (*cutree_propagate_cost) (int* dst, const uint16_t* propagateIn, const int32_t* intraCosts, const uint16_t* interCosts, const int32_t* invQscales, const double* fpsFactor, int len);
 
@@ -194,6 +195,8 @@ typedef uint32_t (*findPosFirstLast_t)(const int16_t *dstCoeff, const intptr_t t
 typedef uint32_t (*costCoeffNxN_t)(const uint16_t *scan, const coeff_t *coeff, intptr_t trSize, uint16_t *absCoeff, const uint8_t *tabSigCtx, uint32_t scanFlagMask, uint8_t *baseCtx, int offset, int scanPosSigOff, int subPosBase);
 typedef uint32_t (*costCoeffRemain_t)(uint16_t *absCoeff, int numNonZero, int idx);
 typedef uint32_t (*costC1C2Flag_t)(uint16_t *absCoeff, intptr_t numC1Flag, uint8_t *baseCtxMod, intptr_t ctxOffset);
+
+typedef void (*pelFilterLumaStrong_t)(pixel* src, intptr_t srcStep, intptr_t offset, int32_t tcP, int32_t tcQ);
 
 /* Function pointers to optimized encoder primitives. Each pointer can reference
  * either an assembly routine, a SIMD intrinsic primitive, or a C function */
@@ -259,7 +262,6 @@ struct EncoderPrimitives
         pixel_sse_t     sse_pp;        // Sum of Square Error (pixel, pixel) fenc alignment not assumed
         pixel_sse_ss_t  sse_ss;        // Sum of Square Error (short, short) fenc alignment not assumed
         pixelcmp_t      psy_cost_pp;   // difference in AC energy between two pixel blocks
-        pixelcmp_ss_t   psy_cost_ss;   // difference in AC energy between two signed residual blocks
         pixel_ssd_s_t   ssd_s;         // Sum of Square Error (residual coeff to self)
         pixelcmp_t      sa8d;          // Sum of Transformed Differences (8x8 Hadamard), uses satd for 4x4 intra TU
 
@@ -316,6 +318,7 @@ struct EncoderPrimitives
     planecopy_cp_t        planecopy_cp;
     planecopy_sp_t        planecopy_sp;
     planecopy_sp_t        planecopy_sp_shl;
+    planeClipAndMax_t     planeClipAndMax;
 
     weightp_sp_t          weight_sp;
     weightp_pp_t          weight_pp;
@@ -328,6 +331,7 @@ struct EncoderPrimitives
     costCoeffRemain_t     costCoeffRemain;
     costC1C2Flag_t        costC1C2Flag;
 
+    pelFilterLumaStrong_t pelFilterLumaStrong[2]; // EDGE_VER = 0, EDGE_HOR = 1
 
     /* There is one set of chroma primitives per color space. An encoder will
      * have just a single color space and thus it will only ever use one entry

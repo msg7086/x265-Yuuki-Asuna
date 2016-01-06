@@ -4,6 +4,7 @@
  * Author: Shazeb Nawaz Khan <shazeb@multicorewareinc.com>
  *         Steve Borho <steve@borho.org>
  *         Kavitha Sampas <kavitha@multicorewareinc.com>
+ *         Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -259,13 +260,13 @@ void weightAnalyse(Slice& slice, Frame& frame, x265_param& param)
     for (int list = 0; list < cache.numPredDir; list++)
     {
         WeightParam *weights = wp[list][0];
-        Frame *refFrame = slice.m_refPicList[list][0];
+        Frame *refFrame = slice.m_refFrameList[list][0];
         Lowres& refLowres = refFrame->m_lowres;
         int diffPoc = abs(curPoc - refFrame->m_poc);
 
         /* prepare estimates */
         float guessScale[3], fencMean[3], refMean[3];
-        for (int plane = 0; plane < 3; plane++)
+        for (int plane = 0; plane < (param.internalCsp != X265_CSP_I400 ? 3 : 1); plane++)
         {
             SET_WEIGHT(weights[plane], false, 1, 0, 0);
             uint64_t fencVar = fenc.wp_ssd[plane] + !refLowres.wp_ssd[plane];
@@ -289,7 +290,7 @@ void weightAnalyse(Slice& slice, Frame& frame, x265_param& param)
 
         MV *mvs = NULL;
 
-        for (int plane = 0; plane < 3; plane++)
+        for (int plane = 0; plane < (param.internalCsp != X265_CSP_I400 ? 3 : 1); plane++)
         {
             denom = plane ? chromaDenom : lumaDenom;
             if (plane && !weights[0].bPresentFlag)
@@ -328,7 +329,7 @@ void weightAnalyse(Slice& slice, Frame& frame, x265_param& param)
                 {
                     /* reference chroma planes must be extended prior to being
                      * used as motion compensation sources */
-                    if (!refFrame->m_bChromaExtended)
+                    if (!refFrame->m_bChromaExtended && param.internalCsp != X265_CSP_I400)
                     {
                         refFrame->m_bChromaExtended = true;
                         PicYuv *refPic = refFrame->m_fencPic;

@@ -49,6 +49,7 @@ ssim_c2:   times 4 dd 235963       ; .03*.03*255*255*64*63
 mask_ff:                times 16 db 0xff
                         times 16 db 0
 deinterleave_shuf:      times  2 db 0, 2, 4, 6, 8, 10, 12, 14, 1, 3, 5, 7, 9, 11, 13, 15
+interleave_shuf:        times  2 db 0, 8, 1, 9, 2, 10, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15
 deinterleave_word_shuf: times  2 db 0, 1, 4, 5, 8, 9, 12, 13, 2, 3, 6, 7, 10, 11, 14, 15
 hmulw_16p:              times  8 dw 1
                         times  4 dw 1, -1
@@ -56,7 +57,7 @@ hmulw_16p:              times  8 dw 1
 SECTION .text
 
 cextern pw_1
-cextern pw_0_15
+cextern pw_0_7
 cextern pb_1
 cextern pb_128
 cextern pw_00ff
@@ -78,6 +79,7 @@ cextern hmul_16p
 cextern trans8_shuf
 cextern_naked private_prefix %+ _entropyStateBits
 cextern pb_movemask
+cextern pw_exp2_0_15
 
 ;-----------------------------------------------------------------------------
 ; void getResidual(pixel *fenc, pixel *pred, int16_t *residual, intptr_t stride)
@@ -792,6 +794,7 @@ cglobal nquant, 3,5,8
     pshufd      m6, m6, 0       ; m6 = add
     mov         r3d, r4d        ; r3 = numCoeff
     shr         r4d, 3
+    pxor        m4, m4
 
 .loop:
     pmovsxwd    m0, [r0]        ; m0 = level
@@ -810,13 +813,13 @@ cglobal nquant, 3,5,8
     psignd      m3, m1
 
     packssdw    m2, m3
+    pabsw       m2, m2
 
     movu        [r2], m2
     add         r0, 16
     add         r1, 32
     add         r2, 16
 
-    pxor        m4, m4
     pcmpeqw     m2, m4
     psubw       m7, m2
 
@@ -862,9 +865,11 @@ cglobal nquant, 3,5,7
     psignd      m2, m0
 
     packssdw    m1, m2
-    vpermq      m2, m1, q3120
+    pabsw       m1, m1
 
+    vpermq      m2, m1, q3120
     movu        [r2], m2
+
     add         r0, mmsize
     add         r1, mmsize * 2
     add         r2, mmsize
@@ -1560,7 +1565,7 @@ cglobal weight_sp, 6,7,8
     movd        m0, r6d
     pshuflw     m0, m0, 0
     punpcklqdq  m0, m0
-    pcmpgtw     m0, [pw_0_15]
+    pcmpgtw     m0, [pw_0_7]
 
 .loopH:
     mov         r6d, r4d
@@ -1718,7 +1723,7 @@ cglobal weight_sp, 6,7,9
     pshuflw                   m0, m0, 0
     punpcklqdq                m0, m0
     vinserti128               m0, m0, xm0, 1
-    pcmpgtw                   m0, [pw_0_15]
+    pcmpgtw                   m0, [pw_0_7]
 
 .loopH:
     mov                       r6d, r4d
@@ -6397,6 +6402,78 @@ cglobal pixel_var_16x16, 2,4,7
     movd   edx, xm6
 %endif
     RET
+
+INIT_YMM avx2
+cglobal pixel_var_32x32, 2,4,7
+    VAR_START 0
+    mov             r2d, 16
+
+.loop:
+    pmovzxbw        m0, [r0]
+    pmovzxbw        m3, [r0 + 16]
+    pmovzxbw        m1, [r0 + r1]
+    pmovzxbw        m4, [r0 + r1 + 16]
+
+    lea             r0, [r0 + r1 * 2]
+
+    VAR_CORE
+
+    dec             r2d
+    jg              .loop
+
+    vextracti128   xm0, m5, 1
+    vextracti128   xm1, m6, 1
+    paddw          xm5, xm0
+    paddd          xm6, xm1
+    HADDW          xm5, xm2
+    HADDD          xm6, xm1
+
+%if ARCH_X86_64
+    punpckldq      xm5, xm6
+    movq           rax, xm5
+%else
+    movd           eax, xm5
+    movd           edx, xm6
+%endif
+    RET
+
+INIT_YMM avx2
+cglobal pixel_var_64x64, 2,4,7
+    VAR_START 0
+    mov             r2d, 64
+
+.loop:
+    pmovzxbw        m0, [r0]
+    pmovzxbw        m3, [r0 + 16]
+    pmovzxbw        m1, [r0 + mmsize]
+    pmovzxbw        m4, [r0 + mmsize + 16]
+
+    lea             r0, [r0 + r1]
+
+    VAR_CORE
+
+    dec             r2d
+    jg              .loop
+
+    pxor            m1, m1
+    punpcklwd       m0, m5, m1
+    punpckhwd       m5, m1
+    paddd           m5, m0
+    vextracti128   xm2, m5, 1
+    vextracti128   xm1, m6, 1
+    paddd          xm5, xm2
+    paddd          xm6, xm1
+    HADDD          xm5, xm2
+    HADDD          xm6, xm1
+
+%if ARCH_X86_64
+    punpckldq      xm5, xm6
+    movq           rax, xm5
+%else
+    movd           eax, xm5
+    movd           edx, xm6
+%endif
+    RET
 %endif ; !HIGH_BIT_DEPTH
 
 %macro VAR2_END 3
@@ -6578,10 +6655,10 @@ cglobal scanPosLast_x64, 5,12
 
 
 ;-----------------------------------------------------------------------------
-; uint32_t[last first] findPosFirstAndLast(const int16_t *dstCoeff, const intptr_t trSize, const uint16_t scanTbl[16])
+; uint32_t[sumSign last first] findPosFirstLast(const int16_t *dstCoeff, const intptr_t trSize, const uint16_t scanTbl[16], uint32_t *absSum)
 ;-----------------------------------------------------------------------------
 INIT_XMM ssse3
-cglobal findPosFirstLast, 3,3,3
+cglobal findPosFirstLast, 3,3,4
     ; convert stride to int16_t
     add         r1d, r1d
 
@@ -6593,9 +6670,21 @@ cglobal findPosFirstLast, 3,3,3
     movh        m1, [r0]
     movhps      m1, [r0 + r1]
     movh        m2, [r0 + r1 * 2]
-    lea         r1, [r1 * 3]
+    lea         r1d, [r1 * 3]
     movhps      m2, [r0 + r1]
+    pxor        m3, m1, m2
     packsswb    m1, m2
+
+    ; get absSum
+    movhlps     m2, m3
+    pxor        m3, m2
+    pshufd      m2, m3, q2301
+    pxor        m3, m2
+    movd        r0d, m3
+    mov         r2d, r0d
+    shr         r2d, 16
+    xor         r2d, r0d
+    shl         r2d, 31
 
     ; get non-zero mask
     pxor        m2, m2
@@ -6609,319 +6698,10 @@ cglobal findPosFirstLast, 3,3,3
     not         r0d
     bsr         r1w, r0w
     bsf         eax, r0d    ; side effect: clear AH to Zero
-    shl         r1d, 16
-    or          eax, r1d
+    shl         r1d, 8
+    or          eax, r2d    ; merge absSumSign
+    or          eax, r1d    ; merge lastNZPosInCG
     RET
-
-
-;void saoCuStatsE2_c(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t *upBuff1, int8_t *upBufft, int endX, int endY, int32_t *stats, int32_t *count)
-;{
-;    X265_CHECK(endX < MAX_CU_SIZE, "endX check failure\n");
-;    X265_CHECK(endY < MAX_CU_SIZE, "endY check failure\n");
-;    int x, y;
-;    int32_t tmp_stats[SAO::NUM_EDGETYPE];
-;    int32_t tmp_count[SAO::NUM_EDGETYPE];
-;    memset(tmp_stats, 0, sizeof(tmp_stats));
-;    memset(tmp_count, 0, sizeof(tmp_count));
-;    for (y = 0; y < endY; y++)
-;    {
-;        upBufft[0] = signOf(rec[stride] - rec[-1]);
-;        for (x = 0; x < endX; x++)
-;        {
-;            int signDown = signOf2(rec[x], rec[x + stride + 1]);
-;            X265_CHECK(signDown == signOf(rec[x] - rec[x + stride + 1]), "signDown check failure\n");
-;            uint32_t edgeType = signDown + upBuff1[x] + 2;
-;            upBufft[x + 1] = (int8_t)(-signDown);
-;            tmp_stats[edgeType] += (fenc[x] - rec[x]);
-;            tmp_count[edgeType]++;
-;        }
-;        std::swap(upBuff1, upBufft);
-;        rec += stride;
-;        fenc += stride;
-;    }
-;    for (x = 0; x < SAO::NUM_EDGETYPE; x++)
-;    {
-;        stats[SAO::s_eoTable[x]] += tmp_stats[x];
-;        count[SAO::s_eoTable[x]] += tmp_count[x];
-;    }
-;}
-
-%if ARCH_X86_64
-; TODO: x64 only because I need temporary register r7,r8, easy portab to x86
-INIT_XMM sse4
-cglobal saoCuStatsE2, 5,9,8,0-32    ; Stack: 5 of stats and 5 of count
-    mov         r5d, r5m
-
-    ; clear internal temporary buffer
-    pxor        m0, m0
-    mova        [rsp], m0
-    mova        [rsp + mmsize], m0
-    mova        m0, [pb_128]
-    mova        m5, [pb_1]
-    mova        m6, [pb_2]
-
-.loopH:
-    ; TODO: merge into below SIMD
-    ; get upBuffX[0]
-    mov         r6b, [r1 + r2]
-    sub         r6b, [r1 -  1]
-    seta        r6b
-    setb        r7b
-    sub         r6b, r7b
-    mov         [r4], r6b
-
-    ; backup unavailable pixels
-    movh        m7, [r4 + r5 + 1]
-
-    mov         r6d, r5d
-.loopW:
-    movu        m1, [r1]
-    movu        m2, [r1 + r2 + 1]
-
-    ; signDown
-    pxor        m1, m0
-    pxor        m2, m0
-    pcmpgtb     m3, m1, m2
-    pand        m3, m5
-    pcmpgtb     m2, m1
-    por         m2, m3
-    pxor        m3, m3
-    psubb       m3, m2
-
-    ; edgeType
-    movu        m4, [r3]
-    paddb       m4, m6
-    paddb       m2, m4
-
-    ; update upBuff1
-    movu        [r4 + 1], m3
-
-    ; stats[edgeType]
-    pxor        m1, m0
-    movu        m3, [r0]
-    punpckhbw   m4, m3, m1
-    punpcklbw   m3, m1
-    pmaddubsw   m3, [hmul_16p + 16]
-    pmaddubsw   m4, [hmul_16p + 16]
-
-    ; 16 pixels
-%assign x 0
-%rep 16
-    pextrb      r7d, m2, x
-    inc    word [rsp + r7 * 2]
-
-  %if (x < 8)
-    pextrw      r8d, m3, (x % 8)
-  %else
-    pextrw      r8d, m4, (x % 8)
-  %endif
-    movsx       r8d, r8w
-    add         [rsp + 5 * 2 + r7 * 4], r8d
-
-    dec         r6d
-    jz         .next
-%assign x x+1
-%endrep
-
-    add         r0, 16
-    add         r1, 16
-    add         r3, 16
-    add         r4, 16
-    jmp         .loopW
-
-.next:
-    xchg        r3, r4
-
-    ; restore pointer upBuff1
-    mov         r6d, r5d
-    and         r6d, 15
-
-    ; move to next row
-    sub         r6, r5
-    add         r3, r6
-    add         r4, r6
-    add         r6, r2
-    add         r0, r6
-    add         r1, r6
-
-    ; restore unavailable pixels
-    movh        [r3 + r5 + 1], m7
-
-    dec    byte r6m
-    jg         .loopH
-
-    ; sum to global buffer
-    mov         r1, r7m
-    mov         r0, r8m
-
-    ; s_eoTable = {1,2,0,3,4}
-    movzx       r6d, word [rsp + 0 * 2]
-    add         [r0 + 1 * 4], r6d
-    movzx       r6d, word [rsp + 1 * 2]
-    add         [r0 + 2 * 4], r6d
-    movzx       r6d, word [rsp + 2 * 2]
-    add         [r0 + 0 * 4], r6d
-    movzx       r6d, word [rsp + 3 * 2]
-    add         [r0 + 3 * 4], r6d
-    movzx       r6d, word [rsp + 4 * 2]
-    add         [r0 + 4 * 4], r6d
-
-    mov         r6d, [rsp + 5 * 2 + 0 * 4]
-    add         [r1 + 1 * 4], r6d
-    mov         r6d, [rsp + 5 * 2 + 1 * 4]
-    add         [r1 + 2 * 4], r6d
-    mov         r6d, [rsp + 5 * 2 + 2 * 4]
-    add         [r1 + 0 * 4], r6d
-    mov         r6d, [rsp + 5 * 2 + 3 * 4]
-    add         [r1 + 3 * 4], r6d
-    mov         r6d, [rsp + 5 * 2 + 4 * 4]
-    add         [r1 + 4 * 4], r6d
-    RET
-%endif ; ARCH_X86_64
-
-
-;void saoStatE3(const pixel *fenc, const pixel *rec, intptr_t stride, int8_t *upBuff1, int endX, int endY, int32_t *stats, int32_t *count);
-;{
-;    memset(tmp_stats, 0, sizeof(tmp_stats));
-;    memset(tmp_count, 0, sizeof(tmp_count));
-;    for (y = startY; y < endY; y++)
-;    {
-;        for (x = startX; x < endX; x++)
-;        {
-;            int signDown = signOf2(rec[x], rec[x + stride - 1]);
-;            uint32_t edgeType = signDown + upBuff1[x] + 2;
-;            upBuff1[x - 1] = (int8_t)(-signDown);
-;            tmp_stats[edgeType] += (fenc[x] - rec[x]);
-;            tmp_count[edgeType]++;
-;        }
-;        upBuff1[endX - 1] = signOf(rec[endX - 1 + stride] - rec[endX]);
-;        rec += stride;
-;        fenc += stride;
-;    }
-;    for (x = 0; x < NUM_EDGETYPE; x++)
-;    {
-;        stats[s_eoTable[x]] += tmp_stats[x];
-;        count[s_eoTable[x]] += tmp_count[x];
-;    }
-;}
-
-%if ARCH_X86_64
-INIT_XMM sse4
-cglobal saoCuStatsE3, 4,9,8,0-32    ; Stack: 5 of stats and 5 of count
-    mov         r4d, r4m
-    mov         r5d, r5m
-
-    ; clear internal temporary buffer
-    pxor        m0, m0
-    mova        [rsp], m0
-    mova        [rsp + mmsize], m0
-    mova        m0, [pb_128]
-    mova        m5, [pb_1]
-    mova        m6, [pb_2]
-    movh        m7, [r3 + r4]
-
-.loopH:
-    mov         r6d, r4d
-
-.loopW:
-    movu        m1, [r1]
-    movu        m2, [r1 + r2 - 1]
-
-    ; signDown
-    pxor        m1, m0
-    pxor        m2, m0
-    pcmpgtb     m3, m1, m2
-    pand        m3, m5
-    pcmpgtb     m2, m1
-    por         m2, m3
-    pxor        m3, m3
-    psubb       m3, m2
-
-    ; edgeType
-    movu        m4, [r3]
-    paddb       m4, m6
-    paddb       m2, m4
-
-    ; update upBuff1
-    movu        [r3 - 1], m3
-
-    ; stats[edgeType]
-    pxor        m1, m0
-    movu        m3, [r0]
-    punpckhbw   m4, m3, m1
-    punpcklbw   m3, m1
-    pmaddubsw   m3, [hmul_16p + 16]
-    pmaddubsw   m4, [hmul_16p + 16]
-
-    ; 16 pixels
-%assign x 0
-%rep 16
-    pextrb      r7d, m2, x
-    inc    word [rsp + r7 * 2]
-
-  %if (x < 8)
-    pextrw      r8d, m3, (x % 8)
-  %else
-    pextrw      r8d, m4, (x % 8)
-  %endif
-    movsx       r8d, r8w
-    add         [rsp + 5 * 2 + r7 * 4], r8d
-
-    dec         r6d
-    jz         .next
-%assign x x+1
-%endrep
-
-    add         r0, 16
-    add         r1, 16
-    add         r3, 16
-    jmp         .loopW
-
-.next:
-    ; restore pointer upBuff1
-    mov         r6d, r4d
-    and         r6d, 15
-
-    ; move to next row
-    sub         r6, r4
-    add         r3, r6
-    add         r6, r2
-    add         r0, r6
-    add         r1, r6
-    dec         r5d
-    jg         .loopH
-
-    ; restore unavailable pixels
-    movh        [r3 + r4], m7
-
-    ; sum to global buffer
-    mov         r1, r6m
-    mov         r0, r7m
-
-    ; s_eoTable = {1,2,0,3,4}
-    movzx       r6d, word [rsp + 0 * 2]
-    add         [r0 + 1 * 4], r6d
-    movzx       r6d, word [rsp + 1 * 2]
-    add         [r0 + 2 * 4], r6d
-    movzx       r6d, word [rsp + 2 * 2]
-    add         [r0 + 0 * 4], r6d
-    movzx       r6d, word [rsp + 3 * 2]
-    add         [r0 + 3 * 4], r6d
-    movzx       r6d, word [rsp + 4 * 2]
-    add         [r0 + 4 * 4], r6d
-
-    mov         r6d, [rsp + 5 * 2 + 0 * 4]
-    add         [r1 + 1 * 4], r6d
-    mov         r6d, [rsp + 5 * 2 + 1 * 4]
-    add         [r1 + 2 * 4], r6d
-    mov         r6d, [rsp + 5 * 2 + 2 * 4]
-    add         [r1 + 0 * 4], r6d
-    mov         r6d, [rsp + 5 * 2 + 3 * 4]
-    add         [r1 + 3 * 4], r6d
-    mov         r6d, [rsp + 5 * 2 + 4 * 4]
-    add         [r1 + 4 * 4], r6d
-    RET
-%endif ; ARCH_X86_64
 
 
 ; uint32_t costCoeffNxN(uint16_t *scan, coeff_t *coeff, intptr_t trSize, uint16_t *absCoeff, uint8_t *tabSigCtx, uint16_t scanFlagMask, uint8_t *baseCtx, int offset, int subPosBase)
@@ -6963,7 +6743,7 @@ cglobal saoCuStatsE3, 4,9,8,0-32    ; Stack: 5 of stats and 5 of count
 %if ARCH_X86_64
 ; uint32_t costCoeffNxN(uint16_t *scan, coeff_t *coeff, intptr_t trSize, uint16_t *absCoeff, uint8_t *tabSigCtx, uint16_t scanFlagMask, uint8_t *baseCtx, int offset, int scanPosSigOff, int subPosBase)
 INIT_XMM sse4
-cglobal costCoeffNxN, 6,11,5
+cglobal costCoeffNxN, 6,11,6
     add         r2d, r2d
 
     ; abs(coeff)
@@ -7095,6 +6875,177 @@ cglobal costCoeffNxN, 6,11,5
     mov         eax, r6d
 %endif
     and         eax, 0xFFFFFF
+    RET
+
+
+; uint32_t costCoeffNxN(uint16_t *scan, coeff_t *coeff, intptr_t trSize, uint16_t *absCoeff, uint8_t *tabSigCtx, uint16_t scanFlagMask, uint8_t *baseCtx, int offset, int scanPosSigOff, int subPosBase)
+INIT_YMM avx2,bmi2
+cglobal costCoeffNxN, 6,10,5
+    add             r2d, r2d
+
+    ; abs(coeff)
+    movq            xm1, [r1]
+    movhps          xm1, [r1 + r2]
+    movq            xm2, [r1 + r2 * 2]
+    lea             r2, [r2 * 3]
+    movhps          xm2, [r1 + r2]
+    vinserti128     m1, m1, xm2, 1
+    pabsw           m1, m1
+    ; r[1-2] free here
+
+    ; loading tabSigCtx
+    mova            xm2, [r4]
+    ; r[4] free here
+
+    ; WARNING: beyond-bound read here!
+    ; loading scan table
+    mov             r2d, r8m
+    bzhi            r4d, r5d, r2d                   ; clear non-scan mask bits
+    mov             r6d, r2d
+    xor             r2d, 15
+    movu            m0, [r0 + r2 * 2]
+    packuswb        m0, m0
+    pxor            m0, [pb_15]
+    vpermq          m0, m0, q3120
+    add             r4d, r2d                        ; r4d = (scanPosSigOff == 15) -> (numNonZero == 0)
+    mov             r2d, r6d
+
+    ; reorder tabSigCtx (+offset)
+    pshufb          xm2, xm0
+    vpbroadcastb    xm3, r7m
+    paddb           xm2, xm3
+    ; r[0-1] free here
+
+    ; reorder coeff
+    pshufb          m1, [deinterleave_shuf]
+    vpermq          m1, m1, q3120
+    pshufb          m1, m0
+    vpermq          m1, m1, q3120
+    pshufb          m1, [interleave_shuf]
+    ; r[0-1], m[2-3] free here
+
+    ; sig mask
+    pxor            xm3, xm3
+    movd            xm4, r5d
+    vpbroadcastw    m4, xm4
+    pandn           m4, m4, [pw_exp2_0_15]
+    pcmpeqw         m4, m3
+
+    ; absCoeff[numNonZero] = tmpCoeff[blkPos]
+    ; [0-3]
+    movq            r0, xm4
+    movq            r1, xm1
+    pext            r6, r1, r0
+    mov       qword [r3], r6
+    popcnt          r0, r0
+    shr             r0, 3
+    add             r3, r0
+
+    ; [4-7]
+    pextrq          r0, xm4, 1
+    pextrq          r1, xm1, 1
+    pext            r6, r1, r0
+    mov       qword [r3], r6
+    popcnt          r0, r0
+    shr             r0, 3
+    add             r3, r0
+
+    ; [8-B]
+    vextracti128    xm4, m4, 1
+    movq            r0, xm4
+    vextracti128    xm1, m1, 1
+    movq            r1, xm1
+    pext            r6, r1, r0
+    mov       qword [r3], r6
+    popcnt          r0, r0
+    shr             r0, 3
+    add             r3, r0
+
+    ; [C-F]
+    pextrq          r0, xm4, 1
+    pextrq          r1, xm1, 1
+    pext            r6, r1, r0
+    mov       qword [r3], r6
+    ; r[0-1,3] free here
+
+    ; register mapping
+    ; m0 - Zigzag
+    ; m1 - sigCtx
+    ; r0 - x265_entropyStateBits
+    ; r1 - baseCtx
+    ; r2 - scanPosSigOff
+    ; r5 - scanFlagMask
+    ; r6 - sum
+    ; {r3,r4} - ctxSig[15-0]
+    ; r8m - (numNonZero != 0) || (subPosBase == 0)
+    lea             r0, [private_prefix %+ _entropyStateBits]
+    mov             r1, r6mp
+    xor             r6d, r6d
+    xor             r8d, r8d
+
+    test            r2d, r2d
+    jz             .idx_zero
+
+;   {
+;        const uint32_t cnt = tabSigCtx[blkPos] + offset + posOffset;
+;        ctxSig = cnt & posZeroMask;
+;        const uint32_t mstate = baseCtx[ctxSig];
+;        const uint32_t mps = mstate & 1;
+;        const uint32_t stateBits = x265_entropyStateBits[mstate ^ sig];
+;        uint32_t nextState = (stateBits >> 24) + mps;
+;        if ((mstate ^ sig) == 1)
+;            nextState = sig;
+;        baseCtx[ctxSig] = (uint8_t)nextState;
+;        sum += stateBits;
+;    }
+;    absCoeff[numNonZero] = tmpCoeff[blkPos];
+;    numNonZero += sig;
+;    scanPosSigOff--;
+.loop:
+    shr             r5d, 1
+    setc            r8b                             ; r8 = sig
+    movd            r7d, xm2                        ; r7 = ctxSig
+    movzx           r7d, r7b
+    psrldq          xm2, 1
+    movzx           r9d, byte [r1 + r7]             ; mstate = baseCtx[ctxSig]
+    mov             r3d, r9d
+    and             r3b, 1                          ; mps = mstate & 1
+    xor             r9d, r8d                        ; r9 = mstate ^ sig
+    add             r6d, [r0 + r9 * 4]              ; sum += entropyStateBits[mstate ^ sig]
+    add             r3b, byte [r0 + r9 * 4 + 3]     ; nextState = (stateBits >> 24) + mps
+    cmp             r9d, 1
+    cmove           r3d, r8d
+    mov        byte [r1 + r7], r3b
+
+    dec             r2d
+    jg             .loop
+
+.idx_zero:
+    xor             r2d, r2d
+    cmp        word r9m, 0
+    sete            r2b
+    add             r4d, r2d                        ; (numNonZero != 0) || (subPosBase == 0)
+    jz             .exit
+
+    dec             r2b
+    movd            r3d, xm2
+    and             r2d, r3d
+
+    movzx           r3d, byte [r1 + r2]             ; mstate = baseCtx[ctxSig]
+    mov             r4d, r5d
+    xor             r5d, r3d                        ; r0 = mstate ^ sig
+    and             r3b, 1                          ; mps = mstate & 1
+    add             r6d, [r0 + r5 * 4]              ; sum += x265_entropyStateBits[mstate ^ sig]
+    add             r3b, [r0 + r5 * 4 + 3]          ; nextState = (stateBits >> 24) + mps
+    cmp             r5b, 1
+    cmove           r3d, r4d
+    mov        byte [r1 + r2], r3b
+
+.exit:
+%ifnidn eax,r6d
+    mov             eax, r6d
+%endif
+    and             eax, 0xFFFFFF
     RET
 %endif ; ARCH_X86_64
 

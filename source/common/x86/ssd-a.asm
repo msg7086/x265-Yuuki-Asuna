@@ -2,11 +2,13 @@
 ;* ssd-a.asm: x86 ssd functions
 ;*****************************************************************************
 ;* Copyright (C) 2003-2013 x264 project
+;* Copyright (C) 2013-2015 x265 project
 ;*
 ;* Authors: Loren Merritt <lorenm@u.washington.edu>
 ;*          Fiona Glaser <fiona@x264.com>
 ;*          Laurent Aimar <fenrir@via.ecp.fr>
 ;*          Alex Izvorski <aizvorksi@gmail.com>
+;*          Min Chen <chenm003@163.com>
 ;*
 ;* This program is free software; you can redistribute it and/or modify
 ;* it under the terms of the GNU General Public License as published by
@@ -105,8 +107,32 @@ cglobal pixel_ssd_ss_%1x%2, 4,7,8
     dec    r4d
     jg .loop
 %endif
+%if BIT_DEPTH == 12 && %1 >= 16 && %2 >=16
+%if  mmsize == 16
+    movu            m5, m0
+    pxor            m6, m6
+    punpckldq       m0, m6
+    punpckhdq       m5, m6
+    paddq           m0, m5
+    movhlps         m5, m0
+    paddq           m0, m5
+    movq            r6, xm0
+%elif mmsize == 32
+    movu            m1, m0
+    pxor            m2, m2
+    punpckldq       m0, m2
+    punpckhdq       m1, m2
+    paddq           m0, m1
+    vextracti128    xm2, m0, 1
+    paddq           xm2, xm0
+    movhlps         xm1, xm2
+    paddq           xm2, xm1
+    movq            rax, xm2
+%endif
+%else 
     HADDD   m0, m5
-    movd   eax, xm0
+    movd    eax,xm0
+%endif
 %ifidn movu,movq ; detect MMX
     EMMS
 %endif
@@ -166,6 +192,154 @@ cglobal pixel_ssd_ss_32x64, 4,7,10
     call        ssd_ss_32x16
     call        ssd_ss_32x16
     movq        rax, m9
+    RET
+%endmacro
+%macro SSD_ONE_SS_32 0
+cglobal pixel_ssd_ss_32x32, 4,5,8
+    add         r1d, r1d
+    add         r3d, r3d
+    pxor        m5, m5
+    pxor        m6, m6
+    mov         r4d, 2
+
+.iterate:
+    mov         r5d, 16
+    pxor        m4, m4
+    pxor        m7, m7
+.loop:
+    movu        m0, [r0]
+    movu        m1, [r0 + mmsize]
+    movu        m2, [r2]
+    movu        m3, [r2 + mmsize]
+    psubw       m0, m2
+    psubw       m1, m3
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m4, m0
+    paddd       m7, m1
+    movu        m0, [r0 + 2 * mmsize]
+    movu        m1, [r0 + 3 * mmsize]
+    movu        m2, [r2 + 2 * mmsize]
+    movu        m3, [r2 + 3 * mmsize]
+    psubw       m0, m2
+    psubw       m1, m3
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m4, m0
+    paddd       m7, m1
+
+    add         r0, r1
+    add         r2, r3
+
+    dec         r5d
+    jnz         .loop
+
+    mova        m0, m4
+    pxor        m1, m1
+    punpckldq   m0, m1
+    punpckhdq   m4, m1
+    paddq       m5, m0
+    paddq       m6, m4
+
+    mova        m0, m7
+    punpckldq   m0, m1
+    punpckhdq   m7, m1
+    paddq       m5, m0
+    paddq       m6, m7
+
+    dec         r4d
+    jnz         .iterate
+
+    paddq       m5, m6
+    movhlps     m2, m5
+    paddq       m5, m2
+    movq        rax, m5
+    RET
+%endmacro
+
+%macro SSD_ONE_SS_64 0
+cglobal pixel_ssd_ss_64x64, 4,6,8
+    add         r1d, r1d
+    add         r3d, r3d
+    pxor        m5, m5
+    pxor        m6, m6
+    mov         r5d, 8
+
+.iterate:
+    pxor        m4, m4
+    pxor        m7, m7
+    mov         r4d, 8
+
+.loop:
+    ;----process 1st half a row----
+    movu        m0, [r0]
+    movu        m1, [r0 + mmsize]
+    movu        m2, [r2]
+    movu        m3, [r2 + mmsize]
+    psubw       m0, m2
+    psubw       m1, m3
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m4, m0
+    paddd       m7, m1
+    movu        m0, [r0 + 2 * mmsize]
+    movu        m1, [r0 + 3 * mmsize]
+    movu        m2, [r2 + 2 * mmsize]
+    movu        m3, [r2 + 3 * mmsize]
+    psubw       m0, m2
+    psubw       m1, m3
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m4, m0
+    paddd       m7, m1
+    ;----process 2nd half a row----
+    movu        m0, [r0 + 4 * mmsize]
+    movu        m1, [r0 + 5 * mmsize]
+    movu        m2, [r2 + 4 * mmsize]
+    movu        m3, [r2 + 5 * mmsize]
+    psubw       m0, m2
+    psubw       m1, m3
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m4, m0
+    paddd       m7, m1
+    movu        m0, [r0 + 6 * mmsize]
+    movu        m1, [r0 + 7 * mmsize]
+    movu        m2, [r2 + 6 * mmsize]
+    movu        m3, [r2 + 7 * mmsize]
+    psubw       m0, m2
+    psubw       m1, m3
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m4, m0
+    paddd       m7, m1
+
+    add         r0, r1
+    add         r2, r3
+
+    dec         r4d
+    jnz         .loop
+
+    mova        m0, m4
+    pxor        m1, m1
+    punpckldq   m0, m1
+    punpckhdq   m4, m1
+    paddq       m5, m0
+    paddq       m6, m4
+
+    mova        m0, m7
+    punpckldq   m0, m1
+    punpckhdq   m7, m1
+    paddq       m5, m0
+    paddq       m6, m7
+
+    dec         r5
+    jne         .iterate
+
+    paddq       m5, m6
+    movhlps     m2, m5
+    paddq       m5, m2
+    movq        rax, m5
     RET
 %endmacro
 
@@ -265,8 +439,19 @@ cglobal pixel_ssd_ss_%1x%2, 4,7,8
     lea     r2,  [r2 + r6]
     dec     r4d
     jnz  .loop
+%if BIT_DEPTH == 10 && %1 == 64 && %2 ==64
+    movu        m5, m0
+    pxor        m6, m6
+    punpckldq   m0, m6
+    punpckhdq   m5, m6
+    paddq       m0, m5
+    movhlps     m5, m0
+    paddq       m0, m5
+    movq        rax, xm0
+%else 
     HADDD   m0, m5
     movd   eax, xm0
+%endif
     RET
 %endmacro
 %macro SSD_24 2
@@ -370,120 +555,146 @@ cglobal pixel_ssd_ss_%1x%2, 4,7,8
 %endmacro
 
 INIT_YMM avx2
-cglobal pixel_ssd_16x16, 4,7,8
+cglobal pixel_ssd_16x16, 4,7,3
     FIX_STRIDES r1, r3
-    lea     r5, [3 * r1]
-    lea     r6, [3 * r3]
-    mov    r4d, 4
-    pxor    m0, m0
+    lea             r5, [3 * r1]
+    lea             r6, [3 * r3]
+    mov             r4d, 4
+    pxor            m0, m0
 .loop:
-    movu    m1, [r0]
-    movu    m2, [r0 + r1]
-    movu    m3, [r0 + r1 * 2]
-    movu    m4, [r0 + r5]
-    movu    m6, [r2]
-    movu    m7, [r2 + r3]
-    psubw   m1, m6
-    psubw   m2, m7
-    movu    m6, [r2 + r3 * 2]
-    movu    m7, [r2 + r6]
-    psubw   m3, m6
-    psubw   m4, m7
+    movu            m1, [r0]
+    movu            m2, [r0 + r1] 
+    psubw           m1, [r2]
+    psubw           m2, [r2 + r3]
+    pmaddwd         m1, m1
+    pmaddwd         m2, m2
+    paddd           m0, m1
+    paddd           m0, m2
+    movu            m1, [r0 + r1 * 2]
+    movu            m2, [r0 + r5]
+    psubw           m1, [r2 + r3 * 2]
+    psubw           m2, [r2 + r6]
+    pmaddwd         m1, m1
+    pmaddwd         m2, m2
+    paddd           m0, m1
+    paddd           m0, m2
+    lea             r0, [r0 + r1 * 4]
+    lea             r2, [r2 + r3 * 4]
 
-    lea     r0, [r0 + r1 * 4]
-    lea     r2, [r2 + r3 * 4]
+    dec             r4d
+    jg              .loop
 
-    pmaddwd m1, m1
-    pmaddwd m2, m2
-    pmaddwd m3, m3
-    pmaddwd m4, m4
-    paddd   m1, m2
-    paddd   m3, m4
-    paddd   m0, m1
-    paddd   m0, m3
-
-    dec    r4d
-    jg .loop
-
-    HADDD   m0, m5
-    movd   eax, xm0
-    RET
+    mova            m1, m0
+    pxor            m2, m2
+    punpckldq       m0, m2
+    punpckhdq       m1, m2
+    paddq           m0, m1
+    vextracti128    xm2, m0, 1
+    paddq           xm2, xm0
+    movhlps         xm1, xm2
+    paddq           xm2, xm1
+    movq            rax, xm2
+    ret
 
 INIT_YMM avx2
-cglobal pixel_ssd_32x32, 4,7,8
-    add     r1, r1
-    add     r3, r3
-    mov     r4d, 16
-    pxor    m0, m0
-.loop:
-    movu    m1, [r0]
-    movu    m2, [r0 + 32]
-    movu    m3, [r0 + r1]
-    movu    m4, [r0 + r1 + 32]
-    movu    m6, [r2]
-    movu    m7, [r2 + 32]
-    psubw   m1, m6
-    psubw   m2, m7
-    movu    m6, [r2 + r3]
-    movu    m7, [r2 + r3 + 32]
-    psubw   m3, m6
-    psubw   m4, m7
+cglobal pixel_ssd_32x2
+    pxor            m0, m0
 
-    lea     r0, [r0 + r1 * 2]
-    lea     r2, [r2 + r3 * 2]
+    movu            m1, [r0]
+    movu            m2, [r0 + 32]
+    psubw           m1, [r2]
+    psubw           m2, [r2 + 32]
+    pmaddwd         m1, m1
+    pmaddwd         m2, m2
+    paddd           m0, m1
+    paddd           m0, m2
+    movu            m1, [r0 + r1]
+    movu            m2, [r0 + r1 + 32]
+    psubw           m1, [r2 + r3]
+    psubw           m2, [r2 + r3 + 32]
+    pmaddwd         m1, m1
+    pmaddwd         m2, m2
+    paddd           m0, m1
+    paddd           m0, m2
 
-    pmaddwd m1, m1
-    pmaddwd m2, m2
-    pmaddwd m3, m3
-    pmaddwd m4, m4
-    paddd   m1, m2
-    paddd   m3, m4
-    paddd   m0, m1
-    paddd   m0, m3
+    lea             r0, [r0 + r1 * 2]
+    lea             r2, [r2 + r3 * 2]
 
-    dec    r4d
-    jg .loop
 
-    HADDD   m0, m5
-    movd   eax, xm0
-    RET
+    mova            m1, m0
+    pxor            m2, m2
+    punpckldq       m0, m2
+    punpckhdq       m1, m2
+
+    paddq           m3, m0
+    paddq           m4, m1
+ret
 
 INIT_YMM avx2
-cglobal pixel_ssd_64x64, 4,7,8
-    FIX_STRIDES r1, r3
-    mov    r4d, 64
-    pxor    m0, m0
+cglobal pixel_ssd_32x32, 4,5,5
+    add             r1, r1
+    add             r3, r3
+    pxor            m3, m3
+    pxor            m4, m4
+    mov             r4, 16
+.iterate:
+    call            pixel_ssd_32x2
+    dec             r4d
+    jne             .iterate
+
+    paddq           m3, m4
+    vextracti128    xm4, m3, 1
+    paddq           xm3, xm4
+    movhlps         xm4, xm3
+    paddq           xm3, xm4
+    movq            rax, xm3
+RET
+
+INIT_YMM avx2
+cglobal pixel_ssd_64x64, 4,5,5
+    FIX_STRIDES     r1, r3
+    mov             r4d, 64
+    pxor            m3, m3
+    pxor            m4, m4
 .loop:
-    movu    m1, [r0]
-    movu    m2, [r0+32]
-    movu    m3, [r0+32*2]
-    movu    m4, [r0+32*3]
-    movu    m6, [r2]
-    movu    m7, [r2+32]
-    psubw   m1, m6
-    psubw   m2, m7
-    movu    m6, [r2+32*2]
-    movu    m7, [r2+32*3]
-    psubw   m3, m6
-    psubw   m4, m7
+    pxor            m0, m0
+    movu            m1, [r0]
+    movu            m2, [r0+32]
+    psubw           m1, [r2]
+    psubw           m2, [r2+32]
+    pmaddwd         m1, m1
+    pmaddwd         m2, m2
+    paddd           m0, m1
+    paddd           m0, m2
+    movu            m1, [r0+32*2]
+    movu            m2, [r0+32*3]
+    psubw           m1, [r2+32*2]
+    psubw           m2, [r2+32*3]
+    pmaddwd         m1, m1
+    pmaddwd         m2, m2
+    paddd           m0, m1
+    paddd           m0, m2
 
-    lea     r0, [r0+r1]
-    lea     r2, [r2+r3]
+    lea             r0, [r0+r1]
+    lea             r2, [r2+r3]
 
-    pmaddwd m1, m1
-    pmaddwd m2, m2
-    pmaddwd m3, m3
-    pmaddwd m4, m4
-    paddd   m1, m2
-    paddd   m3, m4
-    paddd   m0, m1
-    paddd   m0, m3
+    mova            m1, m0
+    pxor            m2, m2
+    punpckldq       m0, m2
+    punpckhdq       m1, m2
 
-    dec    r4d
-    jg .loop
+    paddq           m3, m0
+    paddq           m4, m1
 
-    HADDD   m0, m5
-    movd   eax, xm0
+    dec             r4d
+    jg              .loop
+
+    paddq           m3, m4
+    vextracti128    xm4, m3, 1
+    paddq           xm3, xm4
+    movhlps         xm4, xm3
+    paddq           xm3, xm4
+    movq            rax, xm3
     RET
 
 INIT_MMX mmx2
@@ -511,24 +722,23 @@ SSD_24     24, 32
 SSD_ONE    32,  8
 SSD_ONE    32, 16
 SSD_ONE    32, 24
-SSD_ONE    32, 32
 
 %if BIT_DEPTH <= 10
     SSD_ONE    32, 64
+    SSD_ONE    32, 32
+    SSD_TWO    64, 64
 %else
     SSD_ONE_32
+    SSD_ONE_SS_32
+    SSD_ONE_SS_64
 %endif
-
 SSD_TWO    48, 64
 SSD_TWO    64, 16
 SSD_TWO    64, 32
 SSD_TWO    64, 48
-SSD_TWO    64, 64
+
 INIT_YMM avx2
-SSD_ONE    16,  8
-SSD_ONE    16, 16
-SSD_ONE    32, 32
-SSD_ONE    64, 64
+SSD_ONE    16, 8
 SSD_ONE    16, 32
 SSD_ONE    32, 64
 %endif ; HIGH_BIT_DEPTH
@@ -1002,6 +1212,172 @@ SSD_SS_24
 SSD_SS_32xN
 SSD_SS_48
 SSD_SS_64xN
+
+INIT_YMM avx2
+cglobal pixel_ssd_ss_16x16, 4,6,4
+    add         r1d, r1d
+    add         r3d, r3d
+    pxor        m2, m2
+    pxor        m3, m3
+    lea         r4, [3 * r1]
+    lea         r5, [3 * r3]
+
+    movu        m0, [r0]
+    movu        m1, [r0 + r1]
+    psubw       m0, [r2]
+    psubw       m1, [r2 + r3]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+
+    movu        m0, [r0 + 2 * r1]
+    movu        m1, [r0 + r4]
+    psubw       m0, [r2 + 2 * r3]
+    psubw       m1, [r2 + r5]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+
+    lea         r0, [r0 + 4 * r1]
+    lea         r2, [r2 + 4 * r3]
+
+    movu        m0, [r0]
+    movu        m1, [r0 + r1]
+    psubw       m0, [r2]
+    psubw       m1, [r2 + r3]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+
+    movu        m0, [r0 + 2 * r1]
+    movu        m1, [r0 + r4]
+    psubw       m0, [r2 + 2 * r3]
+    psubw       m1, [r2 + r5]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+
+    lea         r0, [r0 + 4 * r1]
+    lea         r2, [r2 + 4 * r3]
+
+    movu        m0, [r0]
+    movu        m1, [r0 + r1]
+    psubw       m0, [r2]
+    psubw       m1, [r2 + r3]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+
+    movu        m0, [r0 + 2 * r1]
+    movu        m1, [r0 + r4]
+    psubw       m0, [r2 + 2 * r3]
+    psubw       m1, [r2 + r5]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+
+    lea         r0, [r0 + 4 * r1]
+    lea         r2, [r2 + 4 * r3]
+
+    movu        m0, [r0]
+    movu        m1, [r0 + r1]
+    psubw       m0, [r2]
+    psubw       m1, [r2 + r3]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+
+    movu        m0, [r0 + 2 * r1]
+    movu        m1, [r0 + r4]
+    psubw       m0, [r2 + 2 * r3]
+    psubw       m1, [r2 + r5]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+
+    paddd       m2, m3
+    HADDD       m2, m0
+    movd        eax, xm2
+    RET
+
+INIT_YMM avx2
+cglobal pixel_ssd_ss_32x32, 4,5,4
+    add         r1d, r1d
+    add         r3d, r3d
+    pxor        m2, m2
+    pxor        m3, m3
+    mov         r4d, 16
+.loop:
+    movu        m0, [r0]
+    movu        m1, [r0 + mmsize] 
+    psubw       m0, [r2]
+    psubw       m1, [r2 + mmsize]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+    movu        m0, [r0 + r1]
+    movu        m1, [r0 + r1 + mmsize]
+    psubw       m0, [r2 + r3]
+    psubw       m1, [r2 + r3 + mmsize]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+    lea         r0, [r0 + 2 * r1]
+    lea         r2, [r2 + 2 * r3]
+    dec         r4d
+    jne         .loop
+
+    paddd       m2, m3
+    HADDD       m2, m0
+    movd        eax, xm2
+    RET
+
+INIT_YMM avx2
+cglobal pixel_ssd_ss_64x64, 4,5,4
+    add         r1d, r1d
+    add         r3d, r3d
+    pxor        m2, m2
+    pxor        m3, m3
+    mov         r4d,64
+.loop:
+    movu        m0, [r0]
+    movu        m1, [r0 + mmsize]
+    psubw       m0, [r2]
+    psubw       m1, [r2 + mmsize]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+    movu        m0, [r0 + 2 * mmsize]
+    movu        m1, [r0 + 3 * mmsize]
+    psubw       m0, [r2 + 2 * mmsize]
+    psubw       m1, [r2 + 3 * mmsize]
+    pmaddwd     m0, m0
+    pmaddwd     m1, m1
+    paddd       m2, m0
+    paddd       m3, m1
+
+    add         r0, r1
+    add         r2, r3
+
+    dec         r4d
+    jne         .loop
+
+    paddd       m2, m3
+    HADDD       m2, m0
+    movd        eax, xm2
+    RET
+
 %endif ; !HIGH_BIT_DEPTH
 
 %if HIGH_BIT_DEPTH == 0
@@ -2729,9 +3105,20 @@ cglobal pixel_ssd_s_32, 2,3,5
     dec     r2d
     jnz    .loop
 
+%if BIT_DEPTH >= 10
+    movu            m1, m0
+    pxor            m2, m2
+    punpckldq       m0, m2
+    punpckhdq       m1, m2
+    paddq           m0, m1
+    movhlps         m1, m0
+    paddq           m0, m1
+    movq            rax, xm0
+%else
     ; calculate sum and return
     HADDD   m0, m1
     movd    eax, m0
+%endif
     RET
 
 INIT_YMM avx2
@@ -2803,8 +3190,20 @@ cglobal pixel_ssd_s_32, 2,4,5
 
     dec     r2d
     jnz    .loop
-
+%if BIT_DEPTH >= 10
+    movu            m1, m0
+    pxor            m2, m2
+    punpckldq       m0, m2
+    punpckhdq       m1, m2
+    paddq           m0, m1
+    vextracti128    xm2, m0, 1
+    paddq           xm2, xm0
+    movhlps         xm1, xm2
+    paddq           xm2, xm1
+    movq            rax, xm2
+%else
     ; calculate sum and return
     HADDD   m0, m1
     movd    eax, xm0
+%endif
     RET

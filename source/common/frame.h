@@ -59,8 +59,12 @@ public:
     bool                   m_lowresInit;         // lowres init complete (pre-analysis)
     bool                   m_bChromaExtended;    // orig chroma planes motion extended for weight analysis
 
+    float*                 m_quantOffsets;       // points to quantOffsets in x265_picture
+
     /* Frame Parallelism - notification between FrameEncoders of available motion reference rows */
     ThreadSafeInteger      m_reconRowCount;      // count of CTU rows completely reconstructed and extended for motion reference
+    ThreadSafeInteger*     m_reconColCount;      // count of CTU cols completely reconstructed and extended for motion reference
+    int32_t                m_numRows;
     volatile uint32_t      m_countRefEncoders;   // count of FrameEncoder threads monitoring m_reconRowCount
 
     Frame*                 m_next;               // PicList doubly linked list pointers
@@ -69,7 +73,7 @@ public:
     x265_analysis_data     m_analysisData;
     Frame();
 
-    bool create(x265_param *param);
+    bool create(x265_param *param, float* quantOffsets);
     bool allocEncodeData(x265_param *param, const SPS& sps);
     void reinit(const SPS& sps);
     void destroy();

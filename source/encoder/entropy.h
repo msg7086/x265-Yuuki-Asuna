@@ -2,6 +2,7 @@
 * Copyright (C) 2013 x265 project
 *
 * Authors: Steve Borho <steve@borho.org>
+*          Min Chen <chenm003@163.com>
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -245,6 +246,8 @@ private:
     void codeLastSignificantXY(uint32_t posx, uint32_t posy, uint32_t log2TrSize, bool bIsLuma, uint32_t scanIdx);
 
     void encodeTransform(const CUData& cu, uint32_t absPartIdx, uint32_t tuDepth, uint32_t log2TrSize,
+                         bool& bCodeDQP, const uint32_t depthRange[2]);
+    void encodeTransformLuma(const CUData& cu, uint32_t absPartIdx, uint32_t tuDepth, uint32_t log2TrSize,
                          bool& bCodeDQP, const uint32_t depthRange[2]);
 
     void copyFrom(const Entropy& src);

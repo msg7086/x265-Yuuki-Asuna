@@ -84,8 +84,8 @@ Logging/Statistic Options
 	it adds one line per run. If :option:`--csv-log-level` is greater than
 	0, it writes one line per frame. Default none
 
-	When frame level logging is enabled, several frame performance
-	statistics are listed:
+	Several frame performance statistics are available when 
+	:option:`--csv-log-level` is greater than or equal to 2:
 
 	**DecideWait ms** number of milliseconds the frame encoder had to
 	wait, since the previous frame was retrieved by the API thread,
@@ -202,15 +202,29 @@ Performance Options
 	"-"       - same as "none"
 	"10"      - allocate one pool, using up to 10 cores on node 0
 	"-,+"     - allocate one pool, using all cores on node 1
-	"+,-,+"   - allocate two pools, using all cores on nodes 0 and 2
-	"+,-,+,-" - allocate two pools, using all cores on nodes 0 and 2
-	"-,*"     - allocate three pools, using all cores on nodes 1, 2 and 3
+	"+,-,+"   - allocate one pool, using only cores on nodes 0 and 2
+	"+,-,+,-" - allocate one pool, using only cores on nodes 0 and 2
+	"-,*"     - allocate one pool, using all cores on nodes 1, 2 and 3
 	"8,8,8,8" - allocate four pools with up to 8 threads in each pool
+	"8,+,+,+" - allocate two pools, the first with 8 threads on node 0, and the second with all cores on node 1,2,3
 
-	The total number of threads will be determined by the number of threads
-	assigned to all nodes. The worker threads will each be given affinity for
-	their node, they will not be allowed to migrate between nodes, but they
-	will be allowed to move between CPU cores within their node.
+	A thread pool dedicated to a given NUMA node is enabled only when the
+	number of threads to be created on that NUMA node is explicitly mentioned
+	in that corresponding position with the --pools option. Else, all threads
+	are spawned from a single pool. The total number of threads will be
+	determined by the number of threads assigned to the enabled NUMA nodes for
+	that pool. The worker threads are be given affinity to all the enabled
+	NUMA nodes for that pool and may migrate between them, unless explicitly
+	specified as described above.
+
+	In the case that any threadpool has more than 64 threads, the threadpool
+	may be broken down into multiple pools of 64 threads each; on 32-bit
+	machines, this number is 32. All pools are given affinity to the NUMA
+	nodes on which the original pool had affinity. For performance reasons,
+	the last thread pool is spawned only if it has more than 32 threads for
+	64-bit machines, or 16 for 32-bit machines. If the total number of threads
+	in the system doesn't obey this constraint, we may spawn fewer threads
+	than cores which has been emperically shown to be better for performance. 
 
 	If the four pool features: :option:`--wpp`, :option:`--pmode`,
 	:option:`--pme` and :option:`--lookahead-slices` are all disabled,
@@ -218,10 +232,6 @@ Performance Options
 
 	If "none" is specified, then all four of the thread pool features are
 	implicitly disabled.
-
-	Multiple thread pools will be allocated for any NUMA node with more than
-	64 logical CPU cores. But any given thread pool will always use at most
-	one NUMA node.
 
 	Frame encoders are distributed between the available thread pools,
 	and the encoder will never generate more thread pools than
@@ -238,8 +248,12 @@ Performance Options
 	system, a POSIX build of libx265 without libnuma will be less work
 	efficient. See :ref:`thread pools <pools>` for more detail.
 
-	Default "", one thread is allocated per detected hardware thread
-	(logical CPU cores) and one thread pool per NUMA node.
+	Default "", one pool is created across all available NUMA nodes, with
+	one thread allocated per detected hardware thread
+	(logical CPU cores). In the case that the total number of threads is more
+	than the maximum size that ATOMIC operations can handle (32 for 32-bit
+	compiles, and 64 for 64-bit compiles), multiple thread pools may be
+	spawned subject to the performance constraint described above.
 
 	Note that the string value will need to be escaped or quoted to
 	protect against shell expansion on many platforms
@@ -353,7 +367,7 @@ frame counts) are only applicable to the CLI application.
 
 	**CLI ONLY**
 
-.. option:: --total-frames <integer>
+.. option:: --frames <integer>
 
 	The number of frames intended to be encoded.  It may be left
 	unspecified, but when it is specified rate control can make use of
@@ -377,15 +391,15 @@ frame counts) are only applicable to the CLI application.
 
 .. option:: --input-csp <integer|string>
 
-	YUV only: Source color space. Only i420, i422, and i444 are
-	supported at this time. The internal color space is always the
-	same as the source color space (libx265 does not support any color
-	space conversions).
+	Chroma Subsampling (YUV only):  Only 4:0:0(monochrome), 4:2:0, 4:2:2, and 4:4:4 are supported at this time. 
+	The chroma subsampling format of your input must match your desired output chroma subsampling format 
+	(libx265 will not perform any chroma subsampling conversion), and it must be supported by the 
+	HEVC profile you have specified.
 
-	0. i400
-	1. i420 **(default)**
-	2. i422
-	3. i444
+	0. i400 (4:0:0 monochrome) - Not supported by Main or Main10 profiles
+	1. i420 (4:2:0 default)    - Supported by all HEVC profiles
+	2. i422 (4:2:2)            - Not supported by Main, Main10 and Main12 profiles
+	3. i444 (4:4:4)            - Supported by Main 4:4:4, Main 4:4:4 10, Main 4:4:4 12, Main 4:4:4 16 Intra profiles
 	4. nv12
 	5. nv16
 
@@ -436,8 +450,8 @@ frame counts) are only applicable to the CLI application.
 	depth of the encoder. If the requested bit depth is not the bit
 	depth of the linked libx265, it will attempt to bind libx265_main
 	for an 8bit encoder, libx265_main10 for a 10bit encoder, or
-	libx265_main12 for a 12bit encoder (EXPERIMENTAL), with the
-	same API version as the linked libx265.
+	libx265_main12 for a 12bit encoder, with the same API version as the
+	linked libx265.
 
 	If the output depth is not specified but :option:`--profile` is
 	specified, the output depth will be derived from the profile name.
@@ -485,13 +499,6 @@ Profile, Level, Tier
 
 	The CLI application will derive the output bit depth from the
 	profile name if :option:`--output-depth` is not specified.
-
-.. note::
-
-	All 12bit presets are extremely unstable, do not use them yet.
-	16bit is not supported at all, but those profiles are included
-	because it is possible for libx265 to make bitstreams compatible
-	with them.
 
 .. option:: --level-idc <integer|float>
 
@@ -606,7 +613,8 @@ Mode decision / Analysis
 	+-------+---------------------------------------------------------------+
 	| Level | Description                                                   |
 	+=======+===============================================================+
-	| 0     | sa8d mode and split decisions, intra w/ source pixels         |
+	| 0     | sa8d mode and split decisions, intra w/ source pixels,        |
+	|       | currently not supported                                       |
 	+-------+---------------------------------------------------------------+
 	| 1     | recon generated (better intra), RDO merge/skip selection      |
 	+-------+---------------------------------------------------------------+
@@ -677,7 +685,16 @@ the prediction quad-tree.
 	(within your decoder level limits) if you enable one or
 	both of these flags.
 
-	This feature is EXPERIMENTAL and functional at all RD levels.
+	Default 3.
+
+.. option:: --limit-modes, --no-limit-modes
+    
+	When enabled, limit-modes will limit modes analyzed for each CU	using cost 
+	metrics from the 4 sub-CUs. When multiple inter modes like :option:`--rect`
+	and/or :option:`--amp` are enabled, this feature will use motion cost 
+	heuristics from the 4 sub-CUs to bypass modes that are unlikely to be the 
+	best choice. This can significantly improve performance when :option:`rect`
+	and/or :option:`--amp` are enabled at minimal compression efficiency loss.
 
 .. option:: --rect, --no-rect
 
@@ -1076,7 +1093,8 @@ Slice decision options
 
 	Max intra period in frames. A special case of infinite-gop (single
 	keyframe at the beginning of the stream) can be triggered with
-	argument -1. Use 1 to force all-intra. Default 250
+	argument -1. Use 1 to force all-intra. When intra-refresh is enabled
+	it specifies the interval between which refresh sweeps happen. Default 250
 
 .. option:: --min-keyint, -i <integer>
 
@@ -1095,6 +1113,14 @@ Slice decision options
 	:option:`--scenecut` 0 or :option:`--no-scenecut` disables adaptive
 	I frame placement. Default 40
 
+.. option:: --intra-refresh
+
+	Enables Periodic Intra Refresh(PIR) instead of keyframe insertion.
+	PIR can replace keyframes by inserting a column of intra blocks in 
+	non-keyframes, that move across the video from one side to the other
+	and thereby refresh the image but over a period of multiple 
+	frames instead of a single keyframe.
+
 .. option:: --rc-lookahead <integer>
 
 	Number of frames for slice-type decision lookahead (a key
@@ -1108,21 +1134,31 @@ Slice decision options
 
 .. option:: --lookahead-slices <0..16>
 
-	Use multiple worker threads to measure the estimated cost of each
-	frame within the lookahead. When :option:`--b-adapt` is 2, most
-	frame cost estimates will be performed in batch mode, many cost
-	estimates at the same time, and lookahead-slices is ignored for
-	batched estimates. The effect on performance can be quite small.
-	The higher this parameter, the less accurate the frame costs will be
-	(since context is lost across slice boundaries) which will result in
-	less accurate B-frame and scene-cut decisions.
+	Use multiple worker threads to measure the estimated cost of each frame
+	within the lookahead. The frame is divided into the specified number of
+	slices, and one-thread is launched  per slice. When :option:`--b-adapt` is
+	2, most frame cost estimates will be performed in batch mode (many cost
+	estimates at the same time) and lookahead-slices is ignored for batched
+	estimates; it may still be used for single cost estimations. The higher this
+	parameter, the less accurate the frame costs will be (since context is lost
+	across slice boundaries) which will result in less accurate B-frame and
+	scene-cut decisions. The effect on performance can be significant especially
+	on systems with many threads.
 
-	The encoder may internally lower the number of slices to ensure
-	each slice codes at least 10 16x16 rows of lowres blocks. If slices
-	are used in lookahead, they are logged in the list of tools as
-	*lslices*.
-	
-	**Values:** 0 - disabled (default). 1 is the same as 0. Max 16
+	The encoder may internally lower the number of slices or disable
+    slicing to ensure each slice codes at least 10 16x16 rows of lowres
+    blocks to minimize the impact on quality. For example, for 720p and
+    1080p videos, the number of slices is capped to 4 and 6, respectively.
+    For resolutions lesser than 720p, slicing is auto-disabled.
+        
+    If slices are used in lookahead, they are logged in the list of tools
+    as *lslices*
+
+	**Values:** 0 - disabled. 1 is the same as 0. Max 16.
+    Default: 8 for ultrafast, superfast, faster, fast, medium
+             4 for slow, slower
+             disabled for veryslow, slower
+
 
 .. option:: --b-adapt <integer>
 
@@ -1197,6 +1233,13 @@ Quality, rate control and rate distortion options
 	Maximum local bitrate (kbits/sec). Will be used only if vbv-bufsize
 	is also non-zero. Both vbv-bufsize and vbv-maxrate are required to
 	enable VBV in CRF mode. Default 0 (disabled)
+
+	Note that when VBV is enabled (with a valid :option:`--vbv-bufsize`),
+	VBV emergency denoising is turned on. This will turn on aggressive 
+	denoising at the frame level when frame QP > QP_MAX_SPEC (51), drastically
+	reducing bitrate and allowing ratecontrol to assign lower QPs for
+	the following frames. The visual effect is blurring, but removes 
+	significant blocking/displacement artifacts.
 
 .. option:: --vbv-init <float>
 
@@ -1405,10 +1448,11 @@ other levels.
 
 	framenumber frametype QP
 
-	Frametype can be one of [I,i,P,B,b]. **B** is a referenced B frame,
+	Frametype can be one of [I,i,K,P,B,b]. **B** is a referenced B frame,
 	**b** is an unreferenced B frame.  **I** is a keyframe (random
-	access point) while **i** is a I frame that is not a keyframe
-	(references are not broken).
+	access point) while **i** is an I frame that is not a keyframe
+	(references are not broken). **K** implies **I** if closed_gop option
+	is enabled, and **i** otherwise.
 
 	Specifying QP (integer) is optional, and if specified they are
 	clamped within the encoder to qpmin/qpmax.
@@ -1551,7 +1595,7 @@ VUI fields must be manually specified.
 
 .. option:: --colorprim <integer|string>
 
-	Specify color primitive to use when converting to RGB. Default
+	Specify color primaries to use when converting to RGB. Default
 	undefined (not signaled)
 
 	1. bt709
@@ -1621,7 +1665,7 @@ VUI fields must be manually specified.
 
 	Example for D65P3 1000-nits:
 
-		G(13200,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1)
+		G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1)
 
 	Note that this string value will need to be escaped or quoted to
 	protect against shell expansion on many platforms. No default.
@@ -1639,6 +1683,16 @@ VUI fields must be manually specified.
 
 	Note that this string value will need to be escaped or quoted to
 	protect against shell expansion on many platforms. No default.
+
+.. option:: --min-luma <integer>
+
+	Minimum luma value allowed for input pictures. Any values below min-luma
+	are clipped. Experimental. No default.
+
+.. option:: --max-luma <integer>
+
+	Maximum luma value allowed for input pictures. Any values above max-luma
+	are clipped. Experimental. No default.
 
 Bitstream options
 =================

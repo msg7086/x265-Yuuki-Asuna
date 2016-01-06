@@ -2,6 +2,7 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Steve Borho <steve@borho.org>
+ *          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -462,7 +463,7 @@ int x265_param_apply_profile(x265_param *param, const char *profile)
     {
         if (param->internalCsp != X265_CSP_I420)
         {
-            x265_log(param, X265_LOG_ERROR, "%s profile not compatible with %s input color space.\n",
+            x265_log(param, X265_LOG_ERROR, "%s profile not compatible with %s input chroma subsampling.\n",
                      profile, x265_source_csp_names[param->internalCsp]);
             return -1;
         }
@@ -472,7 +473,7 @@ int x265_param_apply_profile(x265_param *param, const char *profile)
     {
         if (param->internalCsp != X265_CSP_I420 && param->internalCsp != X265_CSP_I422)
         {
-            x265_log(param, X265_LOG_ERROR, "%s profile not compatible with %s input color space.\n",
+            x265_log(param, X265_LOG_ERROR, "%s profile not compatible with %s input chroma subsampling.\n",
                      profile, x265_source_csp_names[param->internalCsp]);
             return -1;
         }

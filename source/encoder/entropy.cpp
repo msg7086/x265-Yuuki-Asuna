@@ -2,6 +2,7 @@
 * Copyright (C) 2013 x265 project
 *
 * Authors: Steve Borho <steve@borho.org>
+*          Min Chen <chenm003@163.com>
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -429,7 +430,8 @@ void Entropy::codeSliceHeader(const Slice& slice, FrameData& encData)
     if (slice.m_sps->bUseSAO)
     {
         WRITE_FLAG(saoParam->bSaoFlag[0], "slice_sao_luma_flag");
-        WRITE_FLAG(saoParam->bSaoFlag[1], "slice_sao_chroma_flag");
+        if (encData.m_param->internalCsp != X265_CSP_I400)
+            WRITE_FLAG(saoParam->bSaoFlag[1], "slice_sao_chroma_flag");
     }
 
     // check if numRefIdx match the defaults (1, hard-coded in PPS). If not, override
@@ -828,6 +830,79 @@ void Entropy::encodeTransform(const CUData& cu, uint32_t absPartIdx, uint32_t cu
     }
 }
 
+void Entropy::encodeTransformLuma(const CUData& cu, uint32_t absPartIdx, uint32_t curDepth, uint32_t log2CurSize,
+                              bool& bCodeDQP, const uint32_t depthRange[2])
+{
+    const bool subdiv = cu.m_tuDepth[absPartIdx] > curDepth;
+
+    /* in each of these conditions, the subdiv flag is implied and not signaled,
+     * so we have checks to make sure the implied value matches our intentions */
+    if (cu.isIntra(absPartIdx) && cu.m_partSize[absPartIdx] != SIZE_2Nx2N && log2CurSize == MIN_LOG2_CU_SIZE)
+    {
+        X265_CHECK(subdiv, "intra NxN requires TU depth below CU depth\n");
+    }
+    else if (cu.isInter(absPartIdx) && cu.m_partSize[absPartIdx] != SIZE_2Nx2N &&
+             !curDepth && cu.m_slice->m_sps->quadtreeTUMaxDepthInter == 1)
+    {
+        X265_CHECK(subdiv, "inter TU must be smaller than CU when not 2Nx2N part size: log2CurSize %d, depthRange[0] %d\n", log2CurSize, depthRange[0]);
+    }
+    else if (log2CurSize > depthRange[1])
+    {
+        X265_CHECK(subdiv, "TU is larger than the max allowed, it should have been split\n");
+    }
+    else if (log2CurSize == cu.m_slice->m_sps->quadtreeTULog2MinSize || log2CurSize == depthRange[0])
+    {
+        X265_CHECK(!subdiv, "min sized TU cannot be subdivided\n");
+    }
+    else
+    {
+        X265_CHECK(log2CurSize > depthRange[0], "transform size failure\n");
+        codeTransformSubdivFlag(subdiv, 5 - log2CurSize);
+    }
+
+    if (subdiv)
+    {
+        --log2CurSize;
+        ++curDepth;
+
+        uint32_t qNumParts = 1 << (log2CurSize - LOG2_UNIT_SIZE) * 2;
+
+        encodeTransformLuma(cu, absPartIdx + 0 * qNumParts, curDepth, log2CurSize, bCodeDQP, depthRange);
+        encodeTransformLuma(cu, absPartIdx + 1 * qNumParts, curDepth, log2CurSize, bCodeDQP, depthRange);
+        encodeTransformLuma(cu, absPartIdx + 2 * qNumParts, curDepth, log2CurSize, bCodeDQP, depthRange);
+        encodeTransformLuma(cu, absPartIdx + 3 * qNumParts, curDepth, log2CurSize, bCodeDQP, depthRange);
+        return;
+    }
+
+    if (!cu.isIntra(absPartIdx) && !curDepth)
+    {
+        X265_CHECK(cu.getCbf(absPartIdx, TEXT_LUMA, 0), "CBF should have been set\n");
+    }
+    else
+        codeQtCbfLuma(cu, absPartIdx, curDepth);
+
+    uint32_t cbfY = cu.getCbf(absPartIdx, TEXT_LUMA, curDepth);
+
+    if (!cbfY)
+        return;
+
+    // dQP: only for CTU once
+    if (cu.m_slice->m_pps->bUseDQP && bCodeDQP)
+    {
+        uint32_t log2CUSize = cu.m_log2CUSize[absPartIdx];
+        uint32_t absPartIdxLT = absPartIdx & (0xFF << (log2CUSize - LOG2_UNIT_SIZE) * 2);
+        codeDeltaQP(cu, absPartIdxLT);
+        bCodeDQP = false;
+    }
+
+    if (cbfY)
+    {
+        uint32_t coeffOffset = absPartIdx << (LOG2_UNIT_SIZE * 2);
+        codeCoeffNxN(cu, cu.m_trCoeff[0] + coeffOffset, absPartIdx, log2CurSize, TEXT_LUMA);
+    }
+}
+
+
 void Entropy::codePredInfo(const CUData& cu, uint32_t absPartIdx)
 {
     if (cu.isIntra(absPartIdx)) // If it is intra mode, encode intra prediction mode.
@@ -908,7 +983,10 @@ void Entropy::codeCoeff(const CUData& cu, uint32_t absPartIdx, bool& bCodeDQP, c
     }
 
     uint32_t log2CUSize = cu.m_log2CUSize[absPartIdx];
-    encodeTransform(cu, absPartIdx, 0, log2CUSize, bCodeDQP, depthRange);
+    if (cu.m_chromaFormat == X265_CSP_I400)
+        encodeTransformLuma(cu, absPartIdx, 0, log2CUSize, bCodeDQP, depthRange);
+    else
+        encodeTransform(cu, absPartIdx, 0, log2CUSize, bCodeDQP, depthRange);
 }
 
 void Entropy::codeSaoOffset(const SaoCtuParam& ctuParam, int plane)
@@ -1010,7 +1088,7 @@ void Entropy::resetEntropy(const Slice& slice)
 void Entropy::codePredWeightTable(const Slice& slice)
 {
     const WeightParam *wp;
-    bool            bChroma      = true; // 4:0:0 not yet supported
+    bool            bChroma = slice.m_sps->chromaFormatIdc != X265_CSP_I400;
     bool            bDenomCoded  = false;
     int             numRefDirs   = slice.m_sliceType == B_SLICE ? 2 : 1;
     uint32_t        totalSignalledWeightFlags = 0;
@@ -1565,10 +1643,15 @@ void Entropy::codeCoeffNxN(const CUData& cu, const coeff_t* coeff, uint32_t absP
     uint8_t * const baseCtx = bIsLuma ? &m_contextState[OFF_SIG_FLAG_CTX] : &m_contextState[OFF_SIG_FLAG_CTX + NUM_SIG_FLAG_CTX_LUMA];
     uint32_t c1 = 1;
     int scanPosSigOff = scanPosLast - (lastScanSet << MLS_CG_SIZE) - 1;
-    ALIGN_VAR_32(uint16_t, absCoeff[(1 << MLS_CG_SIZE)]);
+    ALIGN_VAR_32(uint16_t, absCoeff[(1 << MLS_CG_SIZE) + 1]);   // extra 2 bytes(+1) space for AVX2 assembly, +1 because (numNonZero<=1) in costCoeffNxN path
     uint32_t numNonZero = 1;
     unsigned long lastNZPosInCG;
     unsigned long firstNZPosInCG;
+
+#if _DEBUG
+    // Unnecessary, for Valgrind-3.10.0 only
+    memset(absCoeff, 0, sizeof(absCoeff));
+#endif
 
     absCoeff[0] = (uint16_t)abs(coeff[posLast]);
 
@@ -1715,6 +1798,7 @@ void Entropy::codeCoeffNxN(const CUData& cu, const coeff_t* coeff, uint32_t absP
             {
                 // maximum g_entropyBits are 18-bits and maximum of count are 16, so intermedia of sum are 22-bits
                 const uint8_t *tabSigCtx = table_cnt[(log2TrSize == 2) ? 4 : (uint32_t)patternSigCtx];
+                X265_CHECK(numNonZero <= 1, "numNonZero check failure");
                 uint32_t sum = primitives.costCoeffNxN(g_scan4x4[codingParameters.scanType], &coeff[blkPosBase], (intptr_t)trSize, absCoeff + numNonZero, tabSigCtx, scanFlagMask, baseCtx, offset + posOffset, scanPosSigOff, subPosBase);
 
 #if CHECKED_BUILD || _DEBUG
@@ -1919,43 +2003,78 @@ void Entropy::estSignificantMapBit(EstBitsSbac& estBitsSbac, uint32_t log2TrSize
         numCtx = bIsLuma ? 12 : 3;
     }
 
+    const int ctxSigOffset = OFF_SIG_FLAG_CTX + (bIsLuma ? 0 : NUM_SIG_FLAG_CTX_LUMA);
+
+    estBitsSbac.significantBits[0][0] = sbacGetEntropyBits(m_contextState[ctxSigOffset], 0);
+    estBitsSbac.significantBits[1][0] = sbacGetEntropyBits(m_contextState[ctxSigOffset], 1);
+
+    for (int ctxIdx = firstCtx; ctxIdx < firstCtx + numCtx; ctxIdx++)
+    {
+        estBitsSbac.significantBits[0][ctxIdx] = sbacGetEntropyBits(m_contextState[ctxSigOffset + ctxIdx], 0);
+        estBitsSbac.significantBits[1][ctxIdx] = sbacGetEntropyBits(m_contextState[ctxSigOffset + ctxIdx], 1);
+    }
+
+    const uint32_t maxGroupIdx = log2TrSize * 2 - 1;
     if (bIsLuma)
     {
-        for (uint32_t bin = 0; bin < 2; bin++)
-            estBitsSbac.significantBits[bin][0] = sbacGetEntropyBits(m_contextState[OFF_SIG_FLAG_CTX], bin);
+        if (log2TrSize == 2)
+        {
+            for (int i = 0, ctxIdx = 0; i < 2; i++, ctxIdx += NUM_CTX_LAST_FLAG_XY)
+            {
+                int bits = 0;
+                const uint8_t *ctxState = &m_contextState[OFF_CTX_LAST_FLAG_X + ctxIdx];
 
-        for (int ctxIdx = firstCtx; ctxIdx < firstCtx + numCtx; ctxIdx++)
-            for (uint32_t bin = 0; bin < 2; bin++)
-                estBitsSbac.significantBits[bin][ctxIdx] = sbacGetEntropyBits(m_contextState[OFF_SIG_FLAG_CTX + ctxIdx], bin);
+                for (uint32_t ctx = 0; ctx < 3; ctx++)
+                {
+                    estBitsSbac.lastBits[i][ctx] = bits + sbacGetEntropyBits(ctxState[ctx], 0);
+                    bits += sbacGetEntropyBits(ctxState[ctx], 1);
+                }
+
+                estBitsSbac.lastBits[i][maxGroupIdx] = bits;
+            }
+        }
+        else
+        {
+            const int blkSizeOffset = ((log2TrSize - 2) * 3 + (log2TrSize == 5));
+
+            for (int i = 0, ctxIdx = 0; i < 2; i++, ctxIdx += NUM_CTX_LAST_FLAG_XY)
+            {
+                int bits = 0;
+                const uint8_t *ctxState = &m_contextState[OFF_CTX_LAST_FLAG_X + ctxIdx];
+                X265_CHECK(maxGroupIdx & 1, "maxGroupIdx check failure\n");
+
+                for (uint32_t ctx = 0; ctx < (maxGroupIdx >> 1) + 1; ctx++)
+                {
+                    const int cost0 = sbacGetEntropyBits(ctxState[blkSizeOffset + ctx], 0);
+                    const int cost1 = sbacGetEntropyBits(ctxState[blkSizeOffset + ctx], 1);
+                    estBitsSbac.lastBits[i][ctx * 2 + 0] = bits + cost0;
+                    estBitsSbac.lastBits[i][ctx * 2 + 1] = bits + cost1 + cost0;
+                    bits += 2 * cost1;
+                }
+                // correct latest bit cost, it didn't include cost0
+                estBitsSbac.lastBits[i][maxGroupIdx] -= sbacGetEntropyBits(ctxState[blkSizeOffset + (maxGroupIdx >> 1)], 0);
+            }
+        }
     }
     else
     {
-        for (uint32_t bin = 0; bin < 2; bin++)
-            estBitsSbac.significantBits[bin][0] = sbacGetEntropyBits(m_contextState[OFF_SIG_FLAG_CTX + (NUM_SIG_FLAG_CTX_LUMA + 0)], bin);
+        const int blkSizeOffset = NUM_CTX_LAST_FLAG_XY_LUMA;
+        const int ctxShift = log2TrSize - 2;
 
-        for (int ctxIdx = firstCtx; ctxIdx < firstCtx + numCtx; ctxIdx++)
-            for (uint32_t bin = 0; bin < 2; bin++)
-                estBitsSbac.significantBits[bin][ctxIdx] = sbacGetEntropyBits(m_contextState[OFF_SIG_FLAG_CTX + (NUM_SIG_FLAG_CTX_LUMA + ctxIdx)], bin);
-    }
-
-    int blkSizeOffset = bIsLuma ? ((log2TrSize - 2) * 3 + ((log2TrSize - 1) >> 2)) : NUM_CTX_LAST_FLAG_XY_LUMA;
-    int ctxShift = bIsLuma ? ((log2TrSize + 1) >> 2) : log2TrSize - 2;
-    uint32_t maxGroupIdx = log2TrSize * 2 - 1;
-
-    uint32_t ctx;
-    for (int i = 0, ctxIdx = 0; i < 2; i++, ctxIdx += NUM_CTX_LAST_FLAG_XY)
-    {
-        int bits = 0;
-        const uint8_t *ctxState = &m_contextState[OFF_CTX_LAST_FLAG_X + ctxIdx];
-
-        for (ctx = 0; ctx < maxGroupIdx; ctx++)
+        for (int i = 0, ctxIdx = 0; i < 2; i++, ctxIdx += NUM_CTX_LAST_FLAG_XY)
         {
-            int ctxOffset = blkSizeOffset + (ctx >> ctxShift);
-            estBitsSbac.lastBits[i][ctx] = bits + sbacGetEntropyBits(ctxState[ctxOffset], 0);
-            bits += sbacGetEntropyBits(ctxState[ctxOffset], 1);
-        }
+            int bits = 0;
+            const uint8_t *ctxState = &m_contextState[OFF_CTX_LAST_FLAG_X + ctxIdx];
 
-        estBitsSbac.lastBits[i][ctx] = bits;
+            for (uint32_t ctx = 0; ctx < maxGroupIdx; ctx++)
+            {
+                int ctxOffset = blkSizeOffset + (ctx >> ctxShift);
+                estBitsSbac.lastBits[i][ctx] = bits + sbacGetEntropyBits(ctxState[ctxOffset], 0);
+                bits += sbacGetEntropyBits(ctxState[ctxOffset], 1);
+            }
+
+            estBitsSbac.lastBits[i][maxGroupIdx] = bits;
+        }
     }
 }
 

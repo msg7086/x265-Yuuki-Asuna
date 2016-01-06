@@ -703,7 +703,10 @@ static uint32_t nquant_c(const int16_t* coef, const int32_t* quantCoeff, int16_t
         if (level)
             ++numSig;
         level *= sign;
-        qCoef[blockpos] = (int16_t)x265_clip3(-32768, 32767, level);
+
+        // TODO: when we limit range to [-32767, 32767], we can get more performance with output change
+        //       But nquant is a little percent in rdoQuant, so I keep old dynamic range for compatible
+        qCoef[blockpos] = (int16_t)abs(x265_clip3(-32768, 32767, level));
     }
 
     return numSig;
@@ -784,11 +787,12 @@ static int scanPosLast_c(const uint16_t *scan, const coeff_t *coeff, uint16_t *c
     return scanPosLast - 1;
 }
 
+// NOTE: no defined value on lastNZPosInCG & absSumSign when ALL ZEROS block as input
 static uint32_t findPosFirstLast_c(const int16_t *dstCoeff, const intptr_t trSize, const uint16_t scanTbl[16])
 {
     int n;
 
-    for (n = SCAN_SET_SIZE - 1; n >= 0; --n)
+    for (n = SCAN_SET_SIZE - 1; n >= 0; n--)
     {
         const uint32_t idx = scanTbl[n];
         const uint32_t idxY = idx / MLS_CG_SIZE;
@@ -812,8 +816,17 @@ static uint32_t findPosFirstLast_c(const int16_t *dstCoeff, const intptr_t trSiz
 
     uint32_t firstNZPosInCG = (uint32_t)n;
 
+    uint32_t absSumSign = 0;
+    for (n = firstNZPosInCG; n <= (int)lastNZPosInCG; n++)
+    {
+        const uint32_t idx = scanTbl[n];
+        const uint32_t idxY = idx / MLS_CG_SIZE;
+        const uint32_t idxX = idx % MLS_CG_SIZE;
+        absSumSign += dstCoeff[idxY * trSize + idxX];
+    }
+
     // NOTE: when coeff block all ZERO, the lastNZPosInCG is undefined and firstNZPosInCG is 16
-    return ((lastNZPosInCG << 16) | firstNZPosInCG);
+    return ((absSumSign << 31) | (lastNZPosInCG << 8) | firstNZPosInCG);
 }
 
 

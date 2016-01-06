@@ -33,22 +33,37 @@ Frame::Frame()
     m_bChromaExtended = false;
     m_lowresInit = false;
     m_reconRowCount.set(0);
+    m_reconColCount = NULL;
     m_countRefEncoders = 0;
     m_encData = NULL;
     m_reconPic = NULL;
+    m_quantOffsets = NULL;
     m_next = NULL;
     m_prev = NULL;
     m_param = NULL;
     memset(&m_lowres, 0, sizeof(m_lowres));
 }
 
-bool Frame::create(x265_param *param)
+bool Frame::create(x265_param *param, float* quantOffsets)
 {
     m_fencPic = new PicYuv;
     m_param = param;
 
-    return m_fencPic->create(param->sourceWidth, param->sourceHeight, param->internalCsp) &&
-           m_lowres.create(m_fencPic, param->bframes, !!param->rc.aqMode);
+    if (m_fencPic->create(param->sourceWidth, param->sourceHeight, param->internalCsp) &&
+        m_lowres.create(m_fencPic, param->bframes, !!param->rc.aqMode))
+    {
+        X265_CHECK((m_reconColCount == NULL), "m_reconColCount was initialized");
+        m_numRows = (m_fencPic->m_picHeight + g_maxCUSize - 1)  / g_maxCUSize;
+        m_reconColCount = new ThreadSafeInteger[m_numRows];
+
+        if (quantOffsets)
+        {
+            int32_t cuCount = m_lowres.maxBlocksInRow * m_lowres.maxBlocksInCol;
+            m_quantOffsets = new float[cuCount];
+        }
+        return true;
+    }
+    return false;
 }
 
 bool Frame::allocEncodeData(x265_param *param, const SPS& sps)
@@ -56,15 +71,27 @@ bool Frame::allocEncodeData(x265_param *param, const SPS& sps)
     m_encData = new FrameData;
     m_reconPic = new PicYuv;
     m_encData->m_reconPic = m_reconPic;
-    bool ok = m_encData->create(param, sps) && m_reconPic->create(param->sourceWidth, param->sourceHeight, param->internalCsp);
+    bool ok = m_encData->create(*param, sps) && m_reconPic->create(param->sourceWidth, param->sourceHeight, param->internalCsp);
     if (ok)
     {
         /* initialize right border of m_reconpicYuv as SAO may read beyond the
          * end of the picture accessing uninitialized pixels */
         int maxHeight = sps.numCuInHeight * g_maxCUSize;
-        memset(m_reconPic->m_picOrg[0], 0, sizeof(pixel) * m_reconPic->m_stride * maxHeight);
-        memset(m_reconPic->m_picOrg[1], 0, sizeof(pixel) * m_reconPic->m_strideC * (maxHeight >> m_reconPic->m_vChromaShift));
-        memset(m_reconPic->m_picOrg[2], 0, sizeof(pixel) * m_reconPic->m_strideC * (maxHeight >> m_reconPic->m_vChromaShift));
+        memset(m_reconPic->m_picOrg[0], 0, sizeof(pixel)* m_reconPic->m_stride * maxHeight);
+
+        /* use pre-calculated cu/pu offsets cached in the SPS structure */
+        m_reconPic->m_cuOffsetY = sps.cuOffsetY;
+        m_reconPic->m_buOffsetY = sps.buOffsetY;
+
+        if (param->internalCsp != X265_CSP_I400)
+        {
+            memset(m_reconPic->m_picOrg[1], 0, sizeof(pixel) * m_reconPic->m_strideC * (maxHeight >> m_reconPic->m_vChromaShift));
+            memset(m_reconPic->m_picOrg[2], 0, sizeof(pixel) * m_reconPic->m_strideC * (maxHeight >> m_reconPic->m_vChromaShift));
+
+            /* use pre-calculated cu/pu offsets cached in the SPS structure */
+            m_reconPic->m_cuOffsetC = sps.cuOffsetC;
+            m_reconPic->m_buOffsetC = sps.buOffsetC;
+        }
     }
     return ok;
 }
@@ -98,6 +125,17 @@ void Frame::destroy()
         m_reconPic->destroy();
         delete m_reconPic;
         m_reconPic = NULL;
+    }
+
+    if (m_reconColCount)
+    {
+        delete[] m_reconColCount;
+        m_reconColCount = NULL;
+    }
+
+    if (m_quantOffsets)
+    {
+        delete[] m_quantOffsets;
     }
 
     m_lowres.destroy();

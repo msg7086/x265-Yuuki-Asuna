@@ -2,6 +2,7 @@
 * Copyright (C) 2013 x265 project
 *
 * Authors: Steve Borho <steve@borho.org>
+*          Min Chen <chenm003@163.com>
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -84,8 +85,9 @@ struct MotionData
     MV       mvp;
     int      mvpIdx;
     int      ref;
-    uint32_t cost;
     int      bits;
+    uint32_t mvCost;
+    uint32_t cost;
 };
 
 struct Mode
@@ -105,16 +107,17 @@ struct Mode
     // temporal candidate.
     InterNeighbourMV interNeighbours[6];
 
-    uint64_t   rdCost;     // sum of partition (psy) RD costs          (sse(fenc, recon) + lambda2 * bits)
-    uint64_t   sa8dCost;   // sum of partition sa8d distortion costs   (sa8d(fenc, pred) + lambda * bits)
-    uint32_t   sa8dBits;   // signal bits used in sa8dCost calculation
-    uint32_t   psyEnergy;  // sum of partition psycho-visual energy difference
-    sse_ret_t  lumaDistortion;
-    sse_ret_t  chromaDistortion;
-    sse_ret_t  distortion; // sum of partition SSE distortion
-    uint32_t   totalBits;  // sum of partition bits (mv + coeff)
-    uint32_t   mvBits;     // Mv bits + Ref + block type (or intra mode)
-    uint32_t   coeffBits;  // Texture bits (DCT Coeffs)
+    uint64_t    rdCost;     // sum of partition (psy) RD costs          (sse(fenc, recon) + lambda2 * bits)
+    uint64_t    sa8dCost;   // sum of partition sa8d distortion costs   (sa8d(fenc, pred) + lambda * bits)
+    uint32_t    sa8dBits;   // signal bits used in sa8dCost calculation
+    uint32_t    psyEnergy;  // sum of partition psycho-visual energy difference
+    sse_t   resEnergy;  // sum of partition residual energy after motion prediction
+    sse_t   lumaDistortion;
+    sse_t   chromaDistortion;
+    sse_t  distortion; // sum of partition SSE distortion
+    uint32_t    totalBits;  // sum of partition bits (mv + coeff)
+    uint32_t    mvBits;     // Mv bits + Ref + block type (or intra mode)
+    uint32_t    coeffBits;  // Texture bits (DCT Coeffs)
 
     void initCosts()
     {
@@ -122,6 +125,7 @@ struct Mode
         sa8dCost = 0;
         sa8dBits = 0;
         psyEnergy = 0;
+        resEnergy = 0;
         lumaDistortion = 0;
         chromaDistortion = 0;
         distortion = 0;
@@ -130,62 +134,13 @@ struct Mode
         coeffBits = 0;
     }
 
-    void invalidate()
-    {
-        /* set costs to invalid data, catch uninitialized re-use */
-        rdCost = UINT64_MAX / 2;
-        sa8dCost = UINT64_MAX / 2;
-        sa8dBits = MAX_UINT / 2;
-        psyEnergy = MAX_UINT / 2;
-#if X265_DEPTH <= 10
-        lumaDistortion = MAX_UINT / 2;
-        chromaDistortion = MAX_UINT / 2;
-        distortion = MAX_UINT / 2;
-#else
-        lumaDistortion = UINT64_MAX / 2;
-        chromaDistortion = UINT64_MAX / 2;
-        distortion = UINT64_MAX / 2;
-#endif
-        totalBits = MAX_UINT / 2;
-        mvBits = MAX_UINT / 2;
-        coeffBits = MAX_UINT / 2;
-    }
-
-    bool ok() const
-    {
-#if X265_DEPTH <= 10
-        return !(rdCost >= UINT64_MAX / 2 ||
-            sa8dCost >= UINT64_MAX / 2 ||
-            sa8dBits >= MAX_UINT / 2 ||
-            psyEnergy >= MAX_UINT / 2 ||
-            lumaDistortion >= MAX_UINT / 2 ||
-            chromaDistortion >= MAX_UINT / 2 ||
-            distortion >= MAX_UINT / 2 ||
-            totalBits >= MAX_UINT / 2 ||
-            mvBits >= MAX_UINT / 2 ||
-            coeffBits >= MAX_UINT / 2);
-#else
-        return !(rdCost >= UINT64_MAX / 2 ||
-                 sa8dCost >= UINT64_MAX / 2 ||
-                 sa8dBits >= MAX_UINT / 2 ||
-                 psyEnergy >= MAX_UINT / 2 ||
-                 lumaDistortion >= UINT64_MAX / 2 ||
-                 chromaDistortion >= UINT64_MAX / 2 ||
-                 distortion >= UINT64_MAX / 2 ||
-                 totalBits >= MAX_UINT / 2 ||
-                 mvBits >= MAX_UINT / 2 ||
-                 coeffBits >= MAX_UINT / 2);
-#endif
-    }
-
     void addSubCosts(const Mode& subMode)
     {
-        X265_CHECK(subMode.ok(), "sub-mode not initialized");
-
         rdCost += subMode.rdCost;
         sa8dCost += subMode.sa8dCost;
         sa8dBits += subMode.sa8dBits;
         psyEnergy += subMode.psyEnergy;
+        resEnergy += subMode.resEnergy;
         lumaDistortion += subMode.lumaDistortion;
         chromaDistortion += subMode.chromaDistortion;
         distortion += subMode.distortion;
@@ -325,13 +280,13 @@ public:
     ~Search();
 
     bool     initSearch(const x265_param& param, ScalingList& scalingList);
-    int      setLambdaFromQP(const CUData& ctu, int qp); /* returns real quant QP in valid spec range */
+    int      setLambdaFromQP(const CUData& ctu, int qp, int lambdaQP = -1); /* returns real quant QP in valid spec range */
 
     // mark temp RD entropy contexts as uninitialized; useful for finding loads without stores
     void     invalidateContexts(int fromDepth);
 
-    // full RD search of intra modes. if sharedModes is not NULL, it directly uses them
-    void     checkIntra(Mode& intraMode, const CUGeom& cuGeom, PartSize partSize, uint8_t* sharedModes, uint8_t* sharedChromaModes);
+    // full RD search of intra modes
+    void     checkIntra(Mode& intraMode, const CUGeom& cuGeom, PartSize partSizes);
 
     // select best intra mode using only sa8d costs, cannot measure NxN intra
     void     checkIntraInInter(Mode& intraMode, const CUGeom& cuGeom);
@@ -397,10 +352,10 @@ protected:
     void     saveResidualQTData(CUData& cu, ShortYuv& resiYuv, uint32_t absPartIdx, uint32_t tuDepth);
 
     // RDO search of luma intra modes; result is fully encoded luma. luma distortion is returned
-    uint32_t estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32_t depthRange[2], uint8_t* sharedModes);
+    sse_t estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32_t depthRange[2]);
 
     // RDO select best chroma mode from luma; result is fully encode chroma. chroma distortion is returned
-    uint32_t estIntraPredChromaQT(Mode &intraMode, const CUGeom& cuGeom, uint8_t* sharedChromaModes);
+    sse_t estIntraPredChromaQT(Mode &intraMode, const CUGeom& cuGeom);
 
     void     codeSubdivCbfQTChroma(const CUData& cu, uint32_t tuDepth, uint32_t absPartIdx);
     void     codeInterSubdivCbfQT(CUData& cu, uint32_t absPartIdx, const uint32_t tuDepth, const uint32_t depthRange[2]);
@@ -410,12 +365,12 @@ protected:
     {
         uint64_t rdcost;
         uint32_t bits;
-        sse_ret_t distortion;
+        sse_t distortion;
         uint32_t energy;
         Cost() { rdcost = 0; bits = 0; distortion = 0; energy = 0; }
     };
 
-    uint64_t estimateNullCbfCost(uint32_t &dist, uint32_t &psyEnergy, uint32_t tuDepth, TextType compId);
+    uint64_t estimateNullCbfCost(sse_t dist, uint32_t psyEnergy, uint32_t tuDepth, TextType compId);
     void     estimateResidualQT(Mode& mode, const CUGeom& cuGeom, uint32_t absPartIdx, uint32_t depth, ShortYuv& resiYuv, Cost& costs, const uint32_t depthRange[2]);
 
     // generate prediction, generate residual and recon. if bAllowSplit, find optimal RQT splits
@@ -424,8 +379,8 @@ protected:
     void     extractIntraResultQT(CUData& cu, Yuv& reconYuv, uint32_t tuDepth, uint32_t absPartIdx);
 
     // generate chroma prediction, generate residual and recon
-    uint32_t codeIntraChromaQt(Mode& mode, const CUGeom& cuGeom, uint32_t tuDepth, uint32_t absPartIdx, uint32_t& psyEnergy);
-    uint32_t codeIntraChromaTSkip(Mode& mode, const CUGeom& cuGeom, uint32_t tuDepth, uint32_t tuDepthC, uint32_t absPartIdx, uint32_t& psyEnergy);
+    void     codeIntraChromaQt(Mode& mode, const CUGeom& cuGeom, uint32_t tuDepth, uint32_t absPartIdx, Cost& outCost);
+    void     codeIntraChromaTSkip(Mode& mode, const CUGeom& cuGeom, uint32_t tuDepth, uint32_t tuDepthC, uint32_t absPartIdx, Cost& outCost);
     void     extractIntraResultChromaQT(CUData& cu, Yuv& reconYuv, uint32_t absPartIdx, uint32_t tuDepth);
 
     // reshuffle CBF flags after coding a pair of 4:2:2 chroma blocks

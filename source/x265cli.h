@@ -116,6 +116,7 @@ static const struct option long_options[] =
     { "min-keyint",     required_argument, NULL, 'i' },
     { "scenecut",       required_argument, NULL, 0 },
     { "no-scenecut",          no_argument, NULL, 0 },
+    { "intra-refresh",        no_argument, NULL, 0 },
     { "rc-lookahead",   required_argument, NULL, 0 },
     { "lookahead-slices", required_argument, NULL, 0 },
     { "bframes",        required_argument, NULL, 'b' },
@@ -126,6 +127,8 @@ static const struct option long_options[] =
     { "b-pyramid",            no_argument, NULL, 0 },
     { "ref",            required_argument, NULL, 0 },
     { "limit-refs",     required_argument, NULL, 0 },
+    { "no-limit-modes",       no_argument, NULL, 0 },
+    { "limit-modes",          no_argument, NULL, 0 },
     { "no-weightp",           no_argument, NULL, 0 },
     { "weightp",              no_argument, NULL, 'w' },
     { "no-weightb",           no_argument, NULL, 0 },
@@ -192,6 +195,8 @@ static const struct option long_options[] =
     { "crop-rect",      required_argument, NULL, 0 }, /* DEPRECATED */
     { "master-display", required_argument, NULL, 0 },
     { "max-cll",        required_argument, NULL, 0 },
+    { "min-luma",       required_argument, NULL, 0 },
+    { "max-luma",       required_argument, NULL, 0 },
     { "no-dither",            no_argument, NULL, 0 },
     { "dither",               no_argument, NULL, 0 },
     { "no-repeat-headers",    no_argument, NULL, 0 },
@@ -251,14 +256,18 @@ static void showHelp(x265_param *param)
     H0("   --log-level <string>          Logging level: none error warning info debug full. Default %s\n", X265_NS::logLevelNames[param->logLevel + 1]);
     H0("   --no-progress                 Disable CLI progress reports\n");
     H0("   --csv <filename>              Comma separated log file, if csv-log-level > 0 frame level statistics, else one line per run\n");
-    H0("   --csv-log-level               Level of csv logging, if csv-log-level > 0 frame level statistics, else one line per run: 0-2\n");
+    H0("   --csv-log-level <integer>     Level of csv logging, if csv-log-level > 0 frame level statistics, else one line per run: 0-2\n");
     H0("\nInput Options:\n");
     H0("   --input <filename>            Raw YUV or Y4M input file name. `-` for stdin\n");
     H1("   --y4m                         Force parsing of input stream as YUV4MPEG2 regardless of file extension\n");
     H0("   --fps <float|rational>        Source frame rate (float or num/denom), auto-detected if Y4M\n");
     H0("   --input-res WxH               Source picture size [w x h], auto-detected if Y4M\n");
     H1("   --input-depth <integer>       Bit-depth of input file. Default 8\n");
-    H1("   --input-csp <string>          Source color space: i420, i444 or i422, auto-detected if Y4M. Default: i420\n");
+    H1("   --input-csp <string>          Chroma subsampling, auto-detected if Y4M\n");
+    H1("                                 0 - i400 (4:0:0 monochrome)\n");
+    H1("                                 1 - i420 (4:2:0 default)\n");
+    H1("                                 2 - i422 (4:2:2)\n");
+    H1("                                 3 - i444 (4:4:4)\n");
     H0("-f/--frames <integer>            Maximum number of frames to encode. Default all\n");
     H0("   --seek <integer>              First frame to encode\n");
     H1("   --[no-]interlace <bff|tff>    Indicate input pictures are interlace fields in temporal order. Default progressive\n");
@@ -308,12 +317,13 @@ static void showHelp(x265_param *param)
     H0("\nTemporal / motion search options:\n");
     H0("   --max-merge <1..5>            Maximum number of merge candidates. Default %d\n", param->maxNumMergeCand);
     H0("   --ref <integer>               max number of L0 references to be allowed (1 .. 16) Default %d\n", param->maxNumReferences);
-    H0("   --limit-refs <0|1|2|3>        limit references per depth (1) or CU (2) or both (3). Default %d\n", param->limitReferences);
+    H0("   --limit-refs <0|1|2|3>        Limit references per depth (1) or CU (2) or both (3). Default %d\n", param->limitReferences);
     H0("   --me <string>                 Motion search method dia hex umh star full. Default %d\n", param->searchMethod);
     H0("-m/--subme <integer>             Amount of subpel refinement to perform (0:least .. 7:most). Default %d \n", param->subpelRefine);
     H0("   --merange <integer>           Motion search range. Default %d\n", param->searchRange);
     H0("   --[no-]rect                   Enable rectangular motion partitions Nx2N and 2NxN. Default %s\n", OPT(param->bEnableRectInter));
     H0("   --[no-]amp                    Enable asymmetric motion partitions, requires --rect. Default %s\n", OPT(param->bEnableAMP));
+    H0("   --[no-]limit-modes            Limit rectangular and asymmetric motion predictions. Default %d\n", param->limitModes);
     H1("   --[no-]temporal-mvp           Enable temporal MV predictors. Default %s\n", OPT(param->bEnableTemporalMvp));
     H0("\nSpatial / intra options:\n");
     H0("   --[no-]strong-intra-smoothing Enable strong intra smoothing for 32x32 blocks. Default %s\n", OPT(param->bEnableStrongIntraSmoothing));
@@ -327,6 +337,7 @@ static void showHelp(x265_param *param)
     H0("-i/--min-keyint <integer>        Scenecuts closer together than this are coded as I, not IDR. Default: auto\n");
     H0("   --no-scenecut                 Disable adaptive I-frame decision\n");
     H0("   --scenecut <integer>          How aggressively to insert extra I-frames. Default %d\n", param->scenecutThreshold);
+    H0("   --intra-refresh               Use Periodic Intra Refresh instead of IDR frames\n");
     H0("   --rc-lookahead <integer>      Number of frames for frame-type lookahead (determines encoder latency) Default %d\n", param->lookaheadDepth);
     H1("   --lookahead-slices <0..16>    Number of slices to use per lookahead cost estimate. Default %d\n", param->lookaheadSlices);
     H0("   --bframes <integer>           Maximum number of consecutive b-frames (now it only enables B GOP structure) Default %d\n", param->bframes);
@@ -335,7 +346,7 @@ static void showHelp(x265_param *param)
     H0("   --[no-]b-pyramid              Use B-frames as references. Default %s\n", OPT(param->bBPyramid));
     H1("   --qpfile <string>             Force frametypes and QPs for some or all frames\n");
     H1("                                 Format of each line: framenumber frametype QP\n");
-    H1("                                 QP is optional (none lets x265 choose). Frametypes: I,i,P,B,b.\n");
+    H1("                                 QP is optional (none lets x265 choose). Frametypes: I,i,K,P,B,b.\n");
     H1("                                 QPs are restricted by qpmin/qpmax.\n");
     H0("\nRate control, Adaptive Quantization:\n");
     H0("   --bitrate <integer>           Target bitrate (kbps) for ABR (implied). Default %d\n", param->rc.bitrate);
@@ -403,6 +414,8 @@ static void showHelp(x265_param *param)
     H0("   --master-display <string>     SMPTE ST 2086 master display color volume info SEI (HDR)\n");
     H0("                                    format: G(x,y)B(x,y)R(x,y)WP(x,y)L(max,min)\n");
     H0("   --max-cll <string>            Emit content light level info SEI as \"cll,fall\" (HDR)\n");
+    H0("   --min-luma <integer>          Minimum luma plane value of input source picture\n");
+    H0("   --max-luma <integer>          Maximum luma plane value of input source picture\n");
     H0("\nBitstream options:\n");
     H0("   --[no-]repeat-headers         Emit SPS and PPS headers at each keyframe. Default %s\n", OPT(param->bRepeatHeaders));
     H0("   --[no-]info                   Emit SEI identifying encoder and parameters. Default %s\n", OPT(param->bEmitInfoSEI));

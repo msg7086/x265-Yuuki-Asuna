@@ -2,6 +2,7 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Steve Borho <steve@borho.org>
+ *          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -40,7 +41,12 @@ void BitCost::setQP(unsigned int qp)
             x265_emms(); // just to be safe
 
             CalculateLogs();
-            s_costs[qp] = new uint16_t[4 * BC_MAX_MV + 1] + 2 * BC_MAX_MV;
+            s_costs[qp] = X265_MALLOC(uint16_t, 4 * BC_MAX_MV + 1) + 2 * BC_MAX_MV;
+            if (!s_costs[qp])
+            {
+                x265_log(NULL, X265_LOG_ERROR, "BitCost s_costs buffer allocation failure\n");
+                return;
+            }
             double lambda = x265_lambda_tab[qp];
 
             // estimate same cost for negative and positive MVD
@@ -66,11 +72,16 @@ void BitCost::CalculateLogs()
 {
     if (!s_bitsizes)
     {
-        s_bitsizes = new float[2 * BC_MAX_MV + 1];
+        s_bitsizes = X265_MALLOC(float, 4 * BC_MAX_MV + 1) + 2 * BC_MAX_MV;
+        if (!s_bitsizes)
+        {
+            x265_log(NULL, X265_LOG_ERROR, "BitCost s_bitsizes buffer allocation failure\n");
+            return;
+        }
         s_bitsizes[0] = 0.718f;
         float log2_2 = 2.0f / log(2.0f);  // 2 x 1/log(2)
         for (int i = 1; i <= 2 * BC_MAX_MV; i++)
-            s_bitsizes[i] = log((float)(i + 1)) * log2_2 + 1.718f;
+            s_bitsizes[i] = s_bitsizes[-i] = log((float)(i + 1)) * log2_2 + 1.718f;
     }
 }
 
@@ -80,12 +91,15 @@ void BitCost::destroy()
     {
         if (s_costs[i])
         {
-            delete [] (s_costs[i] - 2 * BC_MAX_MV);
+            X265_FREE(s_costs[i] - 2 * BC_MAX_MV);
 
-            s_costs[i] = 0;
+            s_costs[i] = NULL;
         }
     }
 
-    delete [] s_bitsizes;
-    s_bitsizes = 0;
+    if (s_bitsizes)
+    {
+        X265_FREE(s_bitsizes - 2 * BC_MAX_MV);
+        s_bitsizes = NULL;
+    }
 }

@@ -2,10 +2,12 @@
  * pixel.h: x86 pixel metrics
  *****************************************************************************
  * Copyright (C) 2003-2013 x264 project
+ * Copyright (C) 2013-2015 x265 project
  *
  * Authors: Laurent Aimar <fenrir@via.ecp.fr>
  *          Loren Merritt <lorenm@u.washington.edu>
  *          Fiona Glaser <fiona@x264.com>
+;*          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,9 +36,10 @@ void PFX(upShift_16_sse2)(const uint16_t* src, intptr_t srcStride, pixel* dst, i
 void PFX(upShift_16_avx2)(const uint16_t* src, intptr_t srcStride, pixel* dst, intptr_t dstStride, int width, int height, int shift, uint16_t mask);
 void PFX(upShift_8_sse4)(const uint8_t* src, intptr_t srcStride, pixel* dst, intptr_t dstStride, int width, int height, int shift);
 void PFX(upShift_8_avx2)(const uint8_t* src, intptr_t srcStride, pixel* dst, intptr_t dstStride, int width, int height, int shift);
+pixel PFX(planeClipAndMax_avx2)(pixel *src, intptr_t stride, int width, int height, uint64_t *outsum, const pixel minPix, const pixel maxPix);
 
 #define DECL_PIXELS(cpu) \
-    FUNCDEF_PU(uint32_t, pixel_ssd, cpu, const pixel*, intptr_t, const pixel*, intptr_t); \
+    FUNCDEF_PU(sse_t, pixel_ssd, cpu, const pixel*, intptr_t, const pixel*, intptr_t); \
     FUNCDEF_PU(int, pixel_sa8d, cpu, const pixel*, intptr_t, const pixel*, intptr_t); \
     FUNCDEF_PU(void, pixel_sad_x3, cpu, const pixel*, const pixel*, const pixel*, const pixel*, intptr_t, int32_t*); \
     FUNCDEF_PU(void, pixel_sad_x4, cpu, const pixel*, const pixel*, const pixel*, const pixel*, const pixel*, intptr_t, int32_t*); \
@@ -45,10 +48,10 @@ void PFX(upShift_8_avx2)(const uint8_t* src, intptr_t srcStride, pixel* dst, int
     FUNCDEF_PU(void, pixel_sub_ps, cpu, int16_t* a, intptr_t dstride, const pixel* b0, const pixel* b1, intptr_t sstride0, intptr_t sstride1); \
     FUNCDEF_CHROMA_PU(int, pixel_satd, cpu, const pixel*, intptr_t, const pixel*, intptr_t); \
     FUNCDEF_CHROMA_PU(int, pixel_sad, cpu, const pixel*, intptr_t, const pixel*, intptr_t); \
-    FUNCDEF_CHROMA_PU(uint32_t, pixel_ssd_ss, cpu, const int16_t*, intptr_t, const int16_t*, intptr_t); \
+    FUNCDEF_CHROMA_PU(sse_t, pixel_ssd_ss, cpu, const int16_t*, intptr_t, const int16_t*, intptr_t); \
     FUNCDEF_CHROMA_PU(void, addAvg, cpu, const int16_t*, const int16_t*, pixel*, intptr_t, intptr_t, intptr_t); \
-    FUNCDEF_CHROMA_PU(sse_ret_t, pixel_ssd_s, cpu, const int16_t*, intptr_t); \
-    FUNCDEF_TU_S(sse_ret_t, pixel_ssd_s, cpu, const int16_t*, intptr_t); \
+    FUNCDEF_CHROMA_PU(sse_t, pixel_ssd_s, cpu, const int16_t*, intptr_t); \
+    FUNCDEF_TU_S(sse_t, pixel_ssd_s, cpu, const int16_t*, intptr_t); \
     FUNCDEF_TU(uint64_t, pixel_var, cpu, const pixel*, intptr_t); \
     FUNCDEF_TU(int, psyCost_pp, cpu, const pixel* source, intptr_t sstride, const pixel* recon, intptr_t rstride); \
     FUNCDEF_TU(int, psyCost_ss, cpu, const int16_t* source, intptr_t sstride, const int16_t* recon, intptr_t rstride)

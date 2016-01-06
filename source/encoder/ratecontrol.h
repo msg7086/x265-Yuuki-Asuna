@@ -48,6 +48,7 @@ struct SPS;
 
 struct Predictor
 {
+    double coeffMin;
     double coeff;
     double count;
     double decay;
@@ -74,6 +75,7 @@ struct RateControlEntry
     double  qpaRc;
     double  qpAq;
     double  qRceq;
+    double  qpPrev;
     double  frameSizePlanned;  /* frame Size decided by RateCotrol before encoding the frame */
     double  bufferRate;
     double  movingAvgSum;
@@ -167,6 +169,8 @@ public:
     int64_t m_satdCostWindow[50];
     int64_t m_encodedBitsWindow[50];
     int     m_sliderPos;
+    int64_t m_lastRemovedSatdCost;
+    double  m_movingAvgSum;
 
     /* To detect a pattern of low detailed static frames in single pass ABR using satdcosts */
     int64_t m_lastBsliceSatdCost;
@@ -205,8 +209,8 @@ public:
     double  m_lastAccumPNorm;
     double  m_expectedBitsSum;   /* sum of qscale2bits after rceq, ratefactor, and overflow, only includes finished frames */
     int64_t m_predictedBits;
+    int     *m_encOrder;
     RateControlEntry* m_rce2Pass;
-
     struct
     {
         uint16_t *qpBuffer[2]; /* Global buffers for converting MB-tree quantizer data. */
@@ -258,11 +262,12 @@ protected:
     void   checkAndResetABR(RateControlEntry* rce, bool isFrameDone);
     double predictRowsSizeSum(Frame* pic, RateControlEntry* rce, double qpm, int32_t& encodedBits);
     bool   initPass2();
+    bool   analyseABR2Pass(int startPoc, int endPoc, uint64_t allAvailableBits);
     void   initFramePredictors();
     double getDiffLimitedQScale(RateControlEntry *rce, double q);
-    double countExpectedBits();
-    bool   vbv2Pass(uint64_t allAvailableBits);
-    bool   findUnderflow(double *fills, int *t0, int *t1, int over);
+    double countExpectedBits(int startPos, int framesCount);
+    bool   vbv2Pass(uint64_t allAvailableBits, int frameCount, int startPos);
+    bool   findUnderflow(double *fills, int *t0, int *t1, int over, int framesCount);
     bool   fixUnderflow(int t0, int t1, double adjustment, double qscaleMin, double qscaleMax);
 };
 }

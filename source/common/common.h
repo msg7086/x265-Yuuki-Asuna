@@ -2,6 +2,7 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Deepthi Nandakumar <deepthi@multicorewareinc.com>
+ *          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -134,10 +135,10 @@ typedef uint32_t pixel4;
 typedef int32_t  ssum2_t; // Signed sum
 #endif // if HIGH_BIT_DEPTH
 
-#if X265_DEPTH <= 10
-typedef uint32_t sse_ret_t;
+#if X265_DEPTH < 10
+typedef uint32_t sse_t;
 #else
-typedef uint64_t sse_ret_t;
+typedef uint64_t sse_t;
 #endif
 
 #ifndef NULL
@@ -214,6 +215,7 @@ typedef int16_t  coeff_t;      // transform coefficient
 
 #define X265_MALLOC(type, count)    (type*)x265_malloc(sizeof(type) * (count))
 #define X265_FREE(ptr)              x265_free(ptr)
+#define X265_FREE_ZERO(ptr)         x265_free(ptr); (ptr) = NULL
 #define CHECKED_MALLOC(var, type, count) \
     { \
         var = (type*)x265_malloc(sizeof(type) * (count)); \
@@ -317,6 +319,9 @@ typedef int16_t  coeff_t;      // transform coefficient
 #define CHROMA_V_SHIFT(x) (x == X265_CSP_I420)
 #define X265_MAX_PRED_MODE_PER_CTU 85 * 2 * 8
 
+#define MAX_NUM_TR_COEFFS           MAX_TR_SIZE * MAX_TR_SIZE // Maximum number of transform coefficients, for a 32x32 transform
+#define MAX_NUM_TR_CATEGORIES       16                        // 32, 16, 8, 4 transform categories each for luma and chroma
+
 namespace X265_NS {
 
 enum { SAO_NUM_OFFSET = 4 };
@@ -366,25 +371,6 @@ struct SAOParam
         delete[] ctuParam[2];
     }
 };
-
-/* Stores inter analysis data for a single frame */
-struct analysis_inter_data
-{
-    int32_t*    ref;
-    uint8_t*    depth;
-    uint8_t*    modes;
-    uint32_t*   bestMergeCand;
-};
-
-/* Stores intra analysis data for a single frame. This struct needs better packing */
-struct analysis_intra_data
-{
-    uint8_t*  depth;
-    uint8_t*  modes;
-    char*     partSizes;
-    uint8_t*  chromaModes;
-};
-
 enum TextType
 {
     TEXT_LUMA     = 0,  // luma

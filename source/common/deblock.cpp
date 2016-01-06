@@ -2,6 +2,7 @@
 * Copyright (C) 2013 x265 project
 *
 * Author: Gopu Govindaswamy <gopu@multicorewareinc.com>
+*         Min Chen <chenm003@163.com>
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -108,7 +109,7 @@ void Deblock::deblockCU(const CUData* cu, const CUGeom& cuGeom, const int32_t di
     for (uint32_t e = 0; e < numUnits; e += partIdxIncr)
     {
         edgeFilterLuma(cu, absPartIdx, depth, dir, e, blockStrength);
-        if (!((e0 + e) & chromaMask))
+        if (!((e0 + e) & chromaMask) && cu->m_chromaFormat != X265_CSP_I400)
             edgeFilterChroma(cu, absPartIdx, depth, dir, e, blockStrength);
     }
 }
@@ -209,8 +210,8 @@ uint8_t Deblock::getBoundaryStrength(const CUData* cuQ, int32_t dir, uint32_t pa
     const Slice* const sliceQ = cuQ->m_slice;
     const Slice* const sliceP = cuP->m_slice;
 
-    const Frame* refP0 = sliceP->getRefPic(0, cuP->m_refIdx[0][partP]);
-    const Frame* refQ0 = sliceQ->getRefPic(0, cuQ->m_refIdx[0][partQ]);
+    const Frame* refP0 = sliceP->m_refFrameList[0][cuP->m_refIdx[0][partP]];
+    const Frame* refQ0 = sliceQ->m_refFrameList[0][cuQ->m_refIdx[0][partQ]];
     const MV& mvP0 = refP0 ? cuP->m_mv[0][partP] : zeroMv;
     const MV& mvQ0 = refQ0 ? cuQ->m_mv[0][partQ] : zeroMv;
 
@@ -221,8 +222,8 @@ uint8_t Deblock::getBoundaryStrength(const CUData* cuQ, int32_t dir, uint32_t pa
     }
 
     // (sliceQ->isInterB() || sliceP->isInterB())
-    const Frame* refP1 = sliceP->getRefPic(1, cuP->m_refIdx[1][partP]);
-    const Frame* refQ1 = sliceQ->getRefPic(1, cuQ->m_refIdx[1][partQ]);
+    const Frame* refP1 = sliceP->m_refFrameList[1][cuP->m_refIdx[1][partP]];
+    const Frame* refQ1 = sliceQ->m_refFrameList[1][cuQ->m_refIdx[1][partQ]];
     const MV& mvP1 = refP1 ? cuP->m_mv[1][partP] : zeroMv;
     const MV& mvQ1 = refQ1 ? cuQ->m_mv[1][partQ] : zeroMv;
 
@@ -279,31 +280,6 @@ static inline bool useStrongFiltering(intptr_t offset, int32_t beta, int32_t tc,
  * \param maskQ   indicator to enable filtering on partQ
  * \param maskP1  decision weak filter/no filter for partP
  * \param maskQ1  decision weak filter/no filter for partQ */
-static inline void pelFilterLumaStrong(pixel* src, intptr_t srcStep, intptr_t offset, int32_t tc, int32_t maskP, int32_t maskQ)
-{
-    int32_t tc2 = 2 * tc;
-    int32_t tcP = (tc2 & maskP);
-    int32_t tcQ = (tc2 & maskQ);
-    for (int32_t i = 0; i < UNIT_SIZE; i++, src += srcStep)
-    {
-        int16_t m4  = (int16_t)src[0];
-        int16_t m3  = (int16_t)src[-offset];
-        int16_t m5  = (int16_t)src[offset];
-        int16_t m2  = (int16_t)src[-offset * 2];
-        int16_t m6  = (int16_t)src[offset * 2];
-        int16_t m1  = (int16_t)src[-offset * 3];
-        int16_t m7  = (int16_t)src[offset * 3];
-        int16_t m0  = (int16_t)src[-offset * 4];
-        src[-offset * 3] = (pixel)(x265_clip3(-tcP, tcP, ((2 * m0 + 3 * m1 + m2 + m3 + m4 + 4) >> 3) - m1) + m1);
-        src[-offset * 2] = (pixel)(x265_clip3(-tcP, tcP, ((m1 + m2 + m3 + m4 + 2) >> 2) - m2) + m2);
-        src[-offset]     = (pixel)(x265_clip3(-tcP, tcP, ((m1 + 2 * m2 + 2 * m3 + 2 * m4 + m5 + 4) >> 3) - m3) + m3);
-        src[0]           = (pixel)(x265_clip3(-tcQ, tcQ, ((m2 + 2 * m3 + 2 * m4 + 2 * m5 + m6 + 4) >> 3) - m4) + m4);
-        src[offset]      = (pixel)(x265_clip3(-tcQ, tcQ, ((m3 + m4 + m5 + m6 + 2) >> 2) - m5) + m5);
-        src[offset * 2]  = (pixel)(x265_clip3(-tcQ, tcQ, ((m3 + m4 + m5 + 3 * m6 + 2 * m7 + 4) >> 3) - m6) + m6);
-    }
-}
-
-/* Weak filter */
 static inline void pelFilterLuma(pixel* src, intptr_t srcStep, intptr_t offset, int32_t tc, int32_t maskP, int32_t maskQ,
                                  int32_t maskP1, int32_t maskQ1)
 {
@@ -445,7 +421,12 @@ void Deblock::edgeFilterLuma(const CUData* cuQ, uint32_t absPartIdx, uint32_t de
                    useStrongFiltering(offset, beta, tc, src + unitOffset + srcStep * 3));
 
         if (sw)
-            pelFilterLumaStrong(src + unitOffset, srcStep, offset, tc, maskP, maskQ);
+        {
+            int32_t tc2 = 2 * tc;
+            int32_t tcP = (tc2 & maskP);
+            int32_t tcQ = (tc2 & maskQ);
+            primitives.pelFilterLumaStrong[dir](src + unitOffset, srcStep, offset, tcP, tcQ);
+        }
         else
         {
             int32_t sideThreshold = (beta + (beta >> 1)) >> 3;

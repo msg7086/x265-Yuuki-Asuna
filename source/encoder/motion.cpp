@@ -2,6 +2,7 @@
  * Copyright (C) 2013 x265 project
  *
  * Authors: Steve Borho <steve@borho.org>
+ *          Min Chen <chenm003@163.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -188,11 +189,12 @@ void MotionEstimate::setSourcePU(const Yuv& srcFencYuv, int _ctuAddr, int cuPart
     satd = primitives.pu[partEnum].satd;
     sad_x3 = primitives.pu[partEnum].sad_x3;
     sad_x4 = primitives.pu[partEnum].sad_x4;
+
     chromaSatd = primitives.chroma[fencPUYuv.m_csp].pu[partEnum].satd;
 
     /* Enable chroma residual cost if subpelRefine level is greater than 2 and chroma block size
      * is an even multiple of 4x4 pixels (indicated by non-null chromaSatd pointer) */
-    bChromaSATD = subpelRefine > 2 && chromaSatd;
+    bChromaSATD = subpelRefine > 2 && chromaSatd && (srcFencYuv.m_csp != X265_CSP_I400);
     X265_CHECK(!(bChromaSATD && !workload[subpelRefine].hpel_satd), "Chroma SATD cannot be used with SAD hpel\n");
 
     ctuAddr = _ctuAddr;
@@ -1214,8 +1216,11 @@ int MotionEstimate::subpelCompare(ReferencePlanes *ref, const MV& qmv, pixelcmp_
         const pixel* refCb = ref->getCbAddr(ctuAddr, absPartIdx) + refOffset;
         const pixel* refCr = ref->getCrAddr(ctuAddr, absPartIdx) + refOffset;
 
-        xFrac = qmv.x & ((1 << shiftHor) - 1);
-        yFrac = qmv.y & ((1 << shiftVer) - 1);
+        X265_CHECK((hshift == 0) || (hshift == 1), "hshift must be 0 or 1\n");
+        X265_CHECK((vshift == 0) || (vshift == 1), "vshift must be 0 or 1\n");
+
+        xFrac = qmv.x & (hshift ? 7 : 3);
+        yFrac = qmv.y & (vshift ? 7 : 3);
 
         if (!(yFrac | xFrac))
         {
