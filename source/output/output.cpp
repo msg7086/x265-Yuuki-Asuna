@@ -25,6 +25,7 @@
 #include "output.h"
 #include "yuv.h"
 #include "y4m.h"
+#include "gop.h"
 
 #include "raw.h"
 
@@ -58,6 +59,8 @@ OutputFile* OutputFile::open(const char *fname, InputFileInfo& inputInfo)
     if (s && !strcmp(s, ".mkv"))
         return new MKVOutput(fname, inputInfo);
 #endif
+    if (s && !strcmp(s, ".gop"))
+        return new GOPOutput(fname, inputInfo);
 
     return new RAWOutput(fname, inputInfo);
 }

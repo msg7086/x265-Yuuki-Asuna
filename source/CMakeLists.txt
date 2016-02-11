@@ -597,6 +597,7 @@ if(ENABLE_CLI)
     file(GLOB InputFiles input/input.cpp input/yuv.cpp input/y4m.cpp input/lavf.cpp input/*.h)
     file(GLOB OutputFiles output/output.cpp output/reconplay.cpp output/*.h
                           output/yuv.cpp output/y4m.cpp # recon
+                          output/gop.cpp
                           output/mp4.cpp
                           output/mkv.cpp output/matroska_ebml.cpp
                           output/raw.cpp)               # muxers
