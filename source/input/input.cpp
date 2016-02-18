@@ -40,6 +40,17 @@ InputFile* InputFile::open(InputFileInfo& info, bool bForceY4m)
     if (s &&
         ( !strcmp(s, ".mp4")
         ||!strcmp(s, ".mkv")
+        ||!strcmp(s, ".mpg")
+        ||!strcmp(s, ".m1v")
+        ||!strcmp(s, ".m2v")
+        ||!strcmp(s, ".mpeg")
+        ||!strcmp(s, ".m4v")
+        ||!strcmp(s, ".m2ts")
+        ||!strcmp(s, ".ts")
+        ||!strcmp(s, ".avs")
+        ||!strcmp(s, ".avi")
+        ||!strcmp(s, ".ogv")
+        ||!strcmp(s, ".wmv")
         ))
         return new LavfInput(info);
 #endif
