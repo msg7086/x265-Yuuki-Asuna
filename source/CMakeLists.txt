@@ -749,8 +749,15 @@ if(ENABLE_LAVF AND ENABLE_CLI)
     find_package(FF)
     if(FFMPEG_FOUND)
         add_definitions(-DENABLE_LAVF)
-        list(APPEND PLATFORM_LIBS ${FFMPEG_LIBRARIES})
     endif()
+endif()
+
+option(ENABLE_STATIC_LAVF "Link to LAVF's private libs" OFF)
+if(ENABLE_STATIC_LAVF)
+    set(FFMPEG_STATIC_LIBRARIES ${PC_LIBAVUTIL_STATIC_LDFLAGS}
+                                ${PC_LIBAVFORMAT_STATIC_LDFLAGS}
+                                ${PC_LIBAVCODEC_STATIC_LDFLAGS}
+                                ${PC_LIBSWSCALE_STATIC_LDFLAGS})
 endif()
 
 if(ENABLE_CLI)
@@ -761,6 +768,11 @@ if(ENABLE_CLI)
     source_group(input FILES ${InputFiles})
     source_group(output FILES ${OutputFiles})
     if(ENABLE_LAVF)
+        if(ENABLE_STATIC_LAVF)
+            list(APPEND PLATFORM_LIBS ${FFMPEG_STATIC_LIBRARIES})
+        else()
+            list(APPEND PLATFORM_LIBS ${FFMPEG_LIBRARIES})
+        endif()
         list(APPEND InputFiles input/lavf.cpp)
     endif()
     if(ENABLE_LSMASH)
