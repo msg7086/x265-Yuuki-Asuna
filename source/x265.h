@@ -26,6 +26,7 @@
 #define X265_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "x265_config.h"
 
 #ifdef __cplusplus
