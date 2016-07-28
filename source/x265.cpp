@@ -474,6 +474,10 @@ bool CLIOptions::parse(int argc, char **argv)
         general_log(param, input->getName(), X265_LOG_INFO, "%s\n", buf);
     }
 
+    if (!preset) preset = "medium";
+    if (!tune) tune = "none";
+    x265_log(param, X265_LOG_INFO, "Using preset %s & tune %s\n", preset, tune);
+
     this->input->startReader();
 
     if (reconfn)
