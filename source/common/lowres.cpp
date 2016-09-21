@@ -27,7 +27,7 @@
 
 using namespace X265_NS;
 
-bool Lowres::create(PicYuv *origPic, int _bframes, bool bAQEnabled)
+bool Lowres::create(PicYuv *origPic, int _bframes, bool bAQEnabled, uint32_t qgSize)
 {
     isLowres = true;
     bframes = _bframes;
@@ -38,7 +38,14 @@ bool Lowres::create(PicYuv *origPic, int _bframes, bool bAQEnabled)
         lumaStride += 32 - (lumaStride & 31);
     maxBlocksInRow = (width + X265_LOWRES_CU_SIZE - 1) >> X265_LOWRES_CU_BITS;
     maxBlocksInCol = (lines + X265_LOWRES_CU_SIZE - 1) >> X265_LOWRES_CU_BITS;
+    maxBlocksInRowFullRes = maxBlocksInRow * 2;
+    maxBlocksInColFullRes = maxBlocksInCol * 2;
     int cuCount = maxBlocksInRow * maxBlocksInCol;
+    int cuCountFullRes;
+    if (qgSize == 8)
+        cuCountFullRes = maxBlocksInRowFullRes * maxBlocksInColFullRes;
+    else
+        cuCountFullRes = cuCount;
 
     /* rounding the width to multiple of lowres CU size */
     width = maxBlocksInRow * X265_LOWRES_CU_SIZE;
@@ -46,13 +53,14 @@ bool Lowres::create(PicYuv *origPic, int _bframes, bool bAQEnabled)
 
     size_t planesize = lumaStride * (lines + 2 * origPic->m_lumaMarginY);
     size_t padoffset = lumaStride * origPic->m_lumaMarginY + origPic->m_lumaMarginX;
-
     if (bAQEnabled)
     {
-        CHECKED_MALLOC(qpAqOffset, double, cuCount);
-        CHECKED_MALLOC(invQscaleFactor, int, cuCount);
-        CHECKED_MALLOC(qpCuTreeOffset, double, cuCount);
-        CHECKED_MALLOC(blockVariance, uint32_t, cuCount);
+        CHECKED_MALLOC_ZERO(qpAqOffset, double, cuCountFullRes);
+        CHECKED_MALLOC_ZERO(invQscaleFactor, int, cuCountFullRes);
+        CHECKED_MALLOC_ZERO(qpCuTreeOffset, double, cuCountFullRes);
+        CHECKED_MALLOC_ZERO(blockVariance, uint32_t, cuCountFullRes);
+        if (qgSize == 8)
+            CHECKED_MALLOC_ZERO(invQscaleFactor8x8, int, cuCount);
     }
     CHECKED_MALLOC(propagateCost, uint16_t, cuCount);
 
@@ -122,6 +130,7 @@ void Lowres::destroy()
     X265_FREE(qpCuTreeOffset);
     X265_FREE(propagateCost);
     X265_FREE(blockVariance);
+    X265_FREE(invQscaleFactor8x8);
 }
 
 // (re) initialize lowres state
