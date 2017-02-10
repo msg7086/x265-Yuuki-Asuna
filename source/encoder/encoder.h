@@ -30,6 +30,7 @@
 #include "scalinglist.h"
 #include "x265.h"
 #include "nal.h"
+#include "framedata.h"
 
 struct x265_encoder {};
 
@@ -129,6 +130,8 @@ public:
     DPB*               m_dpb;
     Frame*             m_exportedPic;
     FILE*              m_analysisFile;
+    FILE*              m_analysisFileIn;
+    FILE*              m_analysisFileOut;
     x265_param*        m_param;
     x265_param*        m_latestParam;     // Holds latest param during a reconfigure
     RateControl*       m_rateControl;
@@ -159,9 +162,7 @@ public:
     Lock               m_sliceQpLock;
     int                m_iFrameNum;   
     int                m_iPPSQpMinus26;
-    int                m_iLastSliceQp;
     int64_t            m_iBitsCostSum[QP_MAX_MAX + 1];
-
     Lock               m_sliceRefIdxLock;
     RefIdxLastGOP      m_refIdxLastGOP;
 
@@ -197,10 +198,15 @@ public:
 
     void freeAnalysis(x265_analysis_data* analysis);
 
+    void allocAnalysis2Pass(x265_analysis_2Pass* analysis, int sliceType);
+
+    void freeAnalysis2Pass(x265_analysis_2Pass* analysis, int sliceType);
+
     void readAnalysisFile(x265_analysis_data* analysis, int poc);
 
     void writeAnalysisFile(x265_analysis_data* pic, FrameData &curEncData);
-
+    void readAnalysis2PassFile(x265_analysis_2Pass* analysis2Pass, int poc, int sliceType);
+    void writeAnalysis2PassFile(x265_analysis_2Pass* analysis2Pass, FrameData &curEncData, int slicetype);
     void finishFrameStats(Frame* pic, FrameEncoder *curEncoder, x265_frame_stats* frameStats, int inPoc);
 
     void calcRefreshInterval(Frame* frameEnc);

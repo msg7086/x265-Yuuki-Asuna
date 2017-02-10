@@ -131,6 +131,7 @@ void x265_param_default(x265_param* param)
     param->bEnableAccessUnitDelimiters = 0;
     param->bEmitHRDSEI = 0;
     param->bEmitInfoSEI = 1;
+    param->bEmitHDRSEI = 0;
 
     /* CU definitions */
     param->maxCUSize = 64;
@@ -149,8 +150,8 @@ void x265_param_default(x265_param* param)
     param->bBPyramid = 1;
     param->scenecutThreshold = 40; /* Magic number pulled in from x264 */
     param->lookaheadSlices = 8;
+    param->lookaheadThreads = 0;
     param->scenecutBias = 5.0;
-
     /* Intra Coding Tools */
     param->bEnableConstrainedIntra = 0;
     param->bEnableStrongIntraSmoothing = 1;
@@ -178,6 +179,7 @@ void x265_param_default(x265_param* param)
     param->bEnableTemporalMvp = 1;
     param->bSourceReferenceEstimation = 0;
     param->limitTU = 0;
+    param->dynamicRd = 0;
 
     /* Loop Filter */
     param->bEnableLoopFilter = 1;
@@ -193,6 +195,8 @@ void x265_param_default(x265_param* param)
     param->psyRd = 2.0;
     param->psyRdoq = 0.0;
     param->analysisMode = 0;
+    param->analysisMultiPassRefine = 0;
+    param->analysisMultiPassDistortion = 0;
     param->analysisFileName = NULL;
     param->bIntraInBFrames = 0;
     param->bLossless = 0;
@@ -200,6 +204,7 @@ void x265_param_default(x265_param* param)
     param->bEnableTemporalSubLayers = 0;
     param->bEnableRdRefine = 0;
     param->bMultiPassOptRPS = 0;
+    param->bSsimRd = 0;
 
     /* Rate control options */
     param->rc.vbvMaxBitrate = 0;
@@ -263,6 +268,8 @@ void x265_param_default(x265_param* param)
     param->bEmitVUIHRDInfo      = 1;
     param->bOptQpPPS            = 1;
     param->bOptRefListLengthPPS = 1;
+    param->bOptCUDeltaQP        = 0;
+    param->bAQMotion = 0;
 
 }
 
@@ -919,7 +926,23 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("opt-ref-list-length-pps") p->bOptRefListLengthPPS = atobool(value);
         OPT("multi-pass-opt-rps") p->bMultiPassOptRPS = atobool(value);
         OPT("scenecut-bias") p->scenecutBias = atof(value);
-
+        OPT("lookahead-threads") p->lookaheadThreads = atoi(value);
+        OPT("opt-cu-delta-qp") p->bOptCUDeltaQP = atobool(value);
+        OPT("multi-pass-opt-analysis") p->analysisMultiPassRefine = atobool(value);
+        OPT("multi-pass-opt-distortion") p->analysisMultiPassDistortion = atobool(value);
+        OPT("aq-motion") p->bAQMotion = atobool(value);
+        OPT("dynamic-rd") p->dynamicRd = atof(value);
+        OPT("ssim-rd")
+        {
+            int bval = atobool(value);
+            if (bError || bval)
+            {
+                bError = false;
+                p->psyRd = 0.0;
+                p->bSsimRd = atobool(value);
+            }
+        }
+        OPT("hdr") p->bEmitHDRSEI = atobool(value);
         else
             return X265_PARAM_BAD_NAME;
     }
@@ -1148,6 +1171,8 @@ int x265_check_params(x265_param* param)
           "RD Level is out of range");
     CHECK(param->rdoqLevel < 0 || param->rdoqLevel > 2,
         "RDOQ Level is out of range");
+    CHECK(param->dynamicRd < 0 || param->dynamicRd > x265_ADAPT_RD_STRENGTH,
+        "Dynamic RD strength must be between 0 and 4");
     CHECK(param->bframes && param->bframes >= param->lookaheadDepth && !param->rc.bStatRead,
           "Lookahead depth must be greater than the max consecutive bframe count");
     CHECK(param->bframes < 0,
@@ -1260,6 +1285,10 @@ int x265_check_params(x265_param* param)
     CHECK(param->searchMethod == X265_SEA && (param->sourceWidth > 840 || param->sourceHeight > 480),
         "SEA motion search does not support resolutions greater than 480p in 32 bit build");
 #endif
+
+    if (param->masteringDisplayColorVolume || param->maxFALL || param->maxCLL)
+        param->bEmitHDRSEI = 1;
+
     return check_failed;
 }
 
@@ -1393,6 +1422,7 @@ void x265_print_params(x265_param* param)
     TOOLOPT(param->bEnableAMP, "amp");
     TOOLOPT(param->limitModes, "limit-modes");
     TOOLVAL(param->rdLevel, "rd=%d");
+    TOOLVAL(param->dynamicRd, "dynamic-rd=%.2f");
     TOOLVAL(param->psyRd, "psy-rd=%.2lf");
     TOOLVAL(param->rdoqLevel, "rdoq=%d");
     TOOLVAL(param->psyRdoq, "psy-rdoq=%.2lf");
@@ -1412,6 +1442,7 @@ void x265_print_params(x265_param* param)
     TOOLOPT(param->bEnableFastIntra, "fast-intra");
     TOOLOPT(param->bEnableStrongIntraSmoothing, "strong-intra-smoothing");
     TOOLVAL(param->lookaheadSlices, "lslices=%d");
+    TOOLVAL(param->lookaheadThreads, "lthreads=%d")
     if (param->maxSlices > 1)
         TOOLVAL(param->maxSlices, "slices=%d");
     if (param->bEnableLoopFilter)
@@ -1491,6 +1522,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     s += sprintf(s, " tu-intra-depth=%d", p->tuQTMaxIntraDepth);
     s += sprintf(s, " limit-tu=%d", p->limitTU);
     s += sprintf(s, " rdoq-level=%d", p->rdoqLevel);
+    s += sprintf(s, " dynamic-rd=%.2f", p->dynamicRd);
     BOOL(p->bEnableSignHiding, "signhide");
     BOOL(p->bEnableTransformSkip, "tskip");
     s += sprintf(s, " nr-intra=%d", p->noiseReductionIntra);
@@ -1613,6 +1645,9 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     BOOL(p->bOptRefListLengthPPS, "opt-ref-list-length-pps");
     BOOL(p->bMultiPassOptRPS, "multi-pass-opt-rps");
     s += sprintf(s, " scenecut-bias=%.2f", p->scenecutBias);
+    BOOL(p->bOptCUDeltaQP, "opt-cu-delta-qp");
+    BOOL(p->bAQMotion, "aq-motion");
+    BOOL(p->bEmitHDRSEI, "hdr");
 #undef BOOL
     return buf;
 }

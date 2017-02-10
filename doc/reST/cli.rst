@@ -872,6 +872,7 @@ as the residual quad-tree (RQT).
 .. option:: --limit-tu <0..4>
 
 	Enables early exit from TU depth recursion, for inter coded blocks.
+	
 	Level 1 - decides to recurse to next higher depth based on cost 
 	comparison of full size TU and split TU.
 	
@@ -943,6 +944,26 @@ as the residual quad-tree (RQT).
 	quad-tree begins at the same depth of the coded tree unit, but if the
 	maximum TU size is smaller than the CU size then transform QT begins 
 	at the depth of the max-tu-size. Default: 32.
+	
+.. option:: --dynamic-rd <0..4>
+	
+	Increases the RD level at points where quality drops due to VBV rate 
+	control enforcement. The number of CUs for which the RD is reconfigured 
+	is determined based on the strength. Strength 1 gives the best FPS, 
+	strength 4 gives the best SSIM. Strength 0 switches this feature off. 
+	Default: 0.
+	
+	Effective for RD levels 4 and below.
+
+.. option:: --ssim-rd, --no-ssim-rd
+
+    Enable/Disable SSIM RDO. SSIM is a better perceptual quality assessment
+    method as compared to MSE. SSIM based RDO calculation is based on residual
+    divisive normalization scheme. This normalization is consistent with the 
+    luminance and contrast masking effect of Human Visual System. It is used
+    for mode selection during analysis of CTUs and can achieve significant 
+    gain in terms of objective quality metrics SSIM and PSNR. It only has effect
+    on presets which use RDO-based mode decisions (:option:`--rd` 3 and above).
 
 Temporal / motion search options
 ================================
@@ -1227,8 +1248,18 @@ Slice decision options
     Default: 8 for ultrafast, superfast, faster, fast, medium
              4 for slow, slower
              disabled for veryslow, slower
+			 
+.. option:: --lookahead-threads <integer>
 
+    Use multiple worker threads dedicated to doing only lookahead instead of sharing
+    the worker threads with frame Encoders. A dedicated lookahead threadpool is created with the
+    specified number of worker threads. This can range from 0 upto half the
+    hardware threads available for encoding. Using too many threads for lookahead can starve
+    resources for frame Encoder and can harm performance. Default is 0 - disabled, Lookahead 
+	shares worker threads with other FrameEncoders . 
 
+    **Values:** 0 - disabled(default). Max - Half of available hardware threads.
+	
 .. option:: --b-adapt <integer>
 
 	Set the level of effort in determining B frame placement.
@@ -1372,6 +1403,12 @@ Quality, rate control and rate distortion options
 	Default 1.0.
 	**Range of values:** 0.0 to 3.0
 
+.. option:: --[no-]aq-motion
+
+	Adjust the AQ offsets based on the relative motion of each block with
+	respect to the motion of the frame. The more the relative motion of the block,
+	the more quantization is used. Default disabled. **Experimental Feature**
+
 .. option:: --qg-size <64|32|16|8>
 
 	Enable adaptive quantization for sub-CTUs. This parameter specifies 
@@ -1427,6 +1464,23 @@ Quality, rate control and rate distortion options
 	* :option:`--me` = DIA
 	* :option:`--subme` = MIN(2, :option:`--subme`)
 	* :option:`--rd` = MIN(2, :option:`--rd`)
+
+.. option:: --multi-pass-opt-analysis, --no-multi-pass-opt-analysis
+
+    Enable/Disable multipass analysis refinement along with multipass ratecontrol. Based on 
+    the information stored in pass 1, in subsequent passes analysis data is refined 
+    and also redundant steps are skipped.
+    In pass 1 analysis information like motion vector, depth, reference and prediction
+    modes of the final best CTU partition is stored for each CTU.
+    Default disabled.
+
+.. option:: --multi-pass-opt-distortion, --no-multi-pass-opt-distortion
+
+    Enable/Disable multipass refinement of qp based on distortion data along with multipass
+    ratecontrol. In pass 1 distortion of best CTU partition is stored. CTUs with high
+    distortion get lower(negative)qp offsets and vice-versa for low distortion CTUs in pass 2.
+    This helps to improve the subjective quality.
+    Default disabled.
 
 .. option:: --strict-cbr, --no-strict-cbr
 	
@@ -1753,7 +1807,8 @@ VUI fields must be manually specified.
 	where %hu are unsigned 16bit integers and %u are unsigned 32bit
 	integers. The SEI includes X,Y display primaries for RGB channels
 	and white point (WP) in units of 0.00002 and max,min luminance (L)
-	values in units of 0.0001 candela per meter square. (HDR)
+	values in units of 0.0001 candela per meter square. Applicable for HDR
+	content.
 
 	Example for a P3D65 1000-nits monitor, where G(x=0.265, y=0.690),
 	B(x=0.150, y=0.060), R(x=0.680, y=0.320), WP(x=0.3127, y=0.3290),
@@ -1774,7 +1829,7 @@ VUI fields must be manually specified.
 	emitted. The string format is "%hu,%hu" where %hu are unsigned 16bit
 	integers. The first value is the max content light level (or 0 if no
 	maximum is indicated), the second value is the maximum picture
-	average light level (or 0). (HDR)
+	average light level (or 0). Applicable for HDR content.
 
 	Example for MaxCLL=1000 candela per square meter, MaxFALL=400
 	candela per square meter:
@@ -1783,6 +1838,13 @@ VUI fields must be manually specified.
 
 	Note that this string value will need to be escaped or quoted to
 	protect against shell expansion on many platforms. No default.
+
+.. option:: --hdr, --no-hdr
+
+	Force signalling of HDR parameters in SEI packets. Enabled
+	automatically when :option`--master-display` or :option`--max-cll` is
+	specified. Useful when there is a desire to signal 0 values for max-cll
+	and max-fall. Default disabled.
 
 .. option:: --min-luma <integer>
 
@@ -1884,6 +1946,13 @@ Bitstream options
 .. option:: --[no-]multi-pass-opt-rps
 
 	Enable storing commonly used RPS in SPS in multi pass mode. Default disabled.
+
+.. option:: --[no-]opt-cu-delta-qp
+
+	Optimize CU level QPs by pulling up lower QPs to value close to meanQP thereby
+	minimizing fluctuations in deltaQP signalling. Default disabled.
+
+	Only effective at RD levels 5 and 6
 
 
 Debugging options

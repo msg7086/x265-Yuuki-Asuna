@@ -24,6 +24,7 @@ sita_1920x1080_30.yuv,--preset superfast --bitrate 3000 --vbv-bufsize 3000 --vbv
 BasketballDrive_1920x1080_50.y4m,--preset ultrafast --bitrate 3000 --vbv-bufsize 3000 --vbv-maxrate 3000 --no-wpp
 big_buck_bunny_360p24.y4m,--preset medium --bitrate 400 --vbv-bufsize 600 --vbv-maxrate 600 --no-wpp --aud --hrd --tune fast-decode
 sita_1920x1080_30.yuv,--preset superfast --bitrate 3000 --vbv-bufsize 3000 --vbv-maxrate 3000 --aud --strict-cbr --no-wpp
+sintel_trailer_2k_480p24.y4m, --preset slow --crf 24 --vbv-bufsize 150 --vbv-maxrate 150 --dynamic-rd 1.53
 
 
 
@@ -43,3 +44,8 @@ CrowdRun_1920x1080_50_10bit_422.yuv,--preset superfast --bitrate 2500 --pass 1 -
 RaceHorses_416x240_30_10bit.yuv,--preset medium --crf 26 --vbv-maxrate 1000 --vbv-bufsize 1000 --pass 1,--preset fast --bitrate 1000  --vbv-maxrate 1000 --vbv-bufsize 700 --pass 3 -F4,--preset slow --bitrate 500 --vbv-maxrate 500  --vbv-bufsize 700 --pass 2 -F4
 sita_1920x1080_30.yuv, --preset ultrafast --crf 20 --no-cutree --keyint 50 --min-keyint 50 --no-open-gop --pass 1 --vbv-bufsize 7000 --vbv-maxrate 5000, --preset ultrafast --crf 20 --no-cutree --keyint 50 --min-keyint 50 --no-open-gop --pass 2 --vbv-bufsize 7000 --vbv-maxrate 5000 --repeat-headers
 sita_1920x1080_30.yuv, --preset medium --crf 20 --no-cutree --keyint 50 --min-keyint 50 --no-open-gop --pass 1 --vbv-bufsize 7000 --vbv-maxrate 5000 --repeat-headers --multi-pass-opt-rps, --preset medium --crf 20 --no-cutree --keyint 50 --min-keyint 50 --no-open-gop --pass 2 --vbv-bufsize 7000 --vbv-maxrate 5000 --repeat-headers --multi-pass-opt-rps
+
+# multi-pass rate control and analysis
+ducks_take_off_1080p50.y4m,--bitrate 6000 --pass 1  --multi-pass-opt-analysis  --hash 1 --ssim --psnr, --bitrate 6000 --pass 2  --multi-pass-opt-analysis  --hash 1 --ssim --psnr
+big_buck_bunny_360p24.y4m,--preset veryslow --bitrate 600 --pass 1  --multi-pass-opt-analysis  --multi-pass-opt-distortion --hash 1 --ssim --psnr, --preset veryslow --bitrate 600 --pass 2  --multi-pass-opt-analysis  --multi-pass-opt-distortion --hash 1 --ssim --psnr
+parkrun_ter_720p50.y4m, --bitrate 3500 --pass 1 --multi-pass-opt-distortion --hash 1 --ssim --psnr, --bitrate 3500 --pass 3 --multi-pass-opt-distortion --hash 1 --ssim --psnr, --bitrate 3500 --pass 2 --multi-pass-opt-distortion --hash 1 --ssim --psnr

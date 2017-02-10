@@ -57,7 +57,10 @@
 
 #endif
 
-#if MACOS
+/* TODO FIX: Macro __MACH__ ideally should be part of MacOS definition, but adding to Cmake
+   behaving is not as expected, need to fix this. */
+
+#if MACOS && __MACH__
 #include <sys/param.h>
 #include <sys/sysctl.h>
 #endif
@@ -244,8 +247,7 @@ int ThreadPool::tryBondPeers(int maxPeers, sleepbitmap_t peerBitmap, BondedTaskG
 
     return bondCount;
 }
-
-ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools)
+ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools, bool isThreadsReserved)
 {
     enum { MAX_NODE_NUM = 127 };
     int cpusPerNode[MAX_NODE_NUM + 1];
@@ -397,17 +399,32 @@ ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools)
         x265_log(p, X265_LOG_DEBUG, "Reducing number of thread pools for frame thread count\n");
         numPools = X265_MAX(p->frameNumThreads / 2, 1);
     }
-
+    if (isThreadsReserved)
+        numPools = 1;
     ThreadPool *pools = new ThreadPool[numPools];
     if (pools)
     {
-        int maxProviders = (p->frameNumThreads + numPools - 1) / numPools + 1; /* +1 is Lookahead, always assigned to threadpool 0 */
+        int maxProviders = (p->frameNumThreads + numPools - 1) / numPools + !isThreadsReserved; /* +1 is Lookahead, always assigned to threadpool 0 */
         int node = 0;
         for (int i = 0; i < numPools; i++)
         {
             while (!threadsPerPool[node])
                 node++;
             int numThreads = X265_MIN(MAX_POOL_THREADS, threadsPerPool[node]);
+            int origNumThreads = numThreads;
+            if (p->lookaheadThreads > numThreads / 2)
+            {
+                p->lookaheadThreads = numThreads / 2;
+                x265_log(p, X265_LOG_DEBUG, "Setting lookahead threads to a maximum of half the total number of threads\n");
+            }
+            if (isThreadsReserved)
+            {
+                numThreads = p->lookaheadThreads;
+                maxProviders = 1;
+            }
+
+            else
+                numThreads -= p->lookaheadThreads;
             if (!pools[i].create(numThreads, maxProviders, nodeMaskPerPool[node]))
             {
                 X265_FREE(pools);
@@ -425,7 +442,7 @@ ThreadPool* ThreadPool::allocThreadPools(x265_param* p, int& numPools)
             }
             else
                 x265_log(p, X265_LOG_INFO, "Thread pool created using %d threads\n", numThreads);
-            threadsPerPool[node] -= numThreads;
+            threadsPerPool[node] -= origNumThreads;
         }
     }
     else
@@ -603,7 +620,7 @@ int ThreadPool::getCpuCount()
     return sysconf(_SC_NPROCESSORS_CONF);
 #elif __unix__
     return sysconf(_SC_NPROCESSORS_ONLN);
-#elif MACOS
+#elif MACOS && __MACH__
     int nm[2];
     size_t len = 4;
     uint32_t count;
