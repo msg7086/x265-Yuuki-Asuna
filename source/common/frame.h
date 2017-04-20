@@ -1,5 +1,5 @@
 /*****************************************************************************
-* Copyright (C) 2013 x265 project
+* Copyright (C) 2013-2017 MulticoreWare, Inc
 *
 * Author: Steve Borho <steve@borho.org>
 *         Min Chen <chenm003@163.com>
@@ -60,6 +60,12 @@ struct RcStats
     int      encodeOrder;
     int      sliceType;
     int      keptAsRef;
+    double   wantedBitsWindow;
+    double   cplxrSum;
+    double   shortTermCplxSum;
+    double   shortTermCplxCount;
+    int64_t  totalBits;
+    int64_t  encodedBits;
 };
 
 class Frame
@@ -84,6 +90,7 @@ public:
     Lowres                 m_lowres;
     bool                   m_lowresInit;         // lowres init complete (pre-analysis)
     bool                   m_bChromaExtended;    // orig chroma planes motion extended for weight analysis
+    bool                   m_reconfigureRc;
 
     float*                 m_quantOffsets;       // points to quantOffsets in x265_picture
     x265_sei               m_userSEI;

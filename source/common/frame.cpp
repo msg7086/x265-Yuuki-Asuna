@@ -1,5 +1,5 @@
 /*****************************************************************************
-* Copyright (C) 2013 x265 project
+* Copyright (C) 2013-2017 MulticoreWare, Inc
 *
 * Author: Steve Borho <steve@borho.org>
 *         Min Chen <chenm003@163.com>
@@ -47,6 +47,7 @@ Frame::Frame()
     memset(&m_lowres, 0, sizeof(m_lowres));
     m_rcData = NULL;
     m_encodeStartTime = 0;
+    m_reconfigureRc = false;
 }
 
 bool Frame::create(x265_param *param, float* quantOffsets)

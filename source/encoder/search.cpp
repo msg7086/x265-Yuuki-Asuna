@@ -1,5 +1,5 @@
 /*****************************************************************************
-* Copyright (C) 2013 x265 project
+* Copyright (C) 2013-2017 MulticoreWare, Inc
 *
 * Authors: Steve Borho <steve@borho.org>
 *          Min Chen <chenm003@163.com>
@@ -2150,7 +2150,8 @@ void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChroma
         cu.getNeighbourMV(puIdx, pu.puAbsPartIdx, interMode.interNeighbours);
 
         /* Uni-directional prediction */
-        if (m_param->analysisMode == X265_ANALYSIS_LOAD || (m_param->analysisMultiPassRefine && m_param->rc.bStatRead))
+        if ((m_param->analysisMode == X265_ANALYSIS_LOAD && m_param->analysisRefineLevel > 1)
+            || (m_param->analysisMultiPassRefine && m_param->rc.bStatRead))
         {
             for (int list = 0; list < numPredDir; list++)
             {

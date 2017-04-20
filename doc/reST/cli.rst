@@ -816,6 +816,25 @@ not match.
 	Specify a filename for analysis data (see :option:`--analysis-mode`)
 	If no filename is specified, x265_analysis.dat is used.
 
+.. option:: --refine-level <1..10>
+
+	Amount of information stored/reused in :option:`--analysis-mode` is distributed across levels.
+	Higher the value, higher the information stored/reused, faster the encode. Default 5.
+
+	Note that --refine-level must be paired with analysis-mode.
+
+	+--------+-----------------------------------------+
+	| Level  | Description                             |
+	+========+=========================================+
+	| 1      | Lookahead information                   |
+	+--------+-----------------------------------------+
+	| 2 to 4 | Level 1 + intra/inter modes, ref's      |
+	+--------+-----------------------------------------+
+	| 5 to 9 | Level 2 + rect-amp                      |
+	+--------+-----------------------------------------+
+	| 10     | Level 5 + Full CU analysis-info         |
+	+--------+-----------------------------------------+
+
 Options which affect the transform unit quad-tree, sometimes referred to
 as the residual quad-tree (RQT).
 
@@ -1671,9 +1690,15 @@ Loop filters
 	disabled, SAO analysis skips the right/bottom boundary areas.
 	Default disabled
 
+.. option:: --limit-sao, --no-limit-sao
+
+	Limit SAO filter computation by early terminating SAO process based
+	on inter prediction mode, CTU spatial-domain correlations, and relations
+	between luma and chroma.
+	Default disabled
+
 VUI (Video Usability Information) options
 =========================================
-
 x265 emits a VUI with only the timing info by default. If the SAR is
 specified (or read from a Y4M header) it is also included.  All other
 VUI fields must be manually specified.
@@ -1845,6 +1870,22 @@ VUI fields must be manually specified.
 	automatically when :option`--master-display` or :option`--max-cll` is
 	specified. Useful when there is a desire to signal 0 values for max-cll
 	and max-fall. Default disabled.
+	
+.. option:: --hdr-opt, --no-hdr-opt
+
+	Add luma and chroma offsets for HDR/WCG content.
+	Input video should be 10 bit 4:2:0. Applicable for HDR content.
+	Default disabled. **Experimental Feature**
+	
+.. option:: --dhdr10-info <filename>
+
+	Inserts tone mapping information as an SEI message.
+	
+.. option:: --dhdr10-opt, --no-dhdr10-opt
+
+	Limits the frames for which tone mapping information is inserted as 
+	SEI message. Inserts SEI only for IDR frames and for frames where tone
+	mapping information has changed.
 
 .. option:: --min-luma <integer>
 

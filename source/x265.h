@@ -1,5 +1,5 @@
 /*****************************************************************************
- * Copyright (C) 2013 x265 project
+ * Copyright (C) 2013-2017 MulticoreWare, Inc
  *
  * Authors: Steve Borho <steve@borho.org>
  *          Min Chen <chenm003@163.com>
@@ -99,6 +99,7 @@ typedef struct x265_analysis_data
     uint32_t         numCUsInFrame;
     uint32_t         numPartitions;
     int              bScenecut;
+    void*            wt;
     void*            interData;
     void*            intraData;
 } x265_analysis_data;
@@ -960,12 +961,9 @@ typedef struct x265_param
 
     /* Enable weighted prediction in B slices. Default is disabled */
     int       bEnableWeightedBiPred;
-
     /* Enable source pixels in motion estimation. Default is disabled */
-    int      bSourceReferenceEstimation;
-
+    int       bSourceReferenceEstimation;
     /*== Loop Filters ==*/
-
     /* Enable the deblocking loop filter, which improves visual quality by
      * reducing blocking effects at block edges, particularly at lower bitrates
      * or higher QP. When enabled it adds another CU row of reference lag,
@@ -1343,30 +1341,23 @@ typedef struct x265_param
 
     /* Enable storing commonly RPS in SPS in multi pass mode */
     int       bMultiPassOptRPS;
-
     /* This value represents the percentage difference between the inter cost and
     * intra cost of a frame used in scenecut detection. Default 5. */
-    double     scenecutBias;
-
+    double    scenecutBias;
     /* Use multiple worker threads dedicated to doing only lookahead instead of sharing
     * the worker threads with Frame Encoders. A dedicated lookahead threadpool is created with the
     * specified number of worker threads. This can range from 0 upto half the
     * hardware threads available for encoding. Using too many threads for lookahead can starve
     * resources for frame Encoder and can harm performance. Default is 0 - disabled. */
     int       lookaheadThreads;
-
     /* Optimize CU level QPs to signal consistent deltaQPs in frame for rd level > 4 */
-    int        bOptCUDeltaQP;
-
+    int       bOptCUDeltaQP;
     /* Refine analysis in multipass ratecontrol based on analysis information stored */
-    int         analysisMultiPassRefine;
-
+    int       analysisMultiPassRefine;
     /* Refine analysis in multipass ratecontrol based on distortion data stored */
-    int         analysisMultiPassDistortion;
-
+    int       analysisMultiPassDistortion;
     /* Adaptive Quantization based on relative motion */
-    int        bAQMotion;
-
+    int       bAQMotion;
     /* SSIM based RDO, based on residual divisive normalization scheme. Used for mode
     * selection during analysis of CTUs, can achieve significant gain in terms of 
     * objective quality metrics SSIM and PSNR */
@@ -1379,8 +1370,28 @@ typedef struct x265_param
      * Auto-enabled when max-cll, max-fall, or mastering display info is specified.
      * Default is disabled */
     int       bEmitHDRSEI;
-} x265_param;
 
+    /* Enable luma and chroma offsets for HDR/WCG content.
+     * Default is disabled */
+    int       bHDROpt;
+
+    /* A value between 1 and 10 (both inclusive) determines the level of
+    * information stored/reused in save/load analysis-mode. Higher the refine
+    * level higher the informtion stored/reused. Default is 5 */
+    int       analysisRefineLevel;
+
+     /* Limit Sample Adaptive Offset filter computation by early terminating SAO
+     * process based on inter prediction mode, CTU spatial-domain correlations,
+     * and relations between luma and chroma */
+    int       bLimitSAO;
+
+    /* File containing the tone mapping information */
+    const char*     toneMapFile;
+
+    /* Insert tone mapping information only for IDR frames and when the 
+     * tone mapping information changes. */
+    int       bDhdr10opt;
+} x265_param;
 /* x265_param_alloc:
  *  Allocates an x265_param instance. The returned param structure is not
  *  special in any way, but using this method together with x265_param_free()

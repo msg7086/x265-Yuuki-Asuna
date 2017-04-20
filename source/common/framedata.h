@@ -1,5 +1,5 @@
 /*****************************************************************************
-* Copyright (C) 2013 x265 project
+* Copyright (C) 2013-2017 MulticoreWare, Inc
 *
 * Author: Steve Borho <steve@borho.org>
 *
@@ -176,12 +176,15 @@ struct analysis_intra_data
 /* Stores inter analysis data for a single frame */
 struct analysis_inter_data
 {
-    WeightParam* wt;
     int32_t*    ref;
     uint8_t*    depth;
     uint8_t*    modes;
     uint8_t*    partSize;
     uint8_t*    mergeFlag;
+    uint8_t*    interDir;
+    uint8_t*    mvpIdx[2];
+    int8_t*     refIdx[2];
+    MV*         mv[2];
 };
 
 struct analysis2PassFrameData

@@ -1,5 +1,5 @@
 /*****************************************************************************
- * Copyright (C) 2013 x265 project
+ * Copyright (C) 2013-2017 MulticoreWare, Inc
  *
  * Authors: Steve Borho <steve@borho.org>
  *          Min Chen <chenm003@163.com>
@@ -133,9 +133,7 @@ public:
     void rdoSaoUnitRowEnd(const SAOParam* saoParam, int numctus);
     void rdoSaoUnitCu(SAOParam* saoParam, int rowBaseAddr, int idxX, int addr);
     int64_t calcSaoRdoCost(int64_t distortion, uint32_t bits, int64_t lambda);
-
-    void saoStatsInitialOffset(int planes);
-
+    void saoStatsInitialOffset(int addr, int planes);
     friend class FrameFilter;
 };
 
