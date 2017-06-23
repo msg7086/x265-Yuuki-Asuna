@@ -179,6 +179,8 @@ public:
 
 #ifdef ENABLE_HDR10_PLUS
     const hdr10plus_api     *m_hdr10plus_api;
+    uint8_t                 **cim;
+    int                     numCimInfo;
 #endif
 
     x265_sei_payload        m_prevTonemapPayload;
