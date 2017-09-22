@@ -297,15 +297,24 @@ int MP4Output::writeHeaders(const x265_nal* p_nal, uint32_t nalcount)
     i_sample_entry = lsmash_add_sample_entry(p_root, i_track, summary);
     MP4_FAIL_IF_ERR(!i_sample_entry,
                     "failed to add sample entry for video.\n");
+
+    i_sei_size = 0;
     if(nalcount >= 4)
     {
-        uint8_t *sei = p_nal[3].payload;
-        i_sei_size = p_nal[3].sizeBytes;
+        for (uint32_t i = 3; i < nalcount; i++)
+            i_sei_size += p_nal[i].sizeBytes;
+
         /* SEI */
         p_sei_buffer = new uint8_t[i_sei_size];
         MP4_FAIL_IF_ERR(!p_sei_buffer,
                         "failed to allocate sei transition buffer.\n");
-        memcpy(p_sei_buffer, sei, i_sei_size);
+
+        uint8_t *p_sei_pt = p_sei_buffer;
+        for (uint32_t i = 3; i < nalcount; i++)
+        {
+            memcpy(p_sei_pt, p_nal[i].payload, p_nal[i].sizeBytes);
+            p_sei_pt += p_nal[i].sizeBytes;
+        }
     }
 
     return vps_size + sps_size + pps_size;

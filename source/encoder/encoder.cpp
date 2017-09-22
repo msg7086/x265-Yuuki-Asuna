@@ -3012,7 +3012,7 @@ void Encoder::configure(x265_param *p)
 
     if (m_param->toneMapFile || p->bHDROpt || p->bEmitHDRSEI)
     {
-        if (!p->bRepeatHeaders)
+        if (!p->bRepeatHeaders && p->bAnnexB)
         {
             p->bRepeatHeaders = 1;
             x265_log(p, X265_LOG_WARNING, "Turning on repeat-headers for HDR compatibility\n");
