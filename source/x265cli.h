@@ -29,6 +29,9 @@
 #include "param.h"
 
 #include <getopt.h>
+#ifdef ENABLE_LSMASH
+#include <lsmash.h>
+#endif
 
 #ifdef __cplusplus
 namespace X265_NS {
@@ -303,7 +306,11 @@ static void printVersion(x265_param *param, const x265_api* api)
 {
     x265_log(param, X265_LOG_INFO, "HEVC encoder version %s\n", api->version_str);
     x265_log(param, X265_LOG_INFO, "build info %s\n", api->build_info_str);
+#ifdef ENABLE_LSMASH
+    x265_log(param, X265_LOG_INFO, "(lsmash %d.%d.%d)\n", LSMASH_VERSION_MAJOR, LSMASH_VERSION_MINOR, LSMASH_VERSION_MICRO);
+#endif
 }
+
 
 static void showHelp(x265_param *param)
 {
@@ -315,12 +322,16 @@ static void showHelp(x265_param *param)
 
     H0("\nSyntax: x265 [options] infile [-o] outfile\n");
     H0("    infile can be YUV or Y4M\n");
-    H0("    outfile is raw HEVC bitstream\n");
+    H0("    outfile can be raw HEVC bitstream or container format\n");
     H0("\nExecutable Options:\n");
     H0("-h/--help                        Show this help text and exit\n");
     H0("-V/--version                     Show version info and exit\n");
     H0("\nOutput Options:\n");
-    H0("-o/--output <filename>           Bitstream output file name\n");
+    H0("-o/--output <filename>           Output file name. Default is raw bitstream"
+#ifdef ENABLE_LSMASH
+        ", MP4 if *.mp4"
+#endif
+        "\n");
     H0("-D/--output-depth 8|10|12        Output bit depth (also internal bit depth). Default %d\n", param->internalBitDepth);
     H0("   --log-level <string>          Logging level: none error warning info debug full. Default %s\n", X265_NS::logLevelNames[param->logLevel + 1]);
     H1("   --log-file <filename>         Save log to file\n" );

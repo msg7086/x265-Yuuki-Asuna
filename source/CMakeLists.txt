@@ -667,10 +667,19 @@ add_custom_target(uninstall
 
 # Main CLI application
 set(ENABLE_CLI ON CACHE BOOL "Build standalone CLI application")
+
+# CLI-specific option here
+option(ENABLE_LSMASH "Enable L-SMASH muxer" OFF)
+if(ENABLE_LSMASH)
+    add_definitions(-DENABLE_LSMASH)
+    list(APPEND PLATFORM_LIBS lsmash)
+endif(ENABLE_LSMASH)
+
 if(ENABLE_CLI)
     file(GLOB InputFiles input/input.cpp input/yuv.cpp input/y4m.cpp input/*.h)
     file(GLOB OutputFiles output/output.cpp output/reconplay.cpp output/*.h
                           output/yuv.cpp output/y4m.cpp # recon
+                          output/mp4.cpp
                           output/raw.cpp)               # muxers
     source_group(input FILES ${InputFiles})
     source_group(output FILES ${OutputFiles})
