@@ -27,6 +27,7 @@
 #include "common.h"
 #include "md5.h"
 #include "x265.h"
+struct x265_picyuv {};
 
 namespace X265_NS {
 // private namespace
@@ -34,7 +35,7 @@ namespace X265_NS {
 class ShortYuv;
 struct SPS;
 
-class PicYuv
+class PicYuv : public x265_picyuv
 {
 public:
 
@@ -75,7 +76,7 @@ public:
 
     PicYuv();
 
-    bool  create(x265_param* param, pixel *pixelbuf = NULL);
+    bool  create(x265_param* param, bool picAlloc = true, pixel *pixelbuf = NULL);
     bool  createOffsets(const SPS& sps);
     void  destroy();
     int   getLumaBufLen(uint32_t picWidth, uint32_t picHeight, uint32_t picCsp);

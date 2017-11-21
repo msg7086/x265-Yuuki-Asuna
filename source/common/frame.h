@@ -98,6 +98,7 @@ public:
 
     float*                 m_quantOffsets;       // points to quantOffsets in x265_picture
     x265_sei               m_userSEI;
+    Event                  m_reconEncoded;
 
     /* Frame Parallelism - notification between FrameEncoders of available motion reference rows */
     ThreadSafeInteger*     m_reconRowFlag;       // flag of CTU rows completely reconstructed and extended for motion reference
@@ -111,6 +112,8 @@ public:
     x265_analysis_data     m_analysisData;
     x265_analysis_2Pass    m_analysis2Pass;
     RcStats*               m_rcData;
+
+    Event                  m_copyMVType;
 
     x265_ctu_info_t**      m_ctuInfo;
     Event                  m_copied;

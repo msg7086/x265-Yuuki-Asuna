@@ -138,6 +138,7 @@ public:
     RateControl*       m_rateControl;
     Lookahead*         m_lookahead;
 
+    bool               m_externalFlush;
     /* Collect statistics globally */
     EncStats           m_analyzeAll;
     EncStats           m_analyzeI;
@@ -201,7 +202,17 @@ public:
 
     int reconfigureParam(x265_param* encParam, x265_param* param);
 
+    bool isReconfigureRc(x265_param* latestParam, x265_param* param_in);
+
     void copyCtuInfo(x265_ctu_info_t** frameCtuInfo, int poc);
+
+    int copySlicetypePocAndSceneCut(int *slicetype, int *poc, int *sceneCut);
+
+    int getRefFrameList(PicYuv** l0, PicYuv** l1, int sliceType, int poc);
+
+    int setAnalysisDataAfterZScan(x265_analysis_data *analysis_data, Frame* curFrame);
+
+    int setAnalysisData(x265_analysis_data *analysis_data, int poc, uint32_t cuBytes);
 
     void getStreamHeaders(NALList& list, Entropy& sbacCoder, Bitstream& bs);
 

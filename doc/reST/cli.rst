@@ -399,6 +399,18 @@ Performance Options
 
 	Default: 1 slice per frame. **Experimental feature**
 
+.. option:: --copy-pic, --no-copy-pic
+
+	Allow encoder to copy input x265 pictures to internal frame buffers. When disabled,
+	x265 will not make an internal copy of the input picture and will work with the
+	application's buffers. While this allows for deeper integration, it is the responsbility
+	of the application to (a) ensure that the allocated picture has extra space for padding
+	that will be done by the library, and (b) the buffers aren't recycled until the library
+	has completed encoding this frame (which can be figured out by tracking NALs output by x265)
+
+	Default: enabled
+
+
 Input/Output File Options
 =========================
 
@@ -875,17 +887,26 @@ will not reuse analysis if slice type parameters do not match.
 
 	Note that --analysis-reuse-level must be paired with analysis-reuse-mode.
 
-	+--------+-----------------------------------------+
-	| Level  | Description                             |
-	+========+=========================================+
-	| 1      | Lookahead information                   |
-	+--------+-----------------------------------------+
-	| 2 to 4 | Level 1 + intra/inter modes, ref's      |
-	+--------+-----------------------------------------+
-	| 5 to 9 | Level 2 + rect-amp                      |
-	+--------+-----------------------------------------+
-	| 10     | Level 5 + Full CU analysis-info         |
-	+--------+-----------------------------------------+
+    +--------------+------------------------------------------+
+    | Level        | Description                              |
+    +==============+==========================================+
+    | 1            | Lookahead information                    |
+    +--------------+------------------------------------------+
+    | 2 to 4       | Level 1 + intra/inter modes, ref's       |
+    +--------------+------------------------------------------+
+    | 5,6 and 9    | Level 2 + rect-amp                       |
+    +--------------+------------------------------------------+
+    | 7            | Level 5 + AVC size CU refinement         |
+    +--------------+------------------------------------------+
+    | 8            | Level 5 + AVC size Full CU analysis-info |
+    +--------------+------------------------------------------+
+    | 10           | Level 5 + Full CU analysis-info          |
+    +--------------+------------------------------------------+
+
+.. option:: --refine-mv-type <string>
+
+    Reuse MV information received through API call. Currently receives information for AVC size and the accepted 
+    string input is "avc". Default is disabled.
 
 .. option:: --scale-factor
 
@@ -893,28 +914,44 @@ will not reuse analysis if slice type parameters do not match.
        This option should be coupled with analysis-reuse-mode option, --analysis-reuse-level 10.
        The ctu size of load should be double the size of save. Default 0.
 
-.. option:: --refine-intra <0|1|2>
+.. option:: --refine-intra <0..3>
 	
 	Enables refinement of intra blocks in current encode. 
 	
-	Level 0 - Forces both mode and depth from the previous encode.
+	Level 0 - Forces both mode and depth from the save encode.
 	
-	Level 1 - Evaluates all intra modes for blocks of size one smaller than 
-	the min-cu-size of the incoming analysis data from the previous encode, 
-	forces modes for blocks of larger size.
+	Level 1 - Evaluates all intra modes at current depth(n) and at depth 
+	(n+1) when current block size is one greater than the min-cu-size.
+	Forces modes for larger blocks.
 	
-	Level 2 - Evaluates all intra modes for	blocks of size one smaller than 
-	the min-cu-size of the incoming analysis data from the previous encode. 
-	For larger blocks, force only depth when angular mode is chosen by the 
-	previous encode, force depth and mode when other intra modes are chosen.
+	Level 2 - In addition to the functionality of level 1, at all depths, force 
+	(a) only depth when angular mode is chosen by the save encode.
+	(b) depth and mode when other intra modes are chosen by the save encode.
+	
+	Level 3 - Perform analysis of intra modes for depth reused from first encode.
 	
 	Default 0.
 	
-.. option:: --refine-inter-depth
+.. option:: --refine-inter <0..3>
 
-	Enables refinement of inter blocks in current encode. Evaluates all 
-	inter modes for blocks of size one smaller than the min-cu-size of the 
-	incoming analysis data from the previous encode. Default disabled.
+	Enables refinement of inter blocks in current encode. 
+	
+	Level 0 - Forces both mode and depth from the save encode.
+	
+	Level 1 - Evaluates all inter modes at current depth(n) and at depth 
+	(n+1) when current block size is one greater than the min-cu-size.
+	Forces modes for larger blocks.
+	
+	Level 2 - In addition to the functionality of level 1, restricts the modes 
+	evaluated when specific modes are decided as the best mode by the save encode.
+	
+	2nx2n in save encode - disable re-evaluation of rect and amp.
+	
+	skip in save encode  - re-evaluates only skip, merge and 2nx2n modes.
+	
+	Level 3 - Perform analysis of inter modes while reusing depths from the save encode.
+	
+	Default 0.
 
 .. option:: --refine-mv
 	
@@ -1405,6 +1442,16 @@ Slice decision options
 .. option:: --b-pyramid, --no-b-pyramid
 
 	Use B-frames as references, when possible. Default enabled
+	
+.. option:: --force-flush <integer>
+
+	Force the encoder to flush frames. Default is 0.
+	
+	Values:
+	0 - flush the encoder only when all the input pictures are over.
+	1 - flush all the frames even when the input is not over. 
+	    slicetype decision may change with this option.
+	2 - flush the slicetype decided frames only.     
 
 Quality, rate control and rate distortion options
 =================================================
@@ -1470,6 +1517,24 @@ Quality, rate control and rate distortion options
 	Default 0.9
 
 	**Range of values:** fractional: 0 - 1.0, or kbits: 2 .. bufsize
+	
+.. option:: --vbv-end <float>
+
+	Final buffer emptiness. The portion of the decode buffer that must be 
+	available after all the specified frames have been inserted into the 
+	decode buffer. Specified as a fractional value between 0 and 1, or in 
+	kbits. Default 0 (disabled)
+	
+	This enables basic support for chunk-parallel encoding where each segment 
+	can specify the starting and ending state of the VBV buffer so that VBV 
+	compliance can be maintained when chunks are independently encoded and 
+	stitched together.
+	
+.. option:: --vbv-end-fr-adj <float>
+
+	Frame from which qp has to be adjusted to achieve final decode buffer
+	emptiness. Specified as a fraction of the total frames. Fractions > 0 are 
+	supported only when the total number of frames is known. Default 0.
 
 .. option:: --qp, -q <integer>
 
@@ -1529,7 +1594,7 @@ Quality, rate control and rate distortion options
 	Enable adaptive quantization for sub-CTUs. This parameter specifies 
 	the minimum CU size at which QP can be adjusted, ie. Quantization Group
 	size. Allowed range of values are 64, 32, 16, 8 provided this falls within 
-	the inclusive range [maxCUSize, minCUSize]. Experimental.
+	the inclusive range [maxCUSize, minCUSize].
 	Default: same as maxCUSize
 
 .. option:: --cutree, --no-cutree
@@ -1618,7 +1683,7 @@ Quality, rate control and rate distortion options
 	conservative, waiting until there is enough feedback in terms of 
 	encoded frames to control QP. strict-cbr allows the encoder to be 
 	more aggressive in hitting the target bitrate even for short segment 
-	videos. Experimental.
+	videos.
 	
 .. option:: --cbqpoffs <integer>
 
@@ -1878,7 +1943,7 @@ VUI fields must be manually specified.
 	undefined (not signaled)
 
 	1. bt709
-	2. undef
+	2. unknown
 	3. **reserved**
 	4. bt470m
 	5. bt470bg
@@ -1886,13 +1951,16 @@ VUI fields must be manually specified.
 	7. smpte240m
 	8. film
 	9. bt2020
+    10. smpte428
+    11. smpte431
+    12. smpte432
 
 .. option:: --transfer <integer|string>
 
 	Specify transfer characteristics. Default undefined (not signaled)
 
 	1. bt709
-	2. undef
+	2. unknown
 	3. **reserved**
 	4. bt470m
 	5. bt470bg
@@ -1906,8 +1974,8 @@ VUI fields must be manually specified.
 	13. iec61966-2-1
 	14. bt2020-10
 	15. bt2020-12
-	16. smpte-st-2084
-	17. smpte-st-428
+	16. smpte2084
+	17. smpte428
 	18. arib-std-b67
 
 .. option:: --colormatrix <integer|string>
@@ -1926,6 +1994,10 @@ VUI fields must be manually specified.
 	8. YCgCo
 	9. bt2020nc
 	10. bt2020c
+    11. smpte2085
+    12. chroma-derived-nc
+    13. chroma-derived-c
+    14. ictcp
 
 .. option:: --chromaloc <0..5>
 
@@ -1976,15 +2048,15 @@ VUI fields must be manually specified.
 .. option:: --hdr, --no-hdr
 
 	Force signalling of HDR parameters in SEI packets. Enabled
-	automatically when :option`--master-display` or :option`--max-cll` is
+	automatically when :option:`--master-display` or :option:`--max-cll` is
 	specified. Useful when there is a desire to signal 0 values for max-cll
 	and max-fall. Default disabled.
 	
 .. option:: --hdr-opt, --no-hdr-opt
 
 	Add luma and chroma offsets for HDR/WCG content.
-	Input video should be 10 bit 4:2:0. Applicable for HDR content.
-	Default disabled. **Experimental Feature**
+	Input video should be 10 bit 4:2:0. Applicable for HDR content. It is recommended
+	that AQ-mode be enabled along with this feature. Default disabled.
 	
 .. option:: --dhdr10-info <filename>
 
@@ -2004,12 +2076,12 @@ VUI fields must be manually specified.
 .. option:: --min-luma <integer>
 
 	Minimum luma value allowed for input pictures. Any values below min-luma
-	are clipped. Experimental. No default.
+	are clipped.  No default.
 
 .. option:: --max-luma <integer>
 
 	Maximum luma value allowed for input pictures. Any values above max-luma
-	are clipped. Experimental. No default.
+	are clipped.  No default.
 
 Bitstream options
 =================
@@ -2091,12 +2163,12 @@ Bitstream options
 .. option:: --opt-qp-pps, --no-opt-qp-pps
 
 	Optimize QP in PPS (instead of default value of 26) based on the QP values
-	observed in last GOP. Default enabled.
+	observed in last GOP. Default disabled.
 
 .. option:: --opt-ref-list-length-pps, --no-opt-ref-list-length-pps
 
 	Optimize L0 and L1 ref list length in PPS (instead of default value of 0)
-	based on the lengths observed in the last GOP. Default enabled.
+	based on the lengths observed in the last GOP. Default disabled.
 
 .. option:: --multi-pass-opt-rps, --no-multi-pass-opt-rps
 
@@ -2109,6 +2181,21 @@ Bitstream options
 
 	Only effective at RD levels 5 and 6
 
+DCT Approximations
+=================
+
+.. option:: --lowpass-dct
+
+    If enabled, x265 will use low-pass subband dct approximation instead of the
+    standard dct for 16x16 and 32x32 blocks. This approximation is less computational 
+    intensive but it generates truncated coefficient matrixes for the transformed block. 
+    Empirical analysis shows marginal loss in compression and performance gains up to 10%,
+    paticularly at moderate bit-rates.
+
+    This approximation should be considered for platforms with performance and time 
+    constrains.
+
+    Default disabled. **Experimental feature**
 
 Debugging options
 =================

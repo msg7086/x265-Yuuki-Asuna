@@ -77,7 +77,15 @@ bool Frame::create(x265_param *param, float* quantOffsets)
         }
     }
 
-    if (m_fencPic->create(param) && m_lowres.create(m_fencPic, param->bframes, !!param->rc.aqMode || !!param->bAQMotion, param->rc.qgSize))
+    if (param->bMVType == AVC_INFO)
+    {
+        m_analysisData.wt = NULL;
+        m_analysisData.intraData = NULL;
+        m_analysisData.interData = NULL;
+        m_analysis2Pass.analysisFramedata = NULL;
+    }
+
+    if (m_fencPic->create(param, !!m_param->bCopyPicToFrame) && m_lowres.create(m_fencPic, param->bframes, !!param->rc.aqMode || !!param->bAQMotion, param->rc.qgSize))
     {
         X265_CHECK((m_reconColCount == NULL), "m_reconColCount was initialized");
         m_numRows = (m_fencPic->m_picHeight + param->maxCUSize - 1)  / param->maxCUSize;
@@ -150,7 +158,8 @@ void Frame::destroy()
 
     if (m_fencPic)
     {
-        m_fencPic->destroy();
+        if (m_param->bCopyPicToFrame)
+            m_fencPic->destroy();
         delete m_fencPic;
         m_fencPic = NULL;
     }

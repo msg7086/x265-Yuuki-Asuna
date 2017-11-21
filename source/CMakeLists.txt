@@ -29,7 +29,7 @@ option(NATIVE_BUILD "Target the build CPU" OFF)
 option(STATIC_LINK_CRT "Statically link C runtime for release builds" OFF)
 mark_as_advanced(FPROFILE_USE FPROFILE_GENERATE NATIVE_BUILD)
 # X265_BUILD must be incremented each time the public API is changed
-set(X265_BUILD 130)
+set(X265_BUILD 146)
 configure_file("${PROJECT_SOURCE_DIR}/x265.def.in"
                "${PROJECT_BINARY_DIR}/x265.def")
 configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
@@ -184,6 +184,14 @@ if(CC STREQUAL "xlc")
 endif()
 # this option is to enable the inclusion of dynamic HDR10 library to the libx265 compilation
 option(ENABLE_HDR10_PLUS "Enable dynamic HDR10 compilation" OFF)
+if(MSVC AND (MSVC_VERSION LESS 1800) AND ENABLE_HDR10_PLUS)
+    message(FATAL_ERROR "MSVC version 12.0 or above required to support hdr10plus")
+endif()
+if(WIN32 AND (MSVC_VERSION GREATER 1800))
+    if(CMAKE_VERSION VERSION_LESS 3.7)
+        message(FATAL_ERROR "cmake version not compatible for VS 2017. Update the cmake to versions 3.7 or above")
+    endif()
+endif()
 if(GCC)
     add_definitions(-Wall -Wextra -Wshadow)
     add_definitions(-D__STDC_LIMIT_MACROS=1)
@@ -539,6 +547,13 @@ if(ENABLE_HDR10_PLUS)
 endif()
 install(FILES x265.h "${PROJECT_BINARY_DIR}/x265_config.h" DESTINATION include)
 
+if(WIN32)
+    install(FILES "${PROJECT_BINARY_DIR}/Debug/x265.pdb" DESTINATION ${BIN_INSTALL_DIR} CONFIGURATIONS Debug)
+    install(FILES "${PROJECT_BINARY_DIR}/RelWithDebInfo/x265.pdb" DESTINATION ${BIN_INSTALL_DIR} CONFIGURATIONS RelWithDebInfo)
+    install(FILES "${PROJECT_BINARY_DIR}/Debug/libx265.pdb" DESTINATION ${BIN_INSTALL_DIR} CONFIGURATIONS Debug OPTIONAL NAMELINK_ONLY)
+    install(FILES "${PROJECT_BINARY_DIR}/RelWithDebInfo/libx265.pdb" DESTINATION ${BIN_INSTALL_DIR} CONFIGURATIONS RelWithDebInfo OPTIONAL NAMELINK_ONLY)
+endif()
+
 if(CMAKE_RC_COMPILER)
     # The resource compiler does not need CFLAGS or macro defines. It
     # often breaks them
@@ -639,13 +654,11 @@ if(X265_LATEST_TAG)
             DESTINATION "${LIB_INSTALL_DIR}/pkgconfig")
 endif()
 
-if(NOT WIN32)
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
-                   "${CMAKE_CURRENT_BINARY_DIR}/cmake/cmake_uninstall.cmake"
-                   IMMEDIATE @ONLY)
-    add_custom_target(uninstall
-                      "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake/cmake_uninstall.cmake")
-endif()
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/cmake/cmake_uninstall.cmake.in"
+               "${CMAKE_CURRENT_BINARY_DIR}/cmake/cmake_uninstall.cmake"
+               IMMEDIATE @ONLY)
+add_custom_target(uninstall
+                  "${CMAKE_COMMAND}" -P "${CMAKE_CURRENT_BINARY_DIR}/cmake/cmake_uninstall.cmake")
 
 # Main CLI application
 set(ENABLE_CLI ON CACHE BOOL "Build standalone CLI application")

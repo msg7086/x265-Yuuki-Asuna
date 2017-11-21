@@ -35,6 +35,10 @@ extern "C" {
  *      opaque handler for encoder */
 typedef struct x265_encoder x265_encoder;
 
+/* x265_picyuv:
+ *      opaque handler for PicYuv */
+typedef struct x265_picyuv x265_picyuv;
+
 /* Application developers planning to link against a shared library version of
  * libx265 from a Microsoft Visual Studio or similar development environment
  * will need to define X265_API_IMPORTS before including this header.
@@ -88,6 +92,21 @@ typedef struct x265_nal
     uint8_t* payload;
 } x265_nal;
 
+#define X265_LOOKAHEAD_MAX 250
+
+typedef struct x265_lookahead_data
+{
+    int64_t   plannedSatd[X265_LOOKAHEAD_MAX + 1];
+    uint32_t  *vbvCost;
+    uint32_t  *intraVbvCost;
+    uint32_t  *satdForVbv;
+    uint32_t  *intraSatdForVbv;
+    int       keyframe;
+    int       lastMiniGopBFrame;
+    int       plannedType[X265_LOOKAHEAD_MAX + 1];
+    int64_t   dts;
+} x265_lookahead_data;
+
 /* Stores all analysis data for a single frame */
 typedef struct x265_analysis_data
 {
@@ -102,6 +121,9 @@ typedef struct x265_analysis_data
     void*            wt;
     void*            interData;
     void*            intraData;
+    uint32_t         numCuInHeight;
+    x265_lookahead_data lookahead;
+    uint8_t*         modeFlag[2];
 } x265_analysis_data;
 
 /* cu statistics */
@@ -202,6 +224,11 @@ typedef enum
     CTU_INFO_CHANGE = 2,
 }CTUInfo;
 
+typedef enum
+{
+    NO_INFO = 0,
+    AVC_INFO = 1,
+}MVRefineType;
 
 /* Arbitrary User SEI
  * Payload size is in bytes and the payload pointer must be non-NULL. 
@@ -523,15 +550,15 @@ typedef struct x265_stats
 /* String values accepted by x265_param_parse() (and CLI) for various parameters */
 static const char * const x265_motion_est_names[] = { "dia", "hex", "umh", "star", "sea", "full", 0 };
 static const char * const x265_source_csp_names[] = { "i400", "i420", "i422", "i444", "nv12", "nv16", 0 };
-static const char * const x265_video_format_names[] = { "component", "pal", "ntsc", "secam", "mac", "undef", 0 };
+static const char * const x265_video_format_names[] = { "component", "pal", "ntsc", "secam", "mac", "unknown", 0 };
 static const char * const x265_fullrange_names[] = { "limited", "full", 0 };
-static const char * const x265_colorprim_names[] = { "", "bt709", "undef", "", "bt470m", "bt470bg", "smpte170m", "smpte240m", "film", "bt2020", 0 };
-static const char * const x265_transfer_names[] = { "", "bt709", "undef", "", "bt470m", "bt470bg", "smpte170m", "smpte240m", "linear", "log100",
+static const char * const x265_colorprim_names[] = { "reserved", "bt709", "unknown", "reserved", "bt470m", "bt470bg", "smpte170m", "smpte240m", "film", "bt2020", "smpte428", "smpte431", "smpte432", 0 };
+static const char * const x265_transfer_names[] = { "reserved", "bt709", "unknown", "reserved", "bt470m", "bt470bg", "smpte170m", "smpte240m", "linear", "log100",
                                                     "log316", "iec61966-2-4", "bt1361e", "iec61966-2-1", "bt2020-10", "bt2020-12",
-                                                    "smpte-st-2084", "smpte-st-428", "arib-std-b67", 0 };
-static const char * const x265_colmatrix_names[] = { "GBR", "bt709", "undef", "", "fcc", "bt470bg", "smpte170m", "smpte240m",
-                                                     "YCgCo", "bt2020nc", "bt2020c", 0 };
-static const char * const x265_sar_names[] = { "undef", "1:1", "12:11", "10:11", "16:11", "40:33", "24:11", "20:11",
+                                                    "smpte2084", "smpte428", "arib-std-b67", 0 };
+static const char * const x265_colmatrix_names[] = { "gbr", "bt709", "unknown", "", "fcc", "bt470bg", "smpte170m", "smpte240m",
+                                                     "ycgco", "bt2020nc", "bt2020c", "smpte2085", "chroma-derived-nc", "chroma-derived-c", "ictcp", 0 };
+static const char * const x265_sar_names[] = { "unknown", "1:1", "12:11", "10:11", "16:11", "40:33", "24:11", "20:11",
                                                "32:11", "80:33", "18:11", "15:11", "64:33", "160:99", "4:3", "3:2", "2:1", 0 };
 static const char * const x265_interlace_names[] = { "prog", "tff", "bff", 0 };
 static const char * const x265_analysis_names[] = { "off", "save", "load", 0 };
@@ -1479,6 +1506,35 @@ typedef struct x265_param
 
     /* File pointer for csv log */
     FILE*     csvfpt;
+
+    /* Force flushing the frames from encoder */
+    int       forceFlush;
+
+    /* Enable skipping split RD analysis when sum of split CU rdCost larger than none split CU rdCost for Intra CU */
+    int       bEnableSplitRdSkip;
+
+    /* Disable lookahead */
+    int       bDisableLookahead;
+
+    /* Use low-pass subband dct approximation 
+    *  This DCT approximation is less computational intensive and gives results close to standard DCT */
+    int       bLowPassDct;
+
+    /* Sets the portion of the decode buffer that must be available after all the
+    * specified frames have been inserted into the decode buffer. If it is less
+    * than 1, then the final buffer available is vbv-end * vbvBufferSize.  Otherwise,
+    * it is interpreted as the final buffer available in kbits. Default 0 (disabled) */
+    double    vbvBufferEnd;
+    
+    /* Frame from which qp has to be adjusted to hit final decode buffer emptiness.
+    * Specified as a fraction of the total frames. Default 0 */
+    double    vbvEndFrameAdjust;
+
+    /* Reuse MV information obtained through API */
+    int       bMVType;
+
+    /* Allow the encoder to have a copy of the planes of x265_picture in Frame */
+    int       bCopyPicToFrame;
 } x265_param;
 
 /* x265_param_alloc:
@@ -1677,9 +1733,46 @@ int x265_encoder_intra_refresh(x265_encoder *);
  *    the encoder will wait for this copy to complete if enabled.
  */
 int x265_encoder_ctu_info(x265_encoder *, int poc, x265_ctu_info_t** ctu);
+
+/* x265_get_slicetype_poc_and_scenecut:
+ *     get the slice type, poc and scene cut information for the current frame,
+ *     returns negative on error, 0 when access unit were output.
+ *     This API must be called after(poc >= lookaheadDepth + bframes + 2) condition check */
+int x265_get_slicetype_poc_and_scenecut(x265_encoder *encoder, int *slicetype, int *poc, int* sceneCut);
+
+/* x265_get_ref_frame_list:
+ *     returns negative on error, 0 when access unit were output.
+ *     This API must be called after(poc >= lookaheadDepth + bframes + 2) condition check */
+int x265_get_ref_frame_list(x265_encoder *encoder, x265_picyuv**, x265_picyuv**, int, int);
+
+/* x265_set_analysis_data:
+ *     set the analysis data. The incoming analysis_data structure is assumed to be AVC-sized blocks.
+ *     returns negative on error, 0 access unit were output. */
+int x265_set_analysis_data(x265_encoder *encoder, x265_analysis_data *analysis_data, int poc, uint32_t cuBytes);
+
 /* x265_cleanup:
  *       release library static allocations, reset configured CTU size */
 void x265_cleanup(void);
+
+/* Open a CSV log file. On success it returns a file handle which must be passed
+ * to x265_csvlog_frame() and/or x265_csvlog_encode(). The file handle must be
+ * closed by the caller using fclose(). If csv-loglevel is 0, then no frame logging
+ * header is written to the file. This function will return NULL if it is unable
+ * to open the file for write or if it detects a structure size skew */
+FILE* x265_csvlog_open(const x265_param *);
+
+/* Log frame statistics to the CSV file handle. csv-loglevel should have been non-zero
+ * in the call to x265_csvlog_open() if this function is called. */
+void x265_csvlog_frame(const x265_param *, const x265_picture *);
+
+/* Log final encode statistics to the CSV file handle. 'argc' and 'argv' are
+ * intended to be command line arguments passed to the encoder. Encode
+ * statistics should be queried from the encoder just prior to closing it. */
+void x265_csvlog_encode(x265_encoder *encoder, const x265_stats *, int argc, char** argv);
+
+/* In-place downshift from a bit-depth greater than 8 to a bit-depth of 8, using
+ * the residual bits to dither each row. */
+void x265_dither_image(x265_picture *, int picWidth, int picHeight, int16_t *errorBuf, int bitDepth);
 
 #define X265_MAJOR_VERSION 1
 
@@ -1726,6 +1819,13 @@ typedef struct x265_api
     int           sizeof_frame_stats;   /* sizeof(x265_frame_stats) */
     int           (*encoder_intra_refresh)(x265_encoder*);
     int           (*encoder_ctu_info)(x265_encoder*, int, x265_ctu_info_t**);
+    int           (*get_slicetype_poc_and_scenecut)(x265_encoder*, int*, int*, int*);
+    int           (*get_ref_frame_list)(x265_encoder*, x265_picyuv**, x265_picyuv**, int, int);
+    FILE*         (*csvlog_open)(const x265_param*);
+    void          (*csvlog_frame)(const x265_param*, const x265_picture*);
+    void          (*csvlog_encode)(x265_encoder*, const x265_stats*, int, char**);
+    void          (*dither_image)(x265_picture*, int, int, int16_t*, int);
+    int           (*set_analysis_data)(x265_encoder *encoder, x265_analysis_data *analysis_data, int poc, uint32_t cuBytes);
     /* add new pointers to the end, or increment X265_MAJOR_VERSION */
 } x265_api;
 

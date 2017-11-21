@@ -147,6 +147,8 @@ static const struct option long_options[] =
     { "vbv-maxrate",    required_argument, NULL, 0 },
     { "vbv-bufsize",    required_argument, NULL, 0 },
     { "vbv-init",       required_argument, NULL, 0 },
+    { "vbv-end",        required_argument, NULL, 0 },
+    { "vbv-end-fr-adj", required_argument, NULL, 0 },
     { "bitrate",        required_argument, NULL, 0 },
     { "qp",             required_argument, NULL, 'q' },
     { "aq-mode",        required_argument, NULL, 0 },
@@ -255,8 +257,7 @@ static const struct option long_options[] =
     { "analysis-reuse-level", required_argument, NULL, 0 },
     { "scale-factor",   required_argument, NULL, 0 },
     { "refine-intra",   required_argument, NULL, 0 },
-    { "refine-inter",   no_argument, NULL, 0 },
-    { "no-refine-inter",no_argument, NULL, 0 },
+    { "refine-inter",   required_argument, NULL, 0 },
     { "strict-cbr",           no_argument, NULL, 0 },
     { "temporal-layers",      no_argument, NULL, 0 },
     { "no-temporal-layers",   no_argument, NULL, 0 },
@@ -280,6 +281,13 @@ static const struct option long_options[] =
     { "no-dhdr10-opt",        no_argument, NULL, 0},
     { "refine-mv",            no_argument, NULL, 0 },
     { "no-refine-mv",         no_argument, NULL, 0 },
+    { "force-flush",    required_argument, NULL, 0 },
+    { "splitrd-skip",         no_argument, NULL, 0 },
+    { "no-splitrd-skip",      no_argument, NULL, 0 },
+    { "lowpass-dct",          no_argument, NULL, 0 },
+    { "refine-mv-type", required_argument, NULL, 0 },
+    { "copy-pic",             no_argument, NULL, 0 },
+    { "no-copy-pic",          no_argument, NULL, 0 },
     { 0, 0, 0, 0 },
     { 0, 0, 0, 0 },
     { 0, 0, 0, 0 },
@@ -333,6 +341,7 @@ static void showHelp(x265_param *param)
     H0("   --seek <integer>              First frame to encode\n");
     H1("   --[no-]interlace <bff|tff>    Indicate input pictures are interlace fields in temporal order. Default progressive\n");
     H1("   --dither                      Enable dither if downscaling to 8 bit pixels. Default disabled\n");
+    H0("   --[no-]copy-pic               Copy buffers of input picture in frame. Default %s\n", OPT(param->bCopyPicToFrame));
     H0("\nQuality reporting metrics:\n");
     H0("   --[no-]ssim                   Enable reporting SSIM metric scores. Default %s\n", OPT(param->bEnableSsim));
     H0("   --[no-]psnr                   Enable reporting PSNR metric scores. Default %s\n", OPT(param->bEnablePsnr));
@@ -374,6 +383,7 @@ static void showHelp(x265_param *param)
     H0("   --[no-]early-skip             Enable early SKIP detection. Default %s\n", OPT(param->bEnableEarlySkip));
     H0("   --[no-]rskip                  Enable early exit from recursion. Default %s\n", OPT(param->bEnableRecursionSkip));
     H1("   --[no-]tskip-fast             Enable fast intra transform skipping. Default %s\n", OPT(param->bEnableTSkipFast));
+    H1("   --[no-]splitrd-skip           Enable skipping split RD analysis when sum of split CU rdCost larger than none split CU rdCost for Intra CU. Default %s\n", OPT(param->bEnableSplitRdSkip));
     H1("   --nr-intra <integer>          An integer value in range of 0 to 2000, which denotes strength of noise reduction in intra CUs. Default 0\n");
     H1("   --nr-inter <integer>          An integer value in range of 0 to 2000, which denotes strength of noise reduction in inter CUs. Default 0\n");
     H0("   --ctu-info <integer>          Enable receiving ctu information asynchronously and determine reaction to the CTU information (0, 1, 2, 4, 6) Default 0\n"
@@ -415,7 +425,7 @@ static void showHelp(x265_param *param)
     H0("   --rc-lookahead <integer>      Number of frames for frame-type lookahead (determines encoder latency) Default %d\n", param->lookaheadDepth);
     H1("   --lookahead-slices <0..16>    Number of slices to use per lookahead cost estimate. Default %d\n", param->lookaheadSlices);
     H0("   --lookahead-threads <integer> Number of threads to be dedicated to perform lookahead only. Default %d\n", param->lookaheadThreads);
-    H0("   --bframes <integer>           Maximum number of consecutive b-frames (now it only enables B GOP structure) Default %d\n", param->bframes);
+    H0("-b/--bframes <0..16>             Maximum number of consecutive b-frames. Default %d\n", param->bframes);
     H1("   --bframe-bias <integer>       Bias towards B frame decisions. Default %d\n", param->bFrameBias);
     H0("   --b-adapt <0..2>              0 - none, 1 - fast, 2 - full (trellis) adaptive B frame scheduling. Default %d\n", param->bFrameAdaptive);
     H0("   --[no-]b-pyramid              Use B-frames as references. Default %s\n", OPT(param->bBPyramid));
@@ -423,6 +433,10 @@ static void showHelp(x265_param *param)
     H1("                                 Format of each line: framenumber frametype QP\n");
     H1("                                 QP is optional (none lets x265 choose). Frametypes: I,i,K,P,B,b.\n");
     H1("                                 QPs are restricted by qpmin/qpmax.\n");
+    H1("   --force-flush <integer>       Force the encoder to flush frames. Default %d\n", param->forceFlush);
+    H1("                                 0 - flush the encoder only when all the input pictures are over.\n");
+    H1("                                 1 - flush all the frames even when the input is not over. Slicetype decision may change with this option.\n");
+    H1("                                 2 - flush the slicetype decided frames only.\n");
     H0("\nRate control, Adaptive Quantization:\n");
     H0("   --bitrate <integer>           Target bitrate (kbps) for ABR (implied). Default %d\n", param->rc.bitrate);
     H1("-q/--qp <integer>                QP for P slices in CQP mode (implied). --ipratio and --pbration determine other slice QPs\n");
@@ -435,6 +449,8 @@ static void showHelp(x265_param *param)
     H0("   --vbv-maxrate <integer>       Max local bitrate (kbit/s). Default %d\n", param->rc.vbvMaxBitrate);
     H0("   --vbv-bufsize <integer>       Set size of the VBV buffer (kbit). Default %d\n", param->rc.vbvBufferSize);
     H0("   --vbv-init <float>            Initial VBV buffer occupancy (fraction of bufsize or in kbits). Default %.2f\n", param->rc.vbvBufferInit);
+    H0("   --vbv-end <float>             Final VBV buffer emptiness (fraction of bufsize or in kbits). Default 0 (disabled)\n");
+    H0("   --vbv-end-fr-adj <float>      Frame from which qp has to be adjusted to achieve final decode buffer emptiness. Default 0\n");
     H0("   --pass                        Multi pass rate control.\n"
        "                                   - 1 : First pass, creates stats file\n"
        "                                   - 2 : Last pass, does not overwrite stats file\n"
@@ -448,9 +464,21 @@ static void showHelp(x265_param *param)
     H0("   --analysis-reuse-mode <string|int>  save - Dump analysis info into file, load - Load analysis buffers from the file. Default %d\n", param->analysisReuseMode);
     H0("   --analysis-reuse-file <filename>    Specify file name used for either dumping or reading analysis data. Deault x265_analysis.dat\n");
     H0("   --analysis-reuse-level <1..10>      Level of analysis reuse indicates amount of info stored/reused in save/load mode, 1:least..10:most. Default %d\n", param->analysisReuseLevel);
+    H0("   --refine-mv-type <string>     Reuse MV information received through API call. Supported option is avc. Default disabled - %d\n", param->bMVType);
     H0("   --scale-factor <int>          Specify factor by which input video is scaled down for analysis save mode. Default %d\n", param->scaleFactor);
-    H0("   --refine-intra <int>          Enable intra refinement for load mode. Default %d\n", param->intraRefine);
-    H0("   --[no-]refine-inter           Enable inter refinement for load mode. Default %s\n", OPT(param->interRefine));
+    H0("   --refine-intra <0..3>         Enable intra refinement for encode that uses analysis-reuse-mode=load.\n"
+        "                                    - 0 : Forces both mode and depth from the save encode.\n"
+        "                                    - 1 : Functionality of (0) + evaluate all intra modes at min-cu-size's depth when current depth is one smaller than min-cu-size's depth.\n"
+        "                                    - 2 : Functionality of (1) + irrespective of size evaluate all angular modes when the save encode decides the best mode as angular.\n"
+        "                                    - 3 : Functionality of (1) + irrespective of size evaluate all intra modes.\n"
+        "                                Default:%d\n", param->intraRefine);
+    H0("   --refine-inter <0..3>         Enable inter refinement for encode that uses analysis-reuse-mode=load.\n"
+        "                                    - 0 : Forces both mode and depth from the save encode.\n"
+        "                                    - 1 : Functionality of (0) + evaluate all inter modes at min-cu-size's depth when current depth is one smaller than\n"
+        "                                          min-cu-size's depth. When save encode decides the current block as skip(for all sizes) evaluate skip/merge.\n"
+        "                                    - 2 : Functionality of (1) + irrespective of size restrict the modes evaluated when specific modes are decided as the best mode by the save encode.\n"
+        "                                    - 3 : Functionality of (1) + irrespective of size evaluate all inter modes.\n"
+        "                                Default:%d\n", param->interRefine);
     H0("   --[no-]refine-mv              Enable mv refinement for load mode. Default %s\n", OPT(param->mvRefine));
     H0("   --aq-mode <integer>           Mode for Adaptive Quantization - 0:none 1:uniform AQ 2:auto variance 3:auto variance with bias to dark scenes. Default %d\n", param->rc.aqMode);
     H0("   --aq-strength <float>         Reduces blocking and blurring in flat and textured areas (0 to 3.0). Default %.2f\n", param->rc.aqStrength);
@@ -492,13 +520,13 @@ static void showHelp(x265_param *param)
     H1("   --overscan <string>           Specify whether it is appropriate for decoder to show cropped region: undef, show or crop. Default undef\n");
     H0("   --videoformat <string>        Specify video format from undef, component, pal, ntsc, secam, mac. Default undef\n");
     H0("   --range <string>              Specify black level and range of luma and chroma signals as full or limited Default limited\n");
-    H0("   --colorprim <string>          Specify color primaries from undef, bt709, bt470m, bt470bg, smpte170m,\n");
-    H0("                                 smpte240m, film, bt2020. Default undef\n");
-    H0("   --transfer <string>           Specify transfer characteristics from undef, bt709, bt470m, bt470bg, smpte170m,\n");
+    H0("   --colorprim <string>          Specify color primaries from  bt709, unknown, reserved, bt470m, bt470bg, smpte170m,\n");
+    H0("                                 smpte240m, film, bt2020, smpte428, smpte431, smpte432. Default undef\n");
+    H0("   --transfer <string>           Specify transfer characteristics from bt709, unknown, reserved, bt470m, bt470bg, smpte170m,\n");
     H0("                                 smpte240m, linear, log100, log316, iec61966-2-4, bt1361e, iec61966-2-1,\n");
-    H0("                                 bt2020-10, bt2020-12, smpte-st-2084, smpte-st-428, arib-std-b67. Default undef\n");
+    H0("                                 bt2020-10, bt2020-12, smpte2084, smpte428, arib-std-b67. Default undef\n");
     H1("   --colormatrix <string>        Specify color matrix setting from undef, bt709, fcc, bt470bg, smpte170m,\n");
-    H1("                                 smpte240m, GBR, YCgCo, bt2020nc, bt2020c. Default undef\n");
+    H1("                                 smpte240m, GBR, YCgCo, bt2020nc, bt2020c, smpte2085, chroma-derived-nc, chroma-derived-c, ictcp. Default undef\n");
     H1("   --chromaloc <integer>         Specify chroma sample location (0 to 5). Default of %d\n", param->vui.chromaSampleLocTypeTopField);
     H0("   --master-display <string>     SMPTE ST 2086 master display color volume info SEI (HDR)\n");
     H0("                                    format: G(x,y)B(x,y)R(x,y)WP(x,y)L(max,min)\n");
@@ -525,6 +553,7 @@ static void showHelp(x265_param *param)
     H1("-r/--recon <filename>            Reconstructed raw image YUV or Y4M output file name\n");
     H1("   --recon-depth <integer>       Bit-depth of reconstructed raw image file. Defaults to input bit depth, or 8 if Y4M\n");
     H1("   --recon-y4m-exec <string>     pipe reconstructed frames to Y4M viewer, ex:\"ffplay -i pipe:0 -autoexit\"\n");
+    H0("   --lowpass-dct                 Use low-pass subband dct approximation. Default %s\n", OPT(param->bLowPassDct));
     H1("\nExecutable return codes:\n");
     H1("    0 - encode successful\n");
     H1("    1 - unable to parse command line\n");
