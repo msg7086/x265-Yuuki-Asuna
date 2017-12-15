@@ -760,11 +760,19 @@ if(ENABLE_STATIC_LAVF)
                                 ${PC_LIBSWSCALE_STATIC_LDFLAGS})
 endif()
 
+option(ENABLE_ZIMG "Enable ZImg scaling libary" OFF)
+if(ENABLE_ZIMG)
+    add_definitions(-DENABLE_ZIMG)
+    list(APPEND PLATFORM_LIBS zimg)
+endif(ENABLE_ZIMG)
+
 if(ENABLE_CLI)
     file(GLOB InputFiles input/input.cpp input/yuv.cpp input/y4m.cpp input/*.h)
     file(GLOB OutputFiles output/output.cpp output/reconplay.cpp output/*.h
                           output/yuv.cpp output/y4m.cpp # recon
                           output/raw.cpp)               # muxers
+    file(GLOB FilterFiles filters/*.cpp filters/*.h)
+    source_group(filters FILES ${FilterFiles})
     source_group(input FILES ${InputFiles})
     source_group(output FILES ${OutputFiles})
     if(ENABLE_LAVF)
@@ -796,16 +804,16 @@ if(ENABLE_CLI)
     if(XCODE)
         # Xcode seems unable to link the CLI with libs, so link as one targget
         if(ENABLE_HDR10_PLUS)
-        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT}
+        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${FilterFiles} ${GETOPT}
                         x265.cpp x265.h x265cli.cpp x265cli.h abrEncApp.cpp abrEncApp.h
                         $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> $<TARGET_OBJECTS:dynamicHDR10> ${ASM_OBJS})
         else()
-            add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT}
+            add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${FilterFiles} ${GETOPT}
                         x265.cpp x265.h x265cli.cpp x265cli.h abrEncApp.cpp abrEncApp.h
                         $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> ${ASM_OBJS})
         endif()
     else()
-        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT} ${X265_RC_FILE}
+        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${FilterFiles} ${GETOPT} ${X265_RC_FILE}
                        ${ExportDefs} x265.cpp x265.h x265cli.cpp x265cli.h abrEncApp.cpp abrEncApp.h)
         if(WIN32 OR NOT ENABLE_SHARED OR INTEL_CXX)
             # The CLI cannot link to the shared library on Windows, it
