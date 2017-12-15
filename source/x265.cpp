@@ -31,6 +31,7 @@
 #include "input/input.h"
 #include "output/output.h"
 #include "output/reconplay.h"
+#include "filters/filters.h"
 
 #if HAVE_VLD
 /* Visual Leak Detector */
@@ -88,6 +89,8 @@ struct CLIOptions
     uint64_t totalbytes;
     int64_t startTime;
     int64_t prevUpdateTime;
+    char* vf;
+    vector<Filter*> filters;
 
     /* in microseconds */
     static const int UPDATE_INTERVAL = 250000;
@@ -111,6 +114,7 @@ struct CLIOptions
         startTime = x265_mdate();
         prevUpdateTime = 0;
         bDither = false;
+        vf = NULL;
     }
 
     void destroy();
@@ -141,6 +145,14 @@ void CLIOptions::destroy()
     if (output)
         output->release();
     output = NULL;
+    for (vector<Filter*>::iterator i = filters.begin(); i != filters.end(); i++)
+    {
+        if (!(*i))
+            continue;
+        (*i)->release();
+        delete(*i);
+        (*i) = NULL;
+    }
 }
 
 void CLIOptions::printStatus(uint32_t frameNum)
@@ -488,6 +500,7 @@ bool CLIOptions::parse(int argc, char **argv)
                 if (!this->zoneFile)
                     x265_log_file(param, X265_LOG_ERROR, "%s zone file not found or error in opening zone file\n", optarg);
             }
+            OPT("vf") this->vf = optarg;
             OPT("fullhelp")
             {
                 param->logLevel = X265_LOG_FULL;
@@ -562,6 +575,13 @@ bool CLIOptions::parse(int argc, char **argv)
     {
         x265_log(param, X265_LOG_ERROR, "Input bit depth (%d) must be between 8 and 16\n", inputBitDepth);
         return true;
+    }
+
+    if (this->vf)
+    {
+        bool bFail = Filter::parseFilterString(this->vf, &this->filters);
+        if (bFail)
+            return true;
     }
 
     /* Unconditionally accept height/width/csp from file info */
@@ -880,6 +900,15 @@ int main(int argc, char **argv)
     x265_vmaf_data* vmafdata = cliopt.vmafData;
 #endif
     /* This allows muxers to modify bitstream format */
+    for (vector<Filter*>::iterator i = cliopt.filters.begin(); i != cliopt.filters.end(); i++)
+    {
+        (*i)->setParam(param);
+        if ((*i)->isFail())
+        {
+            api->param_free(param);
+            exit(1);
+        }
+    }
     cliopt.output->setParam(param);
 
     if (cliopt.reconPlayCmd)
@@ -1001,6 +1030,17 @@ int main(int argc, char **argv)
                 x265_dither_image(pic_in, cliopt.input->getWidth(), cliopt.input->getHeight(), errorBuf, param->internalBitDepth);
                 pic_in->bitDepth = param->internalBitDepth;
             }
+            for (vector<Filter*>::iterator i = cliopt.filters.begin(); i != cliopt.filters.end(); i++)
+            {
+                (*i)->processFrame(*pic_in);
+                if ((*i)->isFail())
+                {
+                    b_ctrl_c = 1;
+                    break;
+                }
+            }
+            if (b_ctrl_c) break;
+
             /* Overwrite PTS */
             pic_in->pts = pic_in->poc;
 
