@@ -696,6 +696,12 @@ if(ENABLE_STATIC_LAVF)
                                 ${PC_LIBSWSCALE_STATIC_LDFLAGS})
 endif()
 
+option(ENABLE_ZIMG "Enable ZImg scaling libary" OFF)
+if(ENABLE_ZIMG)
+    add_definitions(-DENABLE_ZIMG)
+    list(APPEND PLATFORM_LIBS zimg)
+endif(ENABLE_ZIMG)
+
 if(ENABLE_CLI)
     if(ENABLE_LAVF)
         if(ENABLE_STATIC_LAVF)
@@ -712,6 +718,8 @@ if(ENABLE_CLI)
                           output/mp4.cpp
                           output/mkv.cpp output/matroska_ebml.cpp
                           output/raw.cpp)               # muxers
+    file(GLOB FilterFiles filters/*.cpp filters/*.h)
+    source_group(filters FILES ${FilterFiles})
     source_group(input FILES ${InputFiles})
     source_group(output FILES ${OutputFiles})
 
@@ -729,16 +737,16 @@ if(ENABLE_CLI)
     if(XCODE)
         # Xcode seems unable to link the CLI with libs, so link as one targget
         if(ENABLE_HDR10_PLUS)
-        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT}
+        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${FilterFiles} ${GETOPT}
                         x265.cpp x265.h x265cli.h
                         $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> $<TARGET_OBJECTS:dynamicHDR10> ${ASM_OBJS} ${ASM_SRCS})
         else()
-            add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT}
+            add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${FilterFiles} ${GETOPT}
                         x265.cpp x265.h x265cli.h
                         $<TARGET_OBJECTS:encoder> $<TARGET_OBJECTS:common> ${ASM_OBJS} ${ASM_SRCS})
         endif()
     else()
-        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${GETOPT} ${X265_RC_FILE}
+        add_executable(cli ../COPYING ${InputFiles} ${OutputFiles} ${FilterFiles} ${GETOPT} ${X265_RC_FILE}
                        ${ExportDefs} x265.cpp x265.h x265cli.h)
         if(WIN32 OR NOT ENABLE_SHARED OR INTEL_CXX)
             # The CLI cannot link to the shared library on Windows, it

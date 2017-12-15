@@ -80,6 +80,7 @@ static const struct option long_options[] =
     { "input-depth",    required_argument, NULL, 0 },
     { "input-res",      required_argument, NULL, 0 },
     { "input-csp",      required_argument, NULL, 0 },
+    { "vf",             required_argument, NULL, 0 },
     { "interlace",      required_argument, NULL, 0 },
     { "no-interlace",         no_argument, NULL, 0 },
     { "fps",            required_argument, NULL, 0 },
