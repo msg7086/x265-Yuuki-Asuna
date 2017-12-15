@@ -507,9 +507,18 @@ ret:
 #if ENABLE_LIBVMAF
             x265_vmaf_data* vmafdata = m_cliopt.vmafData;
 #endif
-            /* This allows muxers to modify bitstream format */
-            m_cliopt.output->setParam(m_param);
             const x265_api* api = m_cliopt.api;
+            /* This allows muxers to modify bitstream format */
+            for (auto &&i : m_cliopt.filters)
+            {
+                i->setParam(m_param);
+                if (i->isFail())
+                {
+                    api->param_free(m_param);
+                    exit(1);
+                }
+            }
+            m_cliopt.output->setParam(m_param);
             ReconPlay* reconPlay = NULL;
             if (m_cliopt.reconPlayCmd)
                 reconPlay = new ReconPlay(m_cliopt.reconPlayCmd, *m_param);
@@ -628,6 +637,17 @@ ret:
                         x265_dither_image(pic_in, m_cliopt.input->getWidth(), m_cliopt.input->getHeight(), errorBuf, m_param->internalBitDepth);
                         pic_in->bitDepth = m_param->internalBitDepth;
                     }
+                    for (auto &&i : m_cliopt.filters)
+                    {
+                        i->processFrame(*pic_in);
+                        if (i->isFail())
+                        {
+                            b_ctrl_c = 1;
+                            break;
+                        }
+                    }
+                    if (b_ctrl_c) break;
+
                     /* Overwrite PTS */
                     pic_in->pts = pic_in->poc;
 
