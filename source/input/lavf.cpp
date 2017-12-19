@@ -78,7 +78,18 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
         return true;
     }
 
-    AVCodecContext *c = h->lavf->streams[h->stream_id]->codec;
+    // Deprecated since ffmpeg ~3.1
+    // AVCodecContext *c = stream->codec;
+    // 
+    // Use the following
+    if (!h->cocon)
+    {
+        AVStream *stream = h->lavf->streams[h->stream_id];
+        AVCodec *codec = avcodec_find_decoder(stream->codecpar->codec_id);
+        h->cocon = avcodec_alloc_context3(codec);
+        avcodec_parameters_to_context(h->cocon, stream->codecpar);
+        avcodec_open2(h->cocon, codec, NULL);
+    }
 
     AVPacket pkt;
     av_init_packet(&pkt);
@@ -87,8 +98,17 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
 
     int finished = 0;
     int ret = 0;
+    int codec_ret = 0;
+    int fail = 0;
     do
     {
+        codec_ret = avcodec_receive_frame(h->cocon, h->frame);
+        // We are good, just leave the loop with our new frame
+        if(codec_ret == 0)
+        {
+            finished = 1;
+            break;
+        }
         ret = av_read_frame(h->lavf, &pkt);
 
         if(ret < 0)
@@ -98,18 +118,45 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
             pkt.size = 0;
         }
 
+        // We got a new valid packet, or EOF, let's feed it
         if(ret < 0 || pkt.stream_index == h->stream_id)
         {
-            if(avcodec_decode_video2(c, h->frame, &finished, &pkt) < 0)
-                general_log(NULL, "lavf", X265_LOG_WARNING, "video decoding failed on frame %d\n", h->next_frame);
+            // avcodec_decode_video2 deprecated
+            // avcodec_decode_video2(h->cocon, h->frame, &finished, &pkt)
+            // Use the following
+            codec_ret = avcodec_send_packet(h->cocon, &pkt);
+            // AVERROR(EAGAIN): not possible
+            // AVERROR(EINVAL): fvcked up
+            // AVERROR_EOF && pkt.data = NULL: continue
+            // 0: continue
+            if(codec_ret == AVERROR(EINVAL))
+            {
+                general_log(NULL, "lavf", X265_LOG_WARNING, "feeding input to decoder failed on frame %d\n", h->next_frame);
+                fail = 1;
+            }
+            else
+            {
+                codec_ret = avcodec_receive_frame(h->cocon, h->frame);
+                // AVERROR(EAGAIN): not finished, retry
+                // AVERROR(EINVAL): fvcked up
+                // AVERROR_EOF: not possible unless stream.nb_frames > actual frames
+                // 0: leave the loop
+                if(codec_ret == AVERROR(EINVAL))
+                {
+                    general_log(NULL, "lavf", X265_LOG_WARNING, "video decoding failed on frame %d\n", h->next_frame);
+                    fail = 1;
+                }
+                else if(codec_ret == 0)
+                    finished = 1;
+            }
         }
 
         if(ret >= 0)
             av_packet_unref(&pkt);
     }
-    while(!finished && ret >= 0);
+    while(!finished && !fail && ret >= 0);
 
-    if(!finished)
+    if(!finished || fail)
         return false;
 
     h->next_frame++;
@@ -120,7 +167,7 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
 
     if(info)
     {
-        info->csp     = handle_jpeg(c->pix_fmt, &is_fullrange);
+        info->csp     = handle_jpeg(h->cocon->pix_fmt, &is_fullrange);
         switch(info->csp)
         {
         case AV_PIX_FMT_YUV420P10LE:
@@ -171,8 +218,9 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
     if(h->vfr_input)
     {
         p_pic.pts = 0;
-        if(h->frame->pkt_pts != (int64_t)AV_NOPTS_VALUE)
-            p_pic.pts = h->frame->pkt_pts;
+        // pkt_pts deprecated, use pts instead
+        if(h->frame->pts != (int64_t)AV_NOPTS_VALUE)
+            p_pic.pts = h->frame->pts;
         else if(h->frame->pkt_dts != (int64_t)AV_NOPTS_VALUE)
             p_pic.pts = h->frame->pkt_dts; // for AVI files
         else if(info)
@@ -204,18 +252,19 @@ void LavfInput::openfile(InputFileInfo& info)
     FAIL_IF_ERROR(avformat_find_stream_info(h->lavf, NULL) < 0, "could not find input stream info\n")
 
     unsigned int i = 0;
-    while(i < h->lavf->nb_streams && h->lavf->streams[i]->codec->codec_type != AVMEDIA_TYPE_VIDEO)
+    while(i < h->lavf->nb_streams && h->lavf->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_VIDEO)
         i++;
     FAIL_IF_ERROR(i == h->lavf->nb_streams, "could not find video stream\n")
-    h->stream_id       = i;
-    h->next_frame      = 0;
-    AVStream *s        = h->lavf->streams[i];
-    AVCodecContext *c  = s->codec;
-    info.fpsNum       = s->avg_frame_rate.num;
-    info.fpsDenom     = s->avg_frame_rate.den;
-    info.timebaseNum  = s->time_base.num;
-    info.timebaseDenom= s->time_base.den;
-    h->vfr_input       = 1; //info->vfr;
+    h->stream_id          = i;
+    h->next_frame         = 0;
+    AVStream *s           = h->lavf->streams[i];
+    // s->codec deprecated, use codecpar instead
+    AVCodecParameters *cp = s->codecpar;
+    info.fpsNum           = s->avg_frame_rate.num;
+    info.fpsDenom         = s->avg_frame_rate.den;
+    info.timebaseNum      = s->time_base.num;
+    info.timebaseDenom    = s->time_base.den;
+    h->vfr_input          = 1; //info->vfr;
 
     // if( !opt->b_accurate_fps )
     //    x264_ntsc_fps( &info->fps_num, &info->fps_den );
@@ -223,11 +272,14 @@ void LavfInput::openfile(InputFileInfo& info)
     //if( opt->demuxer_threads > 1 )
     //    c->thread_count = opt->demuxer_threads;
 
-    AVCodec *p;
-    p = avcodec_find_decoder(c->codec_id);
+    AVCodec *codec = avcodec_find_decoder(cp->codec_id);
+    h->cocon = avcodec_alloc_context3(codec);
+    avcodec_parameters_to_context(h->cocon, cp);
+    avcodec_open2(h->cocon, codec, NULL);
+
     AVDictionary *avcodec_opts = NULL;
     av_dict_set(&avcodec_opts, "strict", "-2", 0);
-    FAIL_IF_ERROR(avcodec_open2(c, p, &avcodec_opts),
+    FAIL_IF_ERROR(avcodec_open2(h->cocon, codec, &avcodec_opts),
                   "could not find decoder for video stream\n")
     if(avcodec_opts)
         av_dict_free(&avcodec_opts);
@@ -241,17 +293,17 @@ void LavfInput::openfile(InputFileInfo& info)
         return;
     }
 
-    info.width      = c->width;
-    info.height     = c->height;
+    info.width      = cp->width;
+    info.height     = cp->height;
     info.frameCount = s->nb_frames;
-    info.sarHeight  = c->sample_aspect_ratio.den;
-    info.sarWidth   = c->sample_aspect_ratio.num;
+    info.sarHeight  = cp->sample_aspect_ratio.den;
+    info.sarWidth   = cp->sample_aspect_ratio.num;
 
     /* show video info */
     double duration = s->duration * av_q2d(s->time_base);
     if(duration < 0.)
         duration = 0.;
-    const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(c->pix_fmt);
+    const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get((AVPixelFormat)cp->format);
     general_log(NULL, "lavf", X265_LOG_INFO,
                 "\n Format    : %s"
                 "\n Codec     : %s ( %s )"
@@ -260,7 +312,7 @@ void LavfInput::openfile(InputFileInfo& info)
                 "\n Timebase  : %d/%d"
                 "\n Duration  : %d:%02d:%02d\n",
                 h->lavf->iformat->name,
-                p->name, p->long_name,
+                codec->name, codec->long_name,
                 pix_desc->name,
                 s->avg_frame_rate.num, s->avg_frame_rate.den,
                 s->time_base.num, s->time_base.den,
@@ -269,7 +321,11 @@ void LavfInput::openfile(InputFileInfo& info)
 
 void LavfInput::release()
 {
-    avcodec_close(h->lavf->streams[h->stream_id]->codec);
+    // Deprecated since ffmpeg ~3.1
+    // avcodec_close(h->lavf->streams[h->stream_id]->codec);
+    // 
+    // Use the following
+    avcodec_free_context(&h->cocon);
     avformat_close_input(&h->lavf);
     av_frame_free(&h->frame);
 }
