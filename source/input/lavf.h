@@ -27,6 +27,7 @@ typedef struct
     int next_frame;
     int vfr_input;
     x265_picture *first_pic;
+    AVCodecContext* cocon;
 } lavf_hnd_t;
 
 class LavfInput : public InputFile
