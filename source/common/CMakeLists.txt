@@ -56,28 +56,26 @@ if(ENABLE_ASSEMBLY AND X86)
     endif()
     set(VEC_PRIMITIVES vec/vec-primitives.cpp ${PRIMITIVES})
     source_group(Intrinsics FILES ${VEC_PRIMITIVES})
-
     set(C_SRCS asm-primitives.cpp pixel.h mc.h ipfilter8.h blockcopy8.h dct8.h loopfilter.h seaintegral.h)
     set(A_SRCS pixel-a.asm const-a.asm cpu-a.asm ssd-a.asm mc-a.asm
                mc-a2.asm pixel-util8.asm blockcopy8.asm
                pixeladd8.asm dct8.asm seaintegral.asm)
     if(HIGH_BIT_DEPTH)
-        set(A_SRCS ${A_SRCS} sad16-a.asm intrapred16.asm ipfilter16.asm loopfilter.asm)
+        set(A_SRCS ${A_SRCS} sad16-a.asm intrapred16.asm v4-ipfilter16.asm h4-ipfilter16.asm h-ipfilter16.asm ipfilter16.asm loopfilter.asm)
     else()
-        set(A_SRCS ${A_SRCS} sad-a.asm intrapred8.asm intrapred8_allangs.asm ipfilter8.asm loopfilter.asm)
+        set(A_SRCS ${A_SRCS} sad-a.asm intrapred8.asm intrapred8_allangs.asm v4-ipfilter8.asm h-ipfilter8.asm ipfilter8.asm loopfilter.asm)
     endif()
-
     if(NOT X64)
         set(A_SRCS ${A_SRCS} pixel-32.asm)
     endif()
 
     if(MSVC_IDE OR XCODE)
-        # MSVC requires custom build rules in the main cmake script for yasm
-        set(MSVC_ASMS "${A_SRCS}" CACHE INTERNAL "yasm sources")
+        # MSVC requires custom build rules in the main cmake script for nasm
+        set(MSVC_ASMS "${A_SRCS}" CACHE INTERNAL "nasm sources")
         set(A_SRCS)
     endif()
 
-    enable_language(ASM_YASM)
+    enable_language(ASM_NASM)
 
     foreach(SRC ${A_SRCS} ${C_SRCS})
         set(ASM_PRIMITIVES ${ASM_PRIMITIVES} x86/${SRC})

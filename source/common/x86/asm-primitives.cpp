@@ -116,7 +116,6 @@ extern "C" {
 #include "dct8.h"
 #include "seaintegral.h"
 }
-
 #define ALL_LUMA_CU_TYPED(prim, fncdef, fname, cpu) \
     p.cu[BLOCK_8x8].prim   = fncdef PFX(fname ## _8x8_ ## cpu); \
     p.cu[BLOCK_16x16].prim = fncdef PFX(fname ## _16x16_ ## cpu); \
