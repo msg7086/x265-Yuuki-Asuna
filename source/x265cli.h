@@ -235,6 +235,7 @@ static const struct option long_options[] =
     { "no-aud",               no_argument, NULL, 0 },
     { "info",                 no_argument, NULL, 0 },
     { "no-info",              no_argument, NULL, 0 },
+    { "opts",           required_argument, NULL, 0 },
     { "zones",          required_argument, NULL, 0 },
     { "qpfile",         required_argument, NULL, 0 },
     { "lambda-file",    required_argument, NULL, 0 },
@@ -541,6 +542,11 @@ static void showHelp(x265_param *param)
     H0("   --[no-]hrd                    Enable HRD parameters signaling. Default %s\n", OPT(param->bEmitHRDSEI));
     H0("   --[no-]temporal-layers        Enable a temporal sublayer for unreferenced B frames. Default %s\n", OPT(param->bEnableTemporalSubLayers));
     H0("   --[no-]aud                    Emit access unit delimiters at the start of each access unit. Default %s\n", OPT(param->bEnableAccessUnitDelimiters));
+    H1("   --opts <integer>              Set level of writing options in SEI [%d]\n"
+       "                                     - 0: no information will be written in SEI\n"
+       "                                     - 1: write x265 information\n"
+       "                                     - 2: write x265 options\n"
+       "                                     - 3: write x265 information and options\n", param->opts);
     H1("   --hash <integer>              Decoded Picture Hash SEI 0: disabled, 1: MD5, 2: CRC, 3: Checksum. Default %d\n", param->decodedPictureHashSEI);
     H0("   --log2-max-poc-lsb <integer>  Maximum of the picture order count\n");
     H0("   --[no-]vui-timing-info        Emit VUI timing information in the bistream. Default %s\n", OPT(param->bEmitVUITimingInfo));
