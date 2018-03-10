@@ -115,6 +115,7 @@ void x265_param_default(x265_param* param)
     param->rc.lambdaFileName = NULL;
     param->bLogCuStats = 0;
     param->decodedPictureHashSEI = 0;
+    param->opts = 3;
 
     /* Quality Measurement Metrics */
     param->bEnablePsnr = 0;
@@ -811,6 +812,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     OPT("hash") p->decodedPictureHashSEI = atoi(value);
     OPT("aud") p->bEnableAccessUnitDelimiters = atobool(value);
     OPT("info") p->bEmitInfoSEI = atobool(value);
+    OPT("opts") p->opts = atoi(value);
     OPT("b-pyramid") p->bBPyramid = atobool(value);
     OPT("hrd") p->bEmitHRDSEI = atobool(value);
     OPT2("ipratio", "ip-factor") p->rc.ipFactor = atof(value);
@@ -1585,10 +1587,14 @@ char *x265_param2string(x265_param* p, int padx, int pady)
 #define BOOL(param, cliopt) \
     s += sprintf(s, " %s", (param) ? cliopt : "no-" cliopt);
 
+    if ((p->opts & 2) == 0)
+        return buf;
+
     s += sprintf(s, "cpuid=%d", p->cpuid);
     s += sprintf(s, " frame-threads=%d", p->frameNumThreads);
     if (p->numaPools)
         s += sprintf(s, " numa-pools=%s", p->numaPools);
+
     BOOL(p->bEnableWavefront, "wpp");
     BOOL(p->bDistributeModeAnalysis, "pmode");
     BOOL(p->bDistributeMotionEstimation, "pme");
@@ -1602,7 +1608,6 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     s += sprintf(s, " fps=%u/%u", p->fpsNum, p->fpsDenom);
     s += sprintf(s, " input-res=%dx%d", p->sourceWidth - padx, p->sourceHeight - pady);
     s += sprintf(s, " interlace=%d", p->interlaceMode);
-    s += sprintf(s, " total-frames=%d", p->totalFrames);
     s += sprintf(s, " level-idc=%d", p->levelIdc);
     s += sprintf(s, " high-tier=%d", p->bHighTier);
     s += sprintf(s, " uhd-bd=%d", p->uhdBluray);
