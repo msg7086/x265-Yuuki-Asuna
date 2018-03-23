@@ -2721,6 +2721,12 @@ void Encoder::configure(x265_param *p)
         }
     }
 
+    if (p->scaleFactor && p->analysisLoad && !p->interRefine)
+    {
+        x265_log(p, X265_LOG_WARNING, "Inter refinement 0 is not supported with scaling. Enabling refine-inter 1.\n");
+        p->interRefine = 1;
+    }
+
     if (p->limitTU && (p->interRefine || p->bDynamicRefine))
     {
         x265_log(p, X265_LOG_WARNING, "Inter refinement does not support limitTU. Disabling limitTU.\n");
