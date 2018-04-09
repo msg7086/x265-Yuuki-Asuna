@@ -69,7 +69,7 @@ void GOPOutput::setParam(x265_param *p_param)
     p_param->bRepeatHeaders = false;
     i_numframe = 0;
 
-    int len = strlen(filename_prefix) + 20;
+    int len = strlen(dir_prefix) + strlen(filename_prefix) + 20;
     char opt_filename[len];
     sprintf(opt_filename, "%s%s.options", dir_prefix, filename_prefix);
     FILE* opt_file = fopen(opt_filename, "wb");
