@@ -99,13 +99,13 @@ void x265_param_free(x265_param* p)
 {
     x265_free(p);
 }
-bool  benableavx512 = false;
+
 void x265_param_default(x265_param* param)
 {
     memset(param, 0, sizeof(x265_param));
 
     /* Applying default values to all elements in the param structure */
-    param->cpuid = X265_NS::cpu_detect(benableavx512);
+    param->cpuid = X265_NS::cpu_detect(false);
     param->bEnableWavefront = 1;
     param->frameNumThreads = 0;
 
@@ -615,21 +615,26 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
     if (0) ;
     OPT("asm")
     {
-        sscanf(value, "%s", p->asmname);
-        if (strcmp(value, "avx512")==0)
+#if X265_ARCH_X86
+        if (!strcasecmp(value, "avx512"))
         {
-            p->bEnableavx512 = 1;
-            benableavx512 = true;
+            p->cpuid = X265_NS::cpu_detect(true);
+            if (!(p->cpuid & X265_CPU_AVX512))
+                x265_log(p, X265_LOG_WARNING, "AVX512 is not supported\n");
         }
         else
         {
-            p->bEnableavx512 = 0;
-            benableavx512 = false;
+            if (bValueWasNull)
+                p->cpuid = atobool(value);
+            else
+                p->cpuid = parseCpuName(value, bError, false);
         }
+#else
         if (bValueWasNull)
             p->cpuid = atobool(value);
         else
             p->cpuid = parseCpuName(value, bError);
+#endif
     }
     OPT("fps")
     {
@@ -1080,7 +1085,7 @@ double x265_atof(const char* str, bool& bError)
  *   false || no  - disabled
  *   integer bitmap value
  *   comma separated list of SIMD names, eg: SSE4.1,XOP */
-int parseCpuName(const char* value, bool& bError)
+int parseCpuName(const char* value, bool& bError, bool bEnableavx512)
 {
     if (!value)
     {
@@ -1091,7 +1096,7 @@ int parseCpuName(const char* value, bool& bError)
     if (isdigit(value[0]))
         cpu = x265_atoi(value, bError);
     else
-        cpu = !strcmp(value, "auto") || x265_atobool(value, bError) ? X265_NS::cpu_detect(benableavx512) : 0;
+        cpu = !strcmp(value, "auto") || x265_atobool(value, bError) ? X265_NS::cpu_detect(bEnableavx512) : 0;
 
     if (bError)
     {
