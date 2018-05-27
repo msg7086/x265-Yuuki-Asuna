@@ -539,7 +539,7 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
         }
         else if (!strncmp(tune, "littlepox", 9) || !strncmp(tune, "lp", 2) ||
                  !strncmp(tune, "vcb-s", 5) || !strncmp(tune, "vcbs", 4)) {
-            param->searchRange = 44;
+            param->searchRange = 38; //down
             param->bEnableAMP = 0;
             param->bEnableRectInter = 0;
             param->rc.aqMode = 3;
@@ -547,7 +547,7 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->rdLevel = 4;
             param->rdoqLevel = 2;
             param->bEnableSAO = 0;
-            param->rc.qCompress = 0.65;
+            param->rc.qCompress = 0.60; //down
             param->bEnableStrongIntraSmoothing = 0;
             if (param->tuQTMaxInterDepth > 3) param->tuQTMaxInterDepth--;
             if (param->tuQTMaxIntraDepth > 3) param->tuQTMaxIntraDepth--;
@@ -561,24 +561,22 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->deblockingFilterTCOffset = -1;
             param->rdPenalty = 1;
             param->maxCUSize = 32;
+            param->maxTUSize = 32; //new param
+            param->rc.qgSize = 8; //new param
             if (param->bframes > 6)
                 param->bframes = 6;
             param->cbQpOffset = -2;
             param->crQpOffset = -2;
             param->rc.pbFactor = 1.2;
             param->bEnableWeightedBiPred = 1;
-            param->lookaheadDepth = param->lookaheadDepth * 2;
-            if (param->lookaheadDepth > 80)
-                param->lookaheadDepth = 80;
-
             if (tune[0] == 'l') {
                 // Mid bitrate anime
                 param->rc.rfConstant = 20;
-                param->psyRd = 1.8;
-                param->psyRdoq = 2.0;
+                param->psyRd = 1.6; //down
+                param->psyRdoq = 1.0; //down
 
                 if (strstr(tune, "++")) {
-                    if (param->maxNumReferences < 3)
+                    if (param->maxNumReferences < 2)
                         param->maxNumReferences++;
                     if (param->bframes < 4) param->bframes++;
                     if (param->bframes < 4) param->bframes++;
@@ -587,7 +585,8 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
                 // High bitrate anime (bluray) or film
                 param->rc.rfConstant = 18;
                 param->psyRd = 2.0;
-                param->psyRdoq = 3.0;
+                param->psyRdoq = 1.0; //down
+                param->rc.aqStrength = 0.8; //up
 
                 if (strstr(tune, "++")) {
                     param->subpelRefine = 4;
@@ -595,6 +594,9 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
                     if (param->maxNumReferences < 4)
                         param->maxNumReferences = 4;
                     param->bEnableRectInter = 1;
+                    param->limitTU = 4; //new param
+                    if (param->lookaheadDepth < 60) //logic change
+                        param->lookaheadDepth = 60;
                 }
             }
         }
