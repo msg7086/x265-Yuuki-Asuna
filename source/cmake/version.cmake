@@ -62,7 +62,13 @@ elseif(HG_EXECUTABLE AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../.hg)
     if(X265_LATEST_TAG MATCHES "^r")
         string(SUBSTRING ${X265_LATEST_TAG} 1 -1 X265_LATEST_TAG)
     endif()
+    if(X265_TAG_DISTANCE STREQUAL "0")
+        set(X265_VERSION "${X265_LATEST_TAG}")
+    else()
+        set(X265_VERSION "${X265_LATEST_TAG}+${X265_TAG_DISTANCE}-${HG_REVISION_ID}")
+    endif()
 elseif(GIT_EXECUTABLE AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../.git)
+    find_package(Ruby)
     execute_process(
         COMMAND
         ${GIT_EXECUTABLE} describe --abbrev=0 --tags
@@ -71,27 +77,24 @@ elseif(GIT_EXECUTABLE AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/../.git)
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE
         )
+
     execute_process(
         COMMAND
-        ${GIT_EXECUTABLE} rev-list ${X265_LATEST_TAG}.. --count --first-parent
+        ${RUBY_EXECUTABLE} version.rb
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        OUTPUT_VARIABLE X265_TAG_DISTANCE
+        OUTPUT_VARIABLE X265_VERSION
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE
         )
+
     execute_process(
         COMMAND
-        ${GIT_EXECUTABLE} log -1 --format=g%h
+        ${GIT_EXECUTABLE} symbolic-ref --short HEAD
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        OUTPUT_VARIABLE X265_REVISION_ID
+        OUTPUT_VARIABLE MOD_BUILD
         ERROR_QUIET
         OUTPUT_STRIP_TRAILING_WHITESPACE
         )
-endif()
-if(X265_TAG_DISTANCE STREQUAL "0")
-    set(X265_VERSION "${X265_LATEST_TAG}")
-else()
-    set(X265_VERSION "${X265_LATEST_TAG}+${X265_TAG_DISTANCE}-${X265_REVISION_ID}")
 endif()
 
 message(STATUS "x265 version ${X265_VERSION}")
