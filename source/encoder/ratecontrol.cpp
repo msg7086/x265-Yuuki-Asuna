@@ -494,6 +494,7 @@ bool RateControl::init(const SPS& sps)
                 CMP_OPT_FIRST_PASS("b-pyramid", m_param->bBPyramid);
                 CMP_OPT_FIRST_PASS("open-gop", m_param->bOpenGOP);
                 CMP_OPT_FIRST_PASS(" keyint", m_param->keyframeMax);
+                CMP_OPT_FIRST_PASS("max-keyint", m_param->keyframeMax);
                 CMP_OPT_FIRST_PASS("scenecut", m_param->scenecutThreshold);
                 CMP_OPT_FIRST_PASS("intra-refresh", m_param->bIntraRefresh);
                 if (m_param->bMultiPassOptRPS)
