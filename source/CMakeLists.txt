@@ -37,6 +37,13 @@ configure_file("${PROJECT_SOURCE_DIR}/x265_config.h.in"
 
 SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" "${CMAKE_MODULE_PATH}")
 
+# Add option to specify lsmash source directory
+option(SPECIFY_LSMASH_SOURCE_DIR "Specify the source directory of L-SMASH" OFF)
+if(SPECIFY_LSMASH_SOURCE_DIR)
+    set(LSMASH_SOURCE_DIR lsmash CACHE STRING "The source directory of L-SMASH")
+    include_directories(${LSMASH_SOURCE_DIR})
+endif()
+
 # System architecture detection
 string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" SYSPROC)
 set(X86_ALIASES x86 i386 i686 x86_64 amd64)
