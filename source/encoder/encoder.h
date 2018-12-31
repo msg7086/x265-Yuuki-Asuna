@@ -193,6 +193,9 @@ public:
     bool               m_aborted;          // fatal error detected
     bool               m_reconfigure;      // Encoder reconfigure in progress
     bool               m_reconfigureRc;
+    bool               m_reconfigureZone;
+
+    int               m_saveCtuDistortionLevel;
 
     /* Begin intra refresh when one not in progress or else begin one as soon as the current 
      * one is done. Requires bIntraRefresh to be set.*/
@@ -273,6 +276,8 @@ public:
 
     void configure(x265_param *param);
 
+    void configureZone(x265_param *p, x265_param *zone);
+
     void updateVbvPlan(RateControl* rc);
 
     void readAnalysisFile(x265_analysis_data* analysis, int poc, int sliceType);
@@ -281,6 +286,8 @@ public:
 
     void readAnalysisFile(x265_analysis_data* analysis, int poc, const x265_picture* picIn, int paramBytes, cuLocation cuLoc);
 
+    void computeDistortionOffset(x265_analysis_data* analysis);
+
     int getCUIndex(cuLocation* cuLoc, uint32_t* count, int bytes, int flag);
 
     int getPuShape(puOrientation* puOrient, int partSize, int numCTU);
@@ -288,6 +295,8 @@ public:
     void writeAnalysisFile(x265_analysis_data* analysis, FrameData &curEncData);
 
     void writeAnalysisFileRefine(x265_analysis_data* analysis, FrameData &curEncData);
+
+    void copyDistortionData(x265_analysis_data* analysis, FrameData &curEncData);
 
     void finishFrameStats(Frame* pic, FrameEncoder *curEncoder, x265_frame_stats* frameStats, int inPoc);
 
@@ -303,6 +312,8 @@ public:
     bool computeSPSRPSIndex();
 
     void copyUserSEIMessages(Frame *frame, const x265_picture* pic_in);
+
+    void configureDolbyVisionParams(x265_param* p);
 
 protected:
 

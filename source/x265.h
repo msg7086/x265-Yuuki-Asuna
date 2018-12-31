@@ -81,6 +81,7 @@ typedef enum
     NAL_UNIT_FILLER_DATA,
     NAL_UNIT_PREFIX_SEI,
     NAL_UNIT_SUFFIX_SEI,
+    NAL_UNIT_UNSPECIFIED = 62,
     NAL_UNIT_INVALID = 64,
 } NalUnitType;
 
@@ -129,6 +130,8 @@ typedef struct x265_analysis_validate
     int     lookaheadDepth;
     int     chunkStart;
     int     chunkEnd;
+    int     cuTree;
+    int     ctuDistortionRefine;
 }x265_analysis_validate;
 
 /* Stores intra analysis data for a single frame. This struct needs better packing */
@@ -138,6 +141,7 @@ typedef struct x265_analysis_intra_data
     uint8_t*  modes;
     char*     partSizes;
     uint8_t*  chromaModes;
+    int8_t*    cuQPOff;
 }x265_analysis_intra_data;
 
 typedef struct x265_analysis_MV
@@ -162,6 +166,7 @@ typedef struct x265_analysis_inter_data
     int8_t*     refIdx[2];
     x265_analysis_MV*         mv[2];
     int64_t*     sadCost;
+    int8_t*    cuQPOff;
 }x265_analysis_inter_data;
 
 typedef struct x265_weight_param
@@ -178,9 +183,12 @@ typedef uint32_t sse_t;
 typedef uint64_t sse_t;
 #endif
 
+#define CTU_DISTORTION_OFF 0
+#define CTU_DISTORTION_INTERNAL 1
+#define CTU_DISTORTION_EXTERNAL 2
+
 typedef struct x265_analysis_distortion_data
 {
-    sse_t*        distortion;
     sse_t*        ctuDistortion;
     double*       scaledDistortion;
     double        averageDistortion;
@@ -189,6 +197,7 @@ typedef struct x265_analysis_distortion_data
     uint32_t      lowDistortionCtuCount;
     double*       offset;
     double*       threshold;
+
 }x265_analysis_distortion_data;
 
 /* Stores all analysis data for a single frame */
@@ -308,7 +317,8 @@ typedef enum
 {
     NO_INFO = 0,
     AVC_INFO = 1,
-}MVRefineType;
+    HEVC_INFO = 2,
+}AnalysisRefineType;
 
 /* Arbitrary User SEI
  * Payload size is in bytes and the payload pointer must be non-NULL. 
@@ -359,6 +369,12 @@ typedef struct x265_sei
     int numPayloads;
     x265_sei_payload *payloads;
 } x265_sei;
+
+typedef struct x265_dolby_vision_rpu
+{
+    int payloadSize;
+    uint8_t* payload;
+}x265_dolby_vision_rpu;
 
 /* Used to pass pictures into the encoder, and to get picture data back out of
  * the encoder.  The input and output semantics are different */
@@ -445,6 +461,9 @@ typedef struct x265_picture
 
     // pts is reordered in the order of encoding.
     int64_t reorderedPts;
+
+    //Dolby Vision RPU metadata
+    x265_dolby_vision_rpu rpu;
 } x265_picture;
 
 typedef enum
@@ -641,6 +660,8 @@ static const char * const x265_sar_names[] = { "unknown", "1:1", "12:11", "10:11
 static const char * const x265_interlace_names[] = { "prog", "tff", "bff", 0 };
 static const char * const x265_analysis_names[] = { "off", "save", "load", 0 };
 
+struct x265_zone;
+struct x265_param;
 /* Zones: override ratecontrol for specific sections of the video.
  * If zones overlap, whichever comes later in the list takes precedence. */
 typedef struct x265_zone
@@ -649,6 +670,7 @@ typedef struct x265_zone
     int   bForceQp;             /* whether to use qp vs bitrate factor */
     int   qp;
     float bitrateFactor;
+    x265_param* zoneParam;
 } x265_zone;
     
 /* data to calculate aggregate VMAF score */
@@ -1323,12 +1345,24 @@ typedef struct x265_param
         /* Enable adaptive quantization. This mode distributes available bits between all
          * CTUs of a frame, assigning more bits to low complexity areas. Turning
          * this ON will usually affect PSNR negatively, however SSIM and visual quality
-         * generally improves. Default: X265_AQ_VARIANCE */
+         * generally improves. Default: X265_AQ_AUTO_VARIANCE */
         int       aqMode;
+
+        /*
+         * Enable adaptive quantization.
+         * It scales the quantization step size according to the spatial activity of one
+         * coding unit relative to frame average spatial activity. This AQ method utilizes
+         * the minimum variance of sub-unit in each coding unit to represent the coding
+         * unit’s spatial complexity. */
+        int       hevcAq;
 
         /* Sets the strength of AQ bias towards low detail CTUs. Valid only if
          * AQ is enabled. Default value: 1.0. Acceptable values between 0.0 and 3.0 */
         double    aqStrength;
+
+        /* Delta QP range by QP adaptation based on a psycho-visual model.
+         * Acceptable values between 1.0 to 6.0 */
+        double    qpAdaptationRange;
 
         /* Sets the maximum rate the VBV buffer should be assumed to refill at
          * Default is zero */
@@ -1376,6 +1410,9 @@ typedef struct x265_param
         /* rate-control overrides */
         int        zoneCount;
         x265_zone* zones;
+
+        /* number of zones in zone-file*/
+        int        zonefileCount;
 
         /* specify a text file which contains MAX_MAX_QP + 1 floating point
          * values to be copied into x265_lambda_tab and a second set of
@@ -1665,7 +1702,7 @@ typedef struct x265_param
     double    vbvEndFrameAdjust;
 
     /* Reuse MV information obtained through API */
-    int       bMVType;
+    int       bAnalysisType;
     /* Allow the encoder to have a copy of the planes of x265_picture in Frame */
     int       bCopyPicToFrame;
 
@@ -1713,8 +1750,22 @@ typedef struct x265_param
     /* File containing base64 encoded SEI messages in POC order */
     const char*    naluFile;
 
-} x265_param;
+    /* Generate bitstreams confirming to the specified dolby vision profile,
+     * note that 0x7C01 makes RPU appear to be an unspecified NAL type in
+     * HEVC stream. if BL is backward compatible, Dolby Vision single
+     * layer VES will be equivalent to a backward compatible BL VES on legacy
+     * device as RPU will be ignored. Default 0 (disabled) */
+    int dolbyProfile;
 
+    /* Set concantenation flag for the first keyframe in the HRD buffering period SEI. */
+    int bEnableHRDConcatFlag;
+
+
+    /* Store/normalize ctu distortion in analysis-save/load. Ranges from 0 - 1.
+    *  0 - Disabled. 1 - Save/Load ctu distortion to/from the file specified 
+    * analysis-save/load. Default 0. */
+    int       ctuDistortionRefine;
+} x265_param;
 /* x265_param_alloc:
  *  Allocates an x265_param instance. The returned param structure is not
  *  special in any way, but using this method together with x265_param_free()
@@ -1740,6 +1791,8 @@ void x265_param_default(x265_param *param);
 #define X265_PARAM_BAD_NAME  (-1)
 #define X265_PARAM_BAD_VALUE (-2)
 int x265_param_parse(x265_param *p, const char *name, const char *value);
+
+int x265_zone_param_parse(x265_param* p, const char* name, const char* value);
 
 static const char * const x265_profile_names[] = {
     /* HEVC v1 */
@@ -2034,6 +2087,7 @@ typedef struct x265_api
     double        (*calculate_vmaf_framelevelscore)(x265_vmaf_framedata *);
     void          (*vmaf_encoder_log)(x265_encoder*, int, char**, x265_param *, x265_vmaf_data *);
 #endif
+    int           (*zone_param_parse)(x265_param*, const char*, const char*);
     /* add new pointers to the end, or increment X265_MAJOR_VERSION */
 } x265_api;
 

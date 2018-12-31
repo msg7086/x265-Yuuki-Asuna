@@ -153,10 +153,7 @@ RateControl::RateControl(x265_param& p)
     int lowresCuHeight = ((m_param->sourceHeight / 2) + X265_LOWRES_CU_SIZE - 1) >> X265_LOWRES_CU_BITS;
     m_ncu = lowresCuWidth * lowresCuHeight;
 
-    if (m_param->rc.cuTree)
-        m_qCompress = 1;
-    else
-        m_qCompress = m_param->rc.qCompress;
+    m_qCompress = (m_param->rc.cuTree && !m_param->rc.hevcAq) ? 1 : m_param->rc.qCompress;
 
     // validate for param->rc, maybe it is need to add a function like x265_parameters_valiate()
     m_residualFrames = 0;
@@ -381,13 +378,14 @@ bool RateControl::init(const SPS& sps)
 
     m_isGrainEnabled = false;
     if(m_param->rc.bEnableGrain) // tune for grainy content OR equal p-b frame sizes
-    m_isGrainEnabled = true;
+        m_isGrainEnabled = true;
     for (int i = 0; i < 3; i++)
-    m_lastQScaleFor[i] = x265_qp2qScale(m_param->rc.rateControlMode == X265_RC_CRF ? CRF_INIT_QP : ABR_INIT_QP_MIN);
+        m_lastQScaleFor[i] = x265_qp2qScale(m_param->rc.rateControlMode == X265_RC_CRF ? CRF_INIT_QP : ABR_INIT_QP_MIN);
     m_avgPFrameQp = 0 ;
 
     /* 720p videos seem to be a good cutoff for cplxrSum */
-    double tuneCplxFactor = (m_ncu > 3600 && m_param->rc.cuTree) ? 2.5 : m_isGrainEnabled ? 1.9 : 1;
+    double tuneCplxFactor = (m_ncu > 3600 && m_param->rc.cuTree && !m_param->rc.hevcAq) ? 2.5 : m_param->rc.hevcAq ? 1.5 : m_isGrainEnabled ? 1.9 : 1.0;
+
     /* estimated ratio that produces a reasonable QP for the first I-frame */
     m_cplxrSum = .01 * pow(7.0e5, m_qCompress) * pow(m_ncu, 0.5) * tuneCplxFactor;
     m_wantedBitsWindow = m_bitrate * m_frameDuration;
@@ -740,6 +738,20 @@ void RateControl::reconfigureRC()
         }
         if (m_param->rc.rfConstantMin)
             m_rateFactorMaxDecrement = m_param->rc.rfConstant - m_param->rc.rfConstantMin;
+    }
+    if (m_param->rc.rateControlMode == X265_RC_CQP)
+    {
+        m_qp = m_param->rc.qp;
+        if (m_qp && !m_param->bLossless)
+        {
+            m_qpConstant[P_SLICE] = m_qp;
+            m_qpConstant[I_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_qp - m_ipOffset + 0.5));
+            m_qpConstant[B_SLICE] = x265_clip3(QP_MIN, QP_MAX_MAX, (int)(m_qp + m_pbOffset + 0.5));
+        }
+        else
+        {
+            m_qpConstant[P_SLICE] = m_qpConstant[I_SLICE] = m_qpConstant[B_SLICE] = m_qp;
+        }
     }
     m_bitrate = m_param->rc.bitrate * 1000;
 }
@@ -1231,6 +1243,17 @@ int RateControl::rateControlStart(Frame* curFrame, RateControlEntry* rce, Encode
         rce->keptAsRef = IS_REFERENCED(curFrame);
     m_predType = getPredictorType(curFrame->m_lowres.sliceType, m_sliceType);
     rce->poc = m_curSlice->m_poc;
+
+    /* change ratecontrol stats for next zone if specified */
+    for (int i = 0; i < m_param->rc.zonefileCount; i++)
+    {
+        if (m_param->rc.zones[i].startFrame == curFrame->m_encodeOrder)
+        {
+            m_param = m_param->rc.zones[i].zoneParam;
+            reconfigureRC();
+            init(*m_curSlice->m_sps);
+        }
+    }
     if (m_param->rc.bStatRead)
     {
         X265_CHECK(rce->poc >= 0 && rce->poc < m_numEntries, "bad encode ordinal\n");
@@ -2538,7 +2561,7 @@ double RateControl::getQScale(RateControlEntry *rce, double rateFactor)
 {
     double q;
 
-    if (m_param->rc.cuTree)
+    if (m_param->rc.cuTree && !m_param->rc.hevcAq)
     {
         // Scale and units are obtained from rateNum and rateDenom for videos with fixed frame rates.
         double timescale = (double)m_param->fpsDenom / (2 * m_param->fpsNum);
@@ -2546,6 +2569,7 @@ double RateControl::getQScale(RateControlEntry *rce, double rateFactor)
     }
     else
         q = pow(rce->blurredComplexity, 1 - m_param->rc.qCompress);
+
     // avoid NaN's in the Rceq
     if (rce->coeffBits + rce->mvBits == 0)
         q = m_lastQScaleFor[rce->sliceType];

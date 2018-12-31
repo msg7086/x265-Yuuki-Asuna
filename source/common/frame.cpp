@@ -44,6 +44,8 @@ Frame::Frame()
     m_param = NULL;
     m_userSEI.numPayloads = 0;
     m_userSEI.payloads = NULL;
+    m_rpu.payloadSize = 0;
+    m_rpu.payload = NULL;
     memset(&m_lowres, 0, sizeof(m_lowres));
     m_rcData = NULL;
     m_encodeStartTime = 0;
@@ -78,7 +80,7 @@ bool Frame::create(x265_param *param, float* quantOffsets)
         }
     }
 
-    if (param->bMVType == AVC_INFO)
+    if (param->bAnalysisType == AVC_INFO)
     {
         m_analysisData.wt = NULL;
         m_analysisData.intraData = NULL;

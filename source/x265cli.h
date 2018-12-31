@@ -242,6 +242,7 @@ static const struct option long_options[] =
     { "no-info",              no_argument, NULL, 0 },
     { "zones",          required_argument, NULL, 0 },
     { "qpfile",         required_argument, NULL, 0 },
+    { "zonefile",       required_argument, NULL, 0 },
     { "lambda-file",    required_argument, NULL, 0 },
     { "b-intra",              no_argument, NULL, 0 },
     { "no-b-intra",           no_argument, NULL, 0 },
@@ -288,13 +289,15 @@ static const struct option long_options[] =
     { "dhdr10-info",    required_argument, NULL, 0 },
     { "dhdr10-opt",           no_argument, NULL, 0},
     { "no-dhdr10-opt",        no_argument, NULL, 0},
+    { "dolby-vision-profile",  required_argument, NULL, 0 },
     { "refine-mv",            no_argument, NULL, 0 },
     { "no-refine-mv",         no_argument, NULL, 0 },
+    { "refine-ctu-distortion", required_argument, NULL, 0 },
     { "force-flush",    required_argument, NULL, 0 },
     { "splitrd-skip",         no_argument, NULL, 0 },
     { "no-splitrd-skip",      no_argument, NULL, 0 },
     { "lowpass-dct",          no_argument, NULL, 0 },
-    { "refine-mv-type", required_argument, NULL, 0 },
+    { "refine-analysis-type", required_argument, NULL, 0 },
     { "copy-pic",             no_argument, NULL, 0 },
     { "no-copy-pic",          no_argument, NULL, 0 },
     { "max-ausize-factor", required_argument, NULL, 0 },
@@ -305,6 +308,12 @@ static const struct option long_options[] =
     { "atc-sei", required_argument, NULL, 0 },
     { "pic-struct", required_argument, NULL, 0 },
     { "nalu-file", required_argument, NULL, 0 },
+    { "dolby-vision-rpu", required_argument, NULL, 0 },
+    { "hrd-concat",          no_argument, NULL, 0},
+    { "no-hrd-concat",       no_argument, NULL, 0 },
+    { "hevc-aq", no_argument, NULL, 0 },
+    { "no-hevc-aq", no_argument, NULL, 0 },
+    { "qp-adaptation-range", required_argument, NULL, 0 },
     { 0, 0, 0, 0 },
     { 0, 0, 0, 0 },
     { 0, 0, 0, 0 },
@@ -355,6 +364,9 @@ static void showHelp(x265_param *param)
     H0("   --dhdr10-info <filename>      JSON file containing the Creative Intent Metadata to be encoded as Dynamic Tone Mapping\n");
     H0("   --[no-]dhdr10-opt             Insert tone mapping SEI only for IDR frames and when the tone mapping information changes. Default disabled\n");
 #endif
+    H0("   --dolby-vision-profile <float|integer> Specifies Dolby Vision profile ID. Currently only profile 5, profile 8.1 and profile 8.2 enabled. Specified as '5' or '50'. Default 0 (disabled).\n");
+    H0("   --dolby-vision-rpu <filename> File containing Dolby Vision RPU metadata.\n"
+       "                                 If given, x265's Dolby Vision metadata parser will fill the RPU field of input pictures with the metadata read from the file. Default NULL(disabled).\n");
     H0("   --nalu-file <filename>        Text file containing SEI messages in the following format : <POC><space><PREFIX><space><NAL UNIT TYPE>/<SEI TYPE><space><SEI Payload>\n");
     H0("-f/--frames <integer>            Maximum number of frames to encode. Default all\n");
     H0("   --seek <integer>              First frame to encode\n");
@@ -458,6 +470,7 @@ static void showHelp(x265_param *param)
     H1("                                 0 - flush the encoder only when all the input pictures are over.\n");
     H1("                                 1 - flush all the frames even when the input is not over. Slicetype decision may change with this option.\n");
     H1("                                 2 - flush the slicetype decided frames only.\n");
+    H0("   --[no-]-hrd-concat            Set HRD concatenation flag for the first keyframe in the buffering period SEI. Default %s\n", OPT(param->bEnableHRDConcatFlag));
     H0("\nRate control, Adaptive Quantization:\n");
     H0("   --bitrate <integer>           Target bitrate (kbps) for ABR (implied). Default %d\n", param->rc.bitrate);
     H1("-q/--qp <integer>                QP for P slices in CQP mode (implied). --ipratio and --pbration determine other slice QPs\n");
@@ -488,7 +501,7 @@ static void showHelp(x265_param *param)
     H0("   --analysis-load <filename>    Load analysis buffers from the file specified. Default Disabled\n");
     H0("   --analysis-reuse-file <filename>    Specify file name used for either dumping or reading analysis data. Deault x265_analysis.dat\n");
     H0("   --analysis-reuse-level <1..10>      Level of analysis reuse indicates amount of info stored/reused in save/load mode, 1:least..10:most. Default %d\n", param->analysisReuseLevel);
-    H0("   --refine-mv-type <string>     Reuse MV information received through API call. Supported option is avc. Default disabled - %d\n", param->bMVType);
+    H0("   --refine-analysis-type <string>     Reuse anlaysis information received through API call. Supported options are avc and hevc. Default disabled - %d\n", param->bAnalysisType);
     H0("   --scale-factor <int>          Specify factor by which input video is scaled down for analysis save mode. Default %d\n", param->scaleFactor);
     H0("   --refine-intra <0..4>         Enable intra refinement for encode that uses analysis-load.\n"
         "                                    - 0 : Forces both mode and depth from the save encode.\n"
@@ -506,8 +519,14 @@ static void showHelp(x265_param *param)
         "                                Default:%d\n", param->interRefine);
     H0("   --[no-]dynamic-refine         Dynamically changes refine-inter level for each CU. Default %s\n", OPT(param->bDynamicRefine));
     H0("   --[no-]refine-mv              Enable mv refinement for load mode. Default %s\n", OPT(param->mvRefine));
+    H0("   --refine-ctu-distortion       Store/normalize ctu distortion in analysis-save/load.\n"
+        "                                    - 0 : Disabled.\n"
+        "                                    - 1 : Store/Load ctu distortion to/from the file specified in analysis-save/load.\n"
+        "                                Default 0 - Disabled\n");
     H0("   --aq-mode <integer>           Mode for Adaptive Quantization - 0:none 1:uniform AQ 2:auto variance 3:auto variance with bias to dark scenes. Default %d\n", param->rc.aqMode);
+    H0("   --[no-]hevc-aq                Mode for HEVC Adaptive Quantization. Default %s\n", OPT(param->rc.hevcAq));
     H0("   --aq-strength <float>         Reduces blocking and blurring in flat and textured areas (0 to 3.0). Default %.2f\n", param->rc.aqStrength);
+    H0("   --qp-adaptation-range <float> Delta QP range by QP adaptation based on a psycho-visual model (1.0 to 6.0). Default %.2f\n", param->rc.qpAdaptationRange);
     H0("   --[no-]aq-motion              Adaptive Quantization based on the relative motion of each CU w.r.t., frame. Default %s\n", OPT(param->bOptCUDeltaQP));
     H0("   --qg-size <int>               Specifies the size of the quantization group (64, 32, 16, 8). Default %d\n", param->rc.qgSize);
     H0("   --[no-]cutree                 Enable cutree for Adaptive Quantization. Default %s\n", OPT(param->rc.cuTree));
@@ -528,6 +547,7 @@ static void showHelp(x265_param *param)
     H1("                                   where <option> is either\n");
     H1("                                       q=<integer> (force QP)\n");
     H1("                                   or  b=<float> (bitrate multiplier)\n");
+    H0("   --zonefile <filename>         Zone file containing the zone boundaries and the parameters to be reconfigured.\n");
     H1("   --lambda-file <string>        Specify a file containing replacement values for the lambda tables\n");
     H1("                                 MAX_MAX_QP+1 floats for lambda table, then again for lambda2 table\n");
     H1("                                 Blank lines and lines starting with hash(#) are ignored\n");

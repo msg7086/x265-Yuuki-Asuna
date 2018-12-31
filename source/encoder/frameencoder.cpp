@@ -335,7 +335,7 @@ void FrameEncoder::threadMain()
             while (!m_frame->m_ctuInfo)
                 m_frame->m_copied.wait();
         }
-        if ((m_param->bMVType == AVC_INFO) && !m_param->analysisSave && !m_param->analysisLoad && !(IS_X265_TYPE_I(m_frame->m_lowres.sliceType)))
+        if ((m_param->bAnalysisType == AVC_INFO) && !m_param->analysisSave && !m_param->analysisLoad && !(IS_X265_TYPE_I(m_frame->m_lowres.sliceType)))
         {
             while (((m_frame->m_analysisData.interData == NULL && m_frame->m_analysisData.intraData == NULL) || (uint32_t)m_frame->m_poc != m_frame->m_analysisData.poc))
                 m_frame->m_copyMVType.wait();
@@ -657,6 +657,8 @@ void FrameEncoder::compressFrame()
             bpSei->m_auCpbRemovalDelayDelta = 1;
             bpSei->m_cpbDelayOffset = 0;
             bpSei->m_dpbDelayOffset = 0;
+            bpSei->m_concatenationFlag = (m_param->bEnableHRDConcatFlag && !m_frame->m_poc) ? true : false;
+
             // hrdFullness() calculates the initial CPB removal delay and offset
             m_top->m_rateControl->hrdFullness(bpSei);
             bpSei->writeSEImessages(m_bs, *slice->m_sps, NAL_UNIT_PREFIX_SEI, m_nalList, m_param->bSingleSeiNal);
@@ -1061,6 +1063,14 @@ void FrameEncoder::compressFrame()
         bytes += m_nalList.m_nal[m_nalList.m_numNal - 1].sizeBytes;
         bytes -= 3; //exclude start code prefix
         m_accessUnitBits = bytes << 3;
+    }
+
+    if (m_frame->m_rpu.payloadSize)
+    {
+        m_bs.resetBits();
+        for (int i = 0; i < m_frame->m_rpu.payloadSize; i++)
+            m_bs.write(m_frame->m_rpu.payload[i], 8);
+        m_nalList.serialize(NAL_UNIT_UNSPECIFIED, m_bs);
     }
 
     m_endCompressTime = x265_mdate();

@@ -388,7 +388,7 @@ Performance Options
 	be applied after :option:`--preset` but before all other parameters. Default none.
 	See :ref:`tunings <tunings>` for more detail.
 
-	**Values:** psnr, ssim, grain, zero-latency, fast-decode.
+	**Values:** psnr, ssim, grain, zero-latency, fast-decode, animation.
 
 .. option:: --slices <integer>
 
@@ -929,6 +929,14 @@ will not reuse analysis if slice type parameters do not match.
 
 	Reuse MV information received through API call. Currently receives information for AVC size and the accepted 
 	string input is "avc". Default is disabled.
+
+.. option:: --refine-ctu-distortion <0/1>
+
+    Store/normalize ctu distortion in analysis-save/load.
+    0 - Disabled.
+    1 - Save ctu distortion to the analysis file specified during analysis-save.
+        Load CTU distortion from the analysis file and normalize it across every frame during analysis-load.
+    Default 0.
 
 .. option:: --scale-factor
 
@@ -1506,7 +1514,7 @@ Slice decision options
 	0 - flush the encoder only when all the input pictures are over.
 	1 - flush all the frames even when the input is not over. 
 	    slicetype decision may change with this option.
-	2 - flush the slicetype decided frames only.     
+	2 - flush the slicetype decided frames only.   
 
 Quality, rate control and rate distortion options
 =================================================
@@ -1622,8 +1630,8 @@ Quality, rate control and rate distortion options
 	and not enough in flat areas.
 
 	0. disabled
-	1. AQ enabled **(default)**
-	2. AQ enabled with auto-variance
+	1. AQ enabled 
+	2. AQ enabled with auto-variance **(default)**
 	3. AQ enabled with auto-variance and bias to dark scenes. This is 
 	recommended for 8-bit encodes or low-bitrate 10-bit encodes, to 
 	prevent color banding/blocking. 
@@ -1637,6 +1645,21 @@ Quality, rate control and rate distortion options
 
 	Default 1.0.
 	**Range of values:** 0.0 to 3.0
+
+.. option:: --hevc-aq
+
+	Enable adaptive quantization
+	It scales the quantization step size according to the spatial activity of one
+	coding unit relative to frame average spatial activity. This AQ method utilizes
+	the minimum variance of sub-unit in each coding unit to represent the coding
+	unit’s spatial complexity.
+
+.. option:: --qp-adaptation-range
+
+	Delta-QP range by QP adaptation based on a psycho-visual model.
+
+	Default 1.0.
+	**Range of values:** 1.0 to 6.0
 
 .. option:: --aq-motion, --no-aq-motion
 
@@ -1818,6 +1841,20 @@ Quality, rate control and rate distortion options
 
 	If zones overlap, whichever comes later in the list takes precedence.
 	Default none
+	
+	
+.. option:: --zonefile <filename>
+
+	Specify a text file which contains the boundaries of the zones where 
+	each of zones are configurable. The format of each line is:
+
+	<frame number> <options to be configured>
+
+	The frame number indicates the beginning of a zone. The options 
+	following this is applied until another zone begins. The reconfigurable 
+	options can be spcified as --<feature name> <feature value>
+	
+	**CLI ONLY**
 
 Quantization Options
 ====================
@@ -2194,6 +2231,36 @@ Bitstream options
 	parameters are carried by the Buffering Period SEI messages and
 	Picture Timing SEI messages providing timing information to the
 	decoder. Default disabled
+
+    	
+.. option:: --hrd-concat, --no-hrd-concat
+
+    Set concantenation flag for the first keyframe in the HRD buffering period SEI. This
+    is to signal the decoder if splicing is performed during bitstream generation. 
+    Recommended to enable this option during chunked encoding, except for the first chunk.
+    Default disabled.
+
+.. option:: --dolby-vision-profile <integer|float>
+
+    Generate bitstreams confirming to the specified Dolby Vision profile,
+    note that 0x7C01 makes RPU appear to be an unspecified NAL type in
+    HEVC stream. If BL is backward compatible, Dolby Vision single
+    layer VES will be equivalent to a backward compatible BL VES on legacy
+    device as RPU will be ignored.
+    
+    The value is specified as a float or as an integer with the profile times 10,
+    for example profile 5 is specified as "5" or "5.0" or "50".
+    
+    Currently only profile 5, profile 8.1 and profile 8.2 enabled, Default 0 (disabled)
+
+.. option:: --dolby-vision-rpu <filename>
+
+    File containing Dolby Vision RPU metadata. If given, x265's Dolby Vision 
+    metadata parser will fill the RPU field of input pictures with the metadata
+    read from the file. The library will interleave access units with RPUs in the 
+    bitstream. Default NULL (disabled).
+   
+    **CLI ONLY**
 
 .. option:: --info, --no-info
 
