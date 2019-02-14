@@ -752,7 +752,7 @@ if(ENABLE_LAVF AND ENABLE_CLI)
     endif()
 endif()
 
-option(ENABLE_STATIC_LAVF "Link to LAVF's private libs" OFF)
+option(ENABLE_STATIC_LAVF "Link to LAVF's private libs" ON)
 if(ENABLE_STATIC_LAVF)
     set(FFMPEG_STATIC_LIBRARIES ${PC_LIBAVUTIL_STATIC_LDFLAGS}
                                 ${PC_LIBAVFORMAT_STATIC_LDFLAGS}
