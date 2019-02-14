@@ -237,7 +237,9 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
 
 void LavfInput::openfile(InputFileInfo& info)
 {
+#if ( LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58,9,100) )
     av_register_all();
+#endif
     if(!strcmp(info.filename, "-"))
         info.filename = "pipe:";
 
