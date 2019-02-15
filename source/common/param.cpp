@@ -619,11 +619,69 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
         }
         else if (!strcmp(tune, "animation"))
         {
-            param->bframes = (param->bframes + 2) >= param->lookaheadDepth? param->bframes : param->bframes + 2;
+            if (param->bframes + 1 < param->lookaheadDepth) param->bframes++;
+            if (param->bframes + 1 < param->lookaheadDepth) param->bframes++;
             param->psyRd = 0.4;
             param->rc.aqStrength = 0.4;
             param->deblockingFilterBetaOffset = 1;
             param->deblockingFilterTCOffset = 1;
+        }
+        else if (!strncmp(tune, "littlepox", 9) || !strncmp(tune, "lp", 2) ||
+                 !strncmp(tune, "vcb-s", 5) || !strncmp(tune, "vcbs", 4)) {
+            param->searchRange = 25; //down from 57
+            param->bEnableAMP = 0;
+            param->bEnableRectInter = 0;
+            param->rc.aqStrength = 0.8; //down from 1.0
+            if (param->rdLevel < 4) param->rdLevel = 4;
+            param->rdoqLevel = 2; //force rdoq to be effective
+            param->bEnableSAO = 0;
+            param->bEnableStrongIntraSmoothing = 0;
+            if (param->bframes + 1 < param->lookaheadDepth) param->bframes++;
+            if (param->bframes + 1 < param->lookaheadDepth) param->bframes++; //from tune animation
+            if (param->tuQTMaxInterDepth > 3) param->tuQTMaxInterDepth--;
+            if (param->tuQTMaxIntraDepth > 3) param->tuQTMaxIntraDepth--;
+            if (param->maxNumMergeCand > 3) param->maxNumMergeCand--;
+            if (param->subpelRefine < 3) param->subpelRefine = 3;
+            param->keyframeMin = 1;
+            param->keyframeMax = 360;
+            param->bOpenGOP = 0;
+            param->deblockingFilterBetaOffset = -1;
+            param->deblockingFilterTCOffset = -1;
+            param->maxCUSize = 32;
+            param->maxTUSize = 32;
+            param->rc.qgSize = 8;
+            param->cbQpOffset = -2; //better chroma quality to compensate 420 subsampling
+            param->crQpOffset = -2; //better chroma quality to compensate 420 subsampling
+            param->rc.pbFactor = 1.2; //down from 1.3
+            param->bEnableWeightedBiPred = 1;
+            if (tune[0] == 'l') {
+                // Mid bitrate anime
+                param->rc.rfConstant = 20;
+                param->psyRd = 1.5; //down
+                param->psyRdoq = 0.8; //down
+
+                if (strstr(tune, "++")) {
+                    if (param->maxNumReferences < 2) param->maxNumReferences = 2;
+                    if (param->subpelRefine < 3) param->subpelRefine = 3;
+                    if (param->lookaheadDepth < 60) param->lookaheadDepth = 60;
+                    param->searchRange = 38; //down from 57
+                }
+            } else {
+                // High bitrate anime (bluray) or film
+                param->rc.rfConstant = 18;
+                param->psyRd = 1.8; //down
+                param->psyRdoq = 1.0; //same
+
+                if (strstr(tune, "++")) {
+                    if (param->maxNumReferences < 3) param->maxNumReferences = 3;
+                    if (param->subpelRefine < 3) param->subpelRefine = 3;
+                    param->bIntraInBFrames = 1;
+                    param->bEnableRectInter = 1;
+                    param->limitTU = 4;
+                    if (param->lookaheadDepth < 60) param->lookaheadDepth = 60;
+                    param->searchRange = 38; //down from 57
+                }
+            }
         }
         else if (!strcmp(tune, "vmaf"))  /*Adding vmaf for x265 + SVT-HEVC integration support*/
         {
