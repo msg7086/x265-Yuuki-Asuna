@@ -494,8 +494,11 @@ bool RateControl::init(const SPS& sps)
                 }
                 if (m_param->analysisMultiPassRefine || m_param->analysisMultiPassDistortion)
                 {
-                    p = strstr(opts, "ctu=");
-                    sscanf(p, "ctu=%u", &k);
+                    k = -1;
+                    if ((p = strstr(opts, "ctu=")))
+                        sscanf(p, "ctu=%u", &k);
+                    else if ((p = strstr(opts, "max-cu-size=")))
+                        sscanf(p, "max-cu-size=%u", &k);
                     if (k != m_param->maxCUSize)
                     {
                         x265_log(m_param, X265_LOG_ERROR, "maxCUSize mismatch with 1st pass (%u vs %u)\n",
@@ -508,7 +511,12 @@ bool RateControl::init(const SPS& sps)
                 CMP_OPT_FIRST_PASS("bframes", m_param->bframes);
                 CMP_OPT_FIRST_PASS("b-pyramid", m_param->bBPyramid);
                 CMP_OPT_FIRST_PASS("open-gop", m_param->bOpenGOP);
-                CMP_OPT_FIRST_PASS(" keyint", m_param->keyframeMax);
+                if (strstr(opts, "max-keyint")) {
+                    CMP_OPT_FIRST_PASS("max-keyint", m_param->keyframeMax);
+                }
+                else {
+                    CMP_OPT_FIRST_PASS(" keyint", m_param->keyframeMax);
+                }
                 CMP_OPT_FIRST_PASS("scenecut", m_param->scenecutThreshold);
                 CMP_OPT_FIRST_PASS("intra-refresh", m_param->bIntraRefresh);
                 CMP_OPT_FIRST_PASS("frame-dup", m_param->bEnableFrameDuplication);
