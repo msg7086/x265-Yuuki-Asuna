@@ -5440,7 +5440,7 @@ void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask) // Main
 } // namespace X265_NS
 
 extern "C" {
-#ifdef __INTEL_COMPILER
+#if defined(__INTEL_COMPILER) && EXPORT_C_API
 
 /* Agner's patch to Intel's CPU dispatcher from pages 131-132 of
  * http://agner.org/optimize/optimizing_cpp.pdf (2011-01-30)
@@ -5451,7 +5451,7 @@ int __intel_cpu_indicator = 0;
 // CPU dispatcher function
 void PFX(intel_cpu_indicator_init)(void)
 {
-    uint32_t cpu = x265::cpu_detect(false);
+    uint32_t cpu = X265_NS::cpu_detect(false);
 
     if (cpu & X265_CPU_AVX)
         __intel_cpu_indicator = 0x20000;
@@ -5478,7 +5478,7 @@ void PFX(intel_cpu_indicator_init)(void)
  * that backs up all the registers. */
 void __intel_cpu_indicator_init(void)
 {
-    x265_safe_intel_cpu_indicator_init();
+    PFX(intel_cpu_indicator_init)();
 }
 
 #else // ifdef __INTEL_COMPILER
