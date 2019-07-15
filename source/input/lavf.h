@@ -38,12 +38,13 @@ protected:
     lavf_hnd_t handle;
     lavf_hnd_t* h;
     InputFileInfo _info;
+    int seek_frame;
     void openfile(InputFileInfo& info);
+    void seek(unsigned int stream_index, int frame);
 public:
-    LavfInput(InputFileInfo& info)
+    LavfInput(InputFileInfo& info) :
+        b_fail(false), b_eof(false), seek_frame(0)
     {
-        b_fail = false;
-        b_eof = false;
         h = &handle;
         memset(h, 0, sizeof(handle));
         openfile(info);

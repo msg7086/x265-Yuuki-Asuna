@@ -102,12 +102,13 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
     int fail = 0;
     do
     {
+        finished = 0;
         codec_ret = avcodec_receive_frame(h->cocon, h->frame);
         // We are good, just leave the loop with our new frame
         if(codec_ret == 0)
         {
             finished = 1;
-            break;
+            continue;
         }
         ret = av_read_frame(h->lavf, &pkt);
 
@@ -154,7 +155,7 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
         if(ret >= 0)
             av_packet_unref(&pkt);
     }
-    while(!finished && !fail && ret >= 0);
+    while(!finished && !fail && ret >= 0 && h->frame->display_picture_number < this->seek_frame);
 
     if(!finished || fail)
         return false;
@@ -233,6 +234,19 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
     p_pic.bitDepth = info->depth;
 
     return true;
+}
+
+void LavfInput::seek(unsigned int stream_index, int frame)
+{
+    general_log(NULL, "lavf", X265_LOG_INFO, "Seeking to frame %d...\n", frame);
+    if (av_seek_frame(h->lavf, stream_index, frame, AVSEEK_FLAG_FRAME | AVSEEK_FLAG_BACKWARD ) < 0)
+        av_seek_frame(h->lavf, stream_index, frame, AVSEEK_FLAG_FRAME | AVSEEK_FLAG_BACKWARD | AVSEEK_FLAG_ANY);
+    if (h->cocon)
+        avcodec_flush_buffers(h->cocon);
+    if (h->first_pic) {
+        free(h->first_pic);
+        h->first_pic = NULL;
+    }
 }
 
 void LavfInput::openfile(InputFileInfo& info)
@@ -319,6 +333,9 @@ void LavfInput::openfile(InputFileInfo& info)
                 s->avg_frame_rate.num, s->avg_frame_rate.den,
                 s->time_base.num, s->time_base.den,
                 (int)duration / 60 / 60, (int)duration / 60 % 60, (int)duration - (int)duration / 60 * 60);
+
+    if ((seek_frame = info.skipFrames))
+        seek(i, seek_frame);
 }
 
 void LavfInput::release()
