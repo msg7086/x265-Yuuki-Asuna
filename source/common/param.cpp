@@ -201,6 +201,9 @@ void x265_param_default(x265_param* param)
     param->bEnableTSkipFast = 0;
     param->maxNumReferences = 3;
     param->bEnableTemporalMvp = 1;
+    param->bEnableHME = 0;
+    param->hmeSearchMethod[0] = X265_HEX_SEARCH;
+    param->hmeSearchMethod[1] = param->hmeSearchMethod[2] = X265_UMH_SEARCH;
     param->bSourceReferenceEstimation = 0;
     param->limitTU = 0;
     param->dynamicRd = 0;
@@ -212,6 +215,7 @@ void x265_param_default(x265_param* param)
     param->bEnableSAO = 1;
     param->bSaoNonDeblocked = 0;
     param->bLimitSAO = 0;
+    param->selectiveSAO = 4;
 
     /* Coding Quality */
     param->cbQpOffset = 0;
@@ -372,6 +376,7 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->subpelRefine = 0;
             param->searchMethod = X265_DIA_SEARCH;
             param->bEnableSAO = 0;
+            param->selectiveSAO = 0;
             param->bEnableSignHiding = 0;
             param->bEnableWeightedPred = 0;
             param->rdLevel = 2;
@@ -401,6 +406,7 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->rc.hevcAq = 0;
             param->rc.qgSize = 32;
             param->bEnableSAO = 0;
+            param->selectiveSAO = 0;
             param->bEnableFastIntra = 1;
         }
         else if (!strcmp(preset, "veryfast"))
@@ -548,6 +554,7 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
         {
             param->bEnableLoopFilter = 0;
             param->bEnableSAO = 0;
+            param->selectiveSAO = 0;
             param->bEnableWeightedPred = 0;
             param->bEnableWeightedBiPred = 0;
             param->bIntraInBFrames = 0;
@@ -575,6 +582,7 @@ int x265_param_default_preset(x265_param* param, const char* preset, const char*
             param->psyRd = 4.0;
             param->psyRdoq = 10.0;
             param->bEnableSAO = 0;
+            param->selectiveSAO = 0;
             param->rc.bEnableConstVbv = 1;
         }
         else if (!strcmp(tune, "animation"))
@@ -1206,7 +1214,7 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("scale-factor") p->scaleFactor = atoi(value);
         OPT("refine-intra")p->intraRefine = atoi(value);
         OPT("refine-inter")p->interRefine = atoi(value);
-        OPT("refine-mv")p->mvRefine = atobool(value);
+        OPT("refine-mv")p->mvRefine = atoi(value);
         OPT("force-flush")p->forceFlush = atoi(value);
         OPT("splitrd-skip") p->bEnableSplitRdSkip = atobool(value);
         OPT("lowpass-dct") p->bLowPassDct = atobool(value);
@@ -1279,9 +1287,34 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
         OPT("svt-pred-struct") x265_log(p, X265_LOG_WARNING, "Option %s is SVT-HEVC Encoder specific; Disabling it here \n", name);
         OPT("svt-fps-in-vps") x265_log(p, X265_LOG_WARNING, "Option %s is SVT-HEVC Encoder specific; Disabling it here \n", name);
 #endif
+        OPT("selective-sao")
+        {
+            p->selectiveSAO = atoi(value);
+        }
         OPT("fades") p->bEnableFades = atobool(value);
         OPT("field") p->bField = atobool( value );
         OPT("cll") p->bEmitCLL = atobool(value);
+        OPT("hme") p->bEnableHME = atobool(value);
+        OPT("hme-search")
+        {
+            char search[3][5];
+            memset(search, '\0', 15 * sizeof(char));
+            if(3 == sscanf(value, "%d,%d,%d", &p->hmeSearchMethod[0], &p->hmeSearchMethod[1], &p->hmeSearchMethod[2]) ||
+               3 == sscanf(value, "%4[^,],%4[^,],%4[^,]", search[0], search[1], search[2]))
+            {
+                if(search[0][0])
+                    for(int level = 0; level < 3; level++)
+                        p->hmeSearchMethod[level] = parseName(search[level], x265_motion_est_names, bError);
+            }
+            else if (sscanf(value, "%d", &p->hmeSearchMethod[0]) || sscanf(value, "%s", search[0]))
+            {
+                if (search[0][0]) {
+                    p->hmeSearchMethod[0] = parseName(search[0], x265_motion_est_names, bError);
+                    p->hmeSearchMethod[1] = p->hmeSearchMethod[2] = p->hmeSearchMethod[0];
+                }
+            }
+            p->bEnableHME = true;
+        }
         else
             return X265_PARAM_BAD_NAME;
     }
@@ -1522,7 +1555,7 @@ int x265_check_params(x265_param* param)
           "Lookahead depth must be less than 256");
     CHECK(param->lookaheadSlices > 16 || param->lookaheadSlices < 0,
           "Lookahead slices must between 0 and 16");
-    CHECK(param->rc.aqMode < X265_AQ_NONE || X265_AQ_AUTO_VARIANCE_BIASED < param->rc.aqMode,
+    CHECK(param->rc.aqMode < X265_AQ_NONE || X265_AQ_EDGE < param->rc.aqMode,
           "Aq-Mode is out of range");
     CHECK(param->rc.aqStrength < 0 || param->rc.aqStrength > 3,
           "Aq-Strength is out of range");
@@ -1626,6 +1659,8 @@ int x265_check_params(x265_param* param)
           "Strict-cbr cannot be applied without specifying target bitrate or vbv bufsize");
     CHECK((param->analysisSave || param->analysisLoad) && (param->analysisReuseLevel < 1 || param->analysisReuseLevel > 10),
         "Invalid analysis refine level. Value must be between 1 and 10 (inclusive)");
+    CHECK(param->analysisLoad && (param->mvRefine < 0 || param->mvRefine > 3),
+        "Invalid mv refinement level. Value must be between 0 and 3 (inclusive)");
     CHECK(param->scaleFactor > 2, "Invalid scale-factor. Supports factor <= 2");
     CHECK(param->rc.qpMax < QP_MIN || param->rc.qpMax > QP_MAX_MAX,
         "qpmax exceeds supported range (0 to 69)");
@@ -1660,6 +1695,8 @@ int x265_check_params(x265_param* param)
         CHECK( (param->bFrameAdaptive==0), "Adaptive B-frame decision method should be closed for field feature.\n" );
         // to do
     }
+    CHECK(param->selectiveSAO < 0 || param->selectiveSAO > 4,
+        "Invalid SAO tune level. Value must be between 0 and 4 (inclusive)");
 #if !X86_64
     CHECK(param->searchMethod == X265_SEA && (param->sourceWidth > 840 || param->sourceHeight > 480),
         "SEA motion search does not support resolutions greater than 480p in 32 bit build");
@@ -1732,8 +1769,13 @@ void x265_print_params(x265_param* param)
     x265_log(param, X265_LOG_INFO, "Residual QT: max TU size, max depth : %d / %d inter / %d intra\n",
              param->maxTUSize, param->tuQTMaxInterDepth, param->tuQTMaxIntraDepth);
 
-    x265_log(param, X265_LOG_INFO, "ME / range / subpel / merge         : %s / %d / %d / %d\n",
-             x265_motion_est_names[param->searchMethod], param->searchRange, param->subpelRefine, param->maxNumMergeCand);
+    if (param->bEnableHME)
+        x265_log(param, X265_LOG_INFO, "HME L0,1,2 / range / subpel / merge : %s, %s, %s / %d / %d / %d\n",
+            x265_motion_est_names[param->hmeSearchMethod[0]], x265_motion_est_names[param->hmeSearchMethod[1]], x265_motion_est_names[param->hmeSearchMethod[2]], param->searchRange, param->subpelRefine, param->maxNumMergeCand);
+    else
+        x265_log(param, X265_LOG_INFO, "ME / range / subpel / merge         : %s / %d / %d / %d\n",
+            x265_motion_est_names[param->searchMethod], param->searchRange, param->subpelRefine, param->maxNumMergeCand);
+
     if (param->keyframeMax != INT_MAX || param->scenecutThreshold)
         x265_log(param, X265_LOG_INFO, "Keyframe min / max / scenecut / bias: %d / %d / %d / %.2lf\n", param->keyframeMin, param->keyframeMax, param->scenecutThreshold, param->scenecutBias * 100);
     else
@@ -1831,6 +1873,8 @@ void x265_print_params(x265_param* param)
     }
     TOOLOPT(param->bSaoNonDeblocked, "sao-non-deblock");
     TOOLOPT(!param->bSaoNonDeblocked && param->bEnableSAO, "sao");
+    if (param->selectiveSAO != 4)
+        TOOLOPT(param->selectiveSAO, "selective-sao");
     TOOLOPT(param->rc.bStatWrite, "stats-write");
     TOOLOPT(param->rc.bStatRead,  "stats-read");
     TOOLOPT(param->bSingleSeiNal, "single-sei");
@@ -1928,6 +1972,9 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     s += sprintf(s, " subme=%d", p->subpelRefine);
     s += sprintf(s, " merange=%d", p->searchRange);
     BOOL(p->bEnableTemporalMvp, "temporal-mvp");
+    BOOL(p->bEnableHME, "hme");
+    if (p->bEnableHME)
+        s += sprintf(s, " Level 0,1,2=%d,%d,%d", p->hmeSearchMethod[0], p->hmeSearchMethod[1], p->hmeSearchMethod[2]);
     BOOL(p->bEnableWeightedPred, "weightp");
     BOOL(p->bEnableWeightedBiPred, "weightb");
     BOOL(p->bSourceReferenceEstimation, "analyze-src-pics");
@@ -1937,6 +1984,7 @@ char *x265_param2string(x265_param* p, int padx, int pady)
     BOOL(p->bEnableSAO, "sao");
     BOOL(p->bSaoNonDeblocked, "sao-non-deblock");
     s += sprintf(s, " rd=%d", p->rdLevel);
+    s += sprintf(s, "selective-sao=%d", p->selectiveSAO);
     BOOL(p->bEnableEarlySkip, "early-skip");
     BOOL(p->bEnableRecursionSkip, "rskip");
     BOOL(p->bEnableFastIntra, "fast-intra");
@@ -2215,6 +2263,12 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->subpelRefine = src->subpelRefine;
     dst->searchRange = src->searchRange;
     dst->bEnableTemporalMvp = src->bEnableTemporalMvp;
+    dst->bEnableHME = src->bEnableHME;
+    if (src->bEnableHME)
+    {
+        for (int level = 0; level < 3; level++)
+            dst->hmeSearchMethod[level] = src->hmeSearchMethod[level];
+    }
     dst->bEnableWeightedBiPred = src->bEnableWeightedBiPred;
     dst->bEnableWeightedPred = src->bEnableWeightedPred;
     dst->bSourceReferenceEstimation = src->bSourceReferenceEstimation;
@@ -2372,7 +2426,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     dst->bLowPassDct = src->bLowPassDct;
     dst->vbvBufferEnd = src->vbvBufferEnd;
     dst->vbvEndFrameAdjust = src->vbvEndFrameAdjust;
-
+    dst->bAnalysisType = src->bAnalysisType;
     dst->bCopyPicToFrame = src->bCopyPicToFrame;
     if (src->analysisSave) dst->analysisSave=strdup(src->analysisSave);
     else dst->analysisSave = NULL;
@@ -2380,6 +2434,7 @@ void x265_copy_params(x265_param* dst, x265_param* src)
     else dst->analysisLoad = NULL;
     dst->gopLookahead = src->gopLookahead;
     dst->radl = src->radl;
+    dst->selectiveSAO = src->selectiveSAO;
     dst->maxAUSizeFactor = src->maxAUSizeFactor;
     dst->bEmitIDRRecoverySEI = src->bEmitIDRRecoverySEI;
     dst->bDynamicRefine = src->bDynamicRefine;

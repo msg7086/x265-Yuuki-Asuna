@@ -92,6 +92,7 @@ struct LookaheadTLD
 protected:
 
     uint32_t acEnergyCu(Frame* curFrame, uint32_t blockX, uint32_t blockY, int csp, uint32_t qgSize);
+    uint32_t edgeDensityCu(Frame*curFrame, pixel *edgeImage, pixel *edgeTheta, uint32_t &avgAngle, uint32_t blockX, uint32_t blockY, uint32_t qgSize);
     uint32_t lumaSumCu(Frame* curFrame, uint32_t blockX, uint32_t blockY, uint32_t qgSize);
     uint32_t weightCostLuma(Lowres& fenc, Lowres& ref, WeightParam& wp);
     bool     allocWeightedRef(Lowres& fenc);
@@ -123,6 +124,10 @@ public:
     int           m_numRowsPerSlice;
     int           m_inputCount;
     double        m_cuTreeStrength;
+
+    /* HME */
+    int           m_4x4Width;
+    int           m_4x4Height;
 
     bool          m_isActive;
     bool          m_sliceTypeBusy;
@@ -246,7 +251,7 @@ protected:
     void    processTasks(int workerThreadID);
 
     int64_t estimateFrameCost(LookaheadTLD& tld, int p0, int p1, int b, bool intraPenalty);
-    void    estimateCUCost(LookaheadTLD& tld, int cux, int cuy, int p0, int p1, int b, bool bDoSearch[2], bool lastRow, int slice);
+    void    estimateCUCost(LookaheadTLD& tld, int cux, int cuy, int p0, int p1, int b, bool bDoSearch[2], bool lastRow, int slice, bool hme);
 
     CostEstimateGroup& operator=(const CostEstimateGroup&);
 };

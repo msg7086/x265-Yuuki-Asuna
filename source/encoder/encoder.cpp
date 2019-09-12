@@ -1621,6 +1621,28 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             }
             /* determine references, setup RPS, etc */
             m_dpb->prepareEncode(frameEnc);
+            if (!!m_param->selectiveSAO)
+            {
+                Slice* slice = frameEnc->m_encData->m_slice;
+                slice->m_bUseSao = curEncoder->m_frameFilter.m_useSao = 1;
+                switch (m_param->selectiveSAO)
+                {
+                case 3: if (!IS_REFERENCED(frameEnc))
+                            slice->m_bUseSao = curEncoder->m_frameFilter.m_useSao = 0;
+                        break;
+                case 2: if (!!m_param->bframes && slice->m_sliceType == B_SLICE)
+                            slice->m_bUseSao = curEncoder->m_frameFilter.m_useSao = 0;
+                        break;
+                case 1: if (slice->m_sliceType != I_SLICE)
+                            slice->m_bUseSao = curEncoder->m_frameFilter.m_useSao = 0;
+                        break;
+                }
+            }
+            else
+            {
+                Slice* slice = frameEnc->m_encData->m_slice;
+                slice->m_bUseSao = curEncoder->m_frameFilter.m_useSao = 0;
+            }
 
             if (m_param->rc.rateControlMode != X265_RC_CQP)
                 m_lookahead->getEstimatedPictureCost(frameEnc);
@@ -2891,6 +2913,14 @@ void Encoder::configure(x265_param *p)
 
     }
 
+    if (p->selectiveSAO && !p->bEnableSAO)
+    {
+        p->bEnableSAO = 1;
+        x265_log(p, X265_LOG_WARNING, "SAO turned ON when selective-sao is ON\n");
+    }
+
+    if (!p->selectiveSAO && p->bEnableSAO)
+        p->selectiveSAO = 4;
 
     if (p->interlaceMode)
         x265_log(p, X265_LOG_WARNING, "Support for interlaced video is experimental\n");
@@ -2983,11 +3013,11 @@ void Encoder::configure(x265_param *p)
             x265_log(p, X265_LOG_WARNING, "MV refinement requires analysis load, analysis-reuse-level 10. Disabling MV refine.\n");
             p->mvRefine = 0;
         }
-        else if (p->interRefine >= 2)
-        {
-            x265_log(p, X265_LOG_WARNING, "MVs are recomputed when refine-inter >= 2. MV refinement not applicable. Disabling MV refine\n");
-            p->mvRefine = 0;
-        }
+    }
+    if (p->scaleFactor && p->analysisLoad && p->interRefine && p->analysisReuseLevel == 10 && !p->mvRefine)
+    {
+        x265_log(p, X265_LOG_WARNING, "Enabling MV refinement level 1 with scaling and analysis-reuse-level=10.\n");
+        p->mvRefine = 1;
     }
 
     if (p->ctuDistortionRefine == CTU_DISTORTION_INTERNAL)
@@ -3378,6 +3408,19 @@ void Encoder::configure(x265_param *p)
     {
         p->bRepeatHeaders = 1;
         x265_log(p, X265_LOG_WARNING, "Turning on repeat - headers for zone encoding\n");
+    }
+
+    if (m_param->bEnableHME)
+    {
+        if (m_param->sourceHeight < 540)
+        {
+            x265_log(p, X265_LOG_WARNING, "Source height < 540p is too low for HME. Disabling HME.\n");
+            p->bEnableHME = 0;
+        }
+        if (m_param->bEnableHME && m_param->searchMethod != m_param->hmeSearchMethod[2])
+        {
+            m_param->searchMethod = m_param->hmeSearchMethod[2];
+        }
     }
 }
 

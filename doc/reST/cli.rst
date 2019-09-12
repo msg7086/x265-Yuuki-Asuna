@@ -1,3 +1,4 @@
+
 *********************
 Command Line Options
 *********************
@@ -996,11 +997,14 @@ will not reuse analysis if slice type parameters do not match.
 	the encoder settings. It is recommended to use :option:`--refine-intra` 4 with dynamic 
 	refinement. Default disabled.
 
-.. option:: --refine-mv
-	
+.. option:: --refine-mv <0..3>
+
 	Enables refinement of motion vector for scaled video. Evaluates the best 
-	motion vector by searching the surrounding eight integer and subpel pixel
-	positions.
+	motion vector based on the level selected. Default 0 - disabled.
+
+	Level 1 - Search around scaled MV.
+	Level 2 - Level 1 + Search around best AMVP cand.
+	Level 3 - Level 2 + Search around the other AMVP cand.
 
 Options which affect the transform unit quad-tree, sometimes referred to
 as the residual quad-tree (RQT).
@@ -1260,6 +1264,18 @@ Temporal / motion search options
 
 	Enable motion estimation with source frame pixels, in this mode, 
 	motion estimation can be computed independently. Default disabled.
+
+.. option:: --hme, --no-hme
+
+       Enable 3-level Hierarchical motion estimation at One-Sixteenth, 
+       Quarter and Full resolution. Default disabled.
+
+.. option:: --hme-search <integer|string>,<integer|string>,<integer|string>
+
+       Motion search method for HME Level 0, 1 and 2. Refer to :option:`--me` for values.
+       Specify search method for each level. Alternatively, specify a single value
+       which will apply to all levels. Default is hex,umh,umh for 
+       levels 0,1,2 respectively.
 
 Spatial/intra options
 =====================
@@ -1633,7 +1649,7 @@ Quality, rate control and rate distortion options
 	ignored. Slower presets will generally achieve better compression
 	efficiency (and generate smaller bitstreams). Default disabled.
 
-.. option:: --aq-mode <0|1|2|3>
+.. option:: --aq-mode <0|1|2|3|4>
 
 	Adaptive Quantization operating mode. Raise or lower per-block
 	quantization based on complexity analysis of the source image. The
@@ -1647,6 +1663,7 @@ Quality, rate control and rate distortion options
 	3. AQ enabled with auto-variance and bias to dark scenes. This is 
 	recommended for 8-bit encodes or low-bitrate 10-bit encodes, to 
 	prevent color banding/blocking. 
+	4. AQ enabled with auto-variance and edge information.
 
 .. option:: --aq-strength <float>
 
@@ -1979,6 +1996,24 @@ Loop filters
 	on inter prediction mode, CTU spatial-domain correlations, and relations
 	between luma and chroma.
 	Default disabled
+	
+.. option:: --selective-sao <0..4>
+
+	Toggles SAO at slice level. Default 4.
+
+	+--------------+---------------------------------------+
+	|     Level    |              Description              |     
+	+==============+=======================================+
+	|      0       | Disable SAO for all slices            |
+	+--------------+---------------------------------------+
+	|      1       | Enable SAO only for I-slices          |
+	+--------------+---------------------------------------+
+	|      2       | Enable SAO for I-slices & P-slices    |                                  |
+	+--------------+---------------------------------------+
+	|      3       | Enable SAO for all reference slices   |
+	+--------------+---------------------------------------+
+	|      4       | Enable SAO for all slices             |
+	+--------------+---------------------------------------+
 
 VUI (Video Usability Information) options
 =========================================

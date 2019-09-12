@@ -95,6 +95,9 @@ static const struct option long_options[] =
     { "max-merge",      required_argument, NULL, 0 },
     { "no-temporal-mvp",      no_argument, NULL, 0 },
     { "temporal-mvp",         no_argument, NULL, 0 },
+    { "hme",                  no_argument, NULL, 0 },
+    { "no-hme",               no_argument, NULL, 0 },
+    { "hme-search",     required_argument, NULL, 0 },
     { "rdpenalty",      required_argument, NULL, 0 },
     { "no-rect",              no_argument, NULL, 0 },
     { "rect",                 no_argument, NULL, 0 },
@@ -197,6 +200,7 @@ static const struct option long_options[] =
     { "no-deblock",           no_argument, NULL, 0 },
     { "deblock",        required_argument, NULL, 0 },
     { "no-sao",               no_argument, NULL, 0 },
+    { "selective-sao",  required_argument, NULL, 0 },
     { "sao",                  no_argument, NULL, 0 },
     { "no-sao-non-deblock",   no_argument, NULL, 0 },
     { "sao-non-deblock",      no_argument, NULL, 0 },
@@ -294,8 +298,7 @@ static const struct option long_options[] =
     { "dhdr10-opt",           no_argument, NULL, 0},
     { "no-dhdr10-opt",        no_argument, NULL, 0},
     { "dolby-vision-profile",  required_argument, NULL, 0 },
-    { "refine-mv",            no_argument, NULL, 0 },
-    { "no-refine-mv",         no_argument, NULL, 0 },
+    { "refine-mv",      required_argument, NULL, 0 },
     { "refine-ctu-distortion", required_argument, NULL, 0 },
     { "force-flush",    required_argument, NULL, 0 },
     { "splitrd-skip",         no_argument, NULL, 0 },
@@ -464,6 +467,8 @@ static void showHelp(x265_param *param)
     H0("   --[no-]amp                    Enable asymmetric motion partitions, requires --rect. Default %s\n", OPT(param->bEnableAMP));
     H0("   --[no-]limit-modes            Limit rectangular and asymmetric motion predictions. Default %d\n", param->limitModes);
     H1("   --[no-]temporal-mvp           Enable temporal MV predictors. Default %s\n", OPT(param->bEnableTemporalMvp));
+    H1("   --[no-]hme                    Enable Hierarchical Motion Estimation. Default %s\n", OPT(param->bEnableHME));
+    H1("   --hme-search <string>         Motion search-method for HME L0,L1 and L2. Default(L0,L1,L2) is %d,%d,%d\n", param->hmeSearchMethod[0], param->hmeSearchMethod[1], param->hmeSearchMethod[2]);
     H0("\nSpatial / intra options:\n");
     H0("   --[no-]strong-intra-smoothing Enable strong intra smoothing for 32x32 blocks. Default %s\n", OPT(param->bEnableStrongIntraSmoothing));
     H0("   --[no-]constrained-intra      Constrained intra prediction (use only intra coded reference pixels) Default %s\n", OPT(param->bEnableConstrainedIntra));
@@ -544,16 +549,16 @@ static void showHelp(x265_param *param)
         "                                    - 3 : Functionality of (1) + irrespective of size evaluate all inter modes.\n"
         "                                Default:%d\n", param->interRefine);
     H0("   --[no-]dynamic-refine         Dynamically changes refine-inter level for each CU. Default %s\n", OPT(param->bDynamicRefine));
-    H0("   --[no-]refine-mv              Enable mv refinement for load mode. Default %s\n", OPT(param->mvRefine));
+    H0("   --refine-mv <0..3>            Enable mv refinement for load mode. Default %d\n", param->mvRefine);
     H0("   --refine-ctu-distortion       Store/normalize ctu distortion in analysis-save/load.\n"
         "                                    - 0 : Disabled.\n"
         "                                    - 1 : Store/Load ctu distortion to/from the file specified in analysis-save/load.\n"
         "                                Default 0 - Disabled\n");
-    H0("   --aq-mode <integer>           Mode for Adaptive Quantization - 0:none 1:uniform AQ 2:auto variance 3:auto variance with bias to dark scenes. Default %d\n", param->rc.aqMode);
+    H0("   --aq-mode <integer>           Mode for Adaptive Quantization - 0:none 1:uniform AQ 2:auto variance 3:auto variance with bias to dark scenes 4:auto variance with edge information. Default %d\n", param->rc.aqMode);
     H0("   --[no-]hevc-aq                Mode for HEVC Adaptive Quantization. Default %s\n", OPT(param->rc.hevcAq));
     H0("   --aq-strength <float>         Reduces blocking and blurring in flat and textured areas (0 to 3.0). Default %.2f\n", param->rc.aqStrength);
     H0("   --qp-adaptation-range <float> Delta QP range by QP adaptation based on a psycho-visual model (1.0 to 6.0). Default %.2f\n", param->rc.qpAdaptationRange);
-    H0("   --[no-]aq-motion              Adaptive Quantization based on the relative motion of each CU w.r.t., frame. Default %s\n", OPT(param->bOptCUDeltaQP));
+    H0("   --[no-]aq-motion              Block level QP adaptation based on the relative motion between the block and the frame. Default %s\n", OPT(param->bAQMotion));
     H0("   --qg-size <int>               Specifies the size of the quantization group (64, 32, 16, 8). Default %d\n", param->rc.qgSize);
     H0("   --[no-]cutree                 Enable cutree for Adaptive Quantization. Default %s\n", OPT(param->rc.cuTree));
     H0("   --[no-]rc-grain               Enable ratecontrol mode to handle grains specifically. turned on with tune grain. Default %s\n", OPT(param->rc.bEnableGrain));
@@ -585,6 +590,7 @@ static void showHelp(x265_param *param)
     H0("   --[no-]sao                    Enable Sample Adaptive Offset. Default %s\n", OPT(param->bEnableSAO));
     H1("   --[no-]sao-non-deblock        Use non-deblocked pixels, else right/bottom boundary areas skipped. Default %s\n", OPT(param->bSaoNonDeblocked));
     H0("   --[no-]limit-sao              Limit Sample Adaptive Offset types. Default %s\n", OPT(param->bLimitSAO));
+    H0("   --selective-sao <int>         Enable slice-level SAO filter. Default %d\n", param->selectiveSAO);
     H0("\nVUI options:\n");
     H0("   --sar <width:height|int>      Sample Aspect Ratio, the ratio of width to height of an individual pixel.\n");
     H0("                                 Choose from 0=undef, 1=1:1(\"square\"), 2=12:11, 3=10:11, 4=16:11,\n");

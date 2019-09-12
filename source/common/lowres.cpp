@@ -55,6 +55,7 @@ bool Lowres::create(x265_param* param, PicYuv *origPic, uint32_t qgSize)
     heightFullRes = origPic->m_picHeight;
     width = origPic->m_picWidth / 2;
     lines = origPic->m_picHeight / 2;
+    bEnableHME = param->bEnableHME ? 1 : 0;
     lumaStride = width + 2 * origPic->m_lumaMarginX;
     if (lumaStride & 31)
         lumaStride += 32 - (lumaStride & 31);
@@ -64,6 +65,7 @@ bool Lowres::create(x265_param* param, PicYuv *origPic, uint32_t qgSize)
     maxBlocksInColFullRes = maxBlocksInCol * 2;
     int cuCount = maxBlocksInRow * maxBlocksInCol;
     int cuCountFullRes = (qgSize > 8) ? cuCount : cuCount << 2;
+    isHMELowres = param->bEnableHME ? 1 : 0;
 
     /* rounding the width to multiple of lowres CU size */
     width = maxBlocksInRow * X265_LOWRES_CU_SIZE;
@@ -78,6 +80,7 @@ bool Lowres::create(x265_param* param, PicYuv *origPic, uint32_t qgSize)
         CHECKED_MALLOC_ZERO(qpCuTreeOffset, double, cuCountFullRes);
         if (qgSize == 8)
             CHECKED_MALLOC_ZERO(invQscaleFactor8x8, int, cuCount);
+        CHECKED_MALLOC_ZERO(edgeInclined, int, cuCountFullRes);
     }
 
     if (origPic->m_param->bAQMotion)
@@ -137,6 +140,26 @@ bool Lowres::create(x265_param* param, PicYuv *origPic, uint32_t qgSize)
     lowresPlane[2] = buffer[2] + padoffset;
     lowresPlane[3] = buffer[3] + padoffset;
 
+    if (bEnableHME)
+    {
+        intptr_t lumaStrideHalf = lumaStride / 2;
+        if (lumaStrideHalf & 31)
+            lumaStrideHalf += 32 - (lumaStrideHalf & 31);
+        size_t planesizeHalf = planesize / 2;
+        size_t padoffsetHalf = padoffset / 2;
+        /* allocate lower-res buffers */
+        CHECKED_MALLOC_ZERO(lowerResBuffer[0], pixel, 4 * planesizeHalf);
+
+        lowerResBuffer[1] = lowerResBuffer[0] + planesizeHalf;
+        lowerResBuffer[2] = lowerResBuffer[1] + planesizeHalf;
+        lowerResBuffer[3] = lowerResBuffer[2] + planesizeHalf;
+
+        lowerResPlane[0] = lowerResBuffer[0] + padoffsetHalf;
+        lowerResPlane[1] = lowerResBuffer[1] + padoffsetHalf;
+        lowerResPlane[2] = lowerResBuffer[2] + padoffsetHalf;
+        lowerResPlane[3] = lowerResBuffer[3] + padoffsetHalf;
+    }
+
     CHECKED_MALLOC(intraCost, int32_t, cuCount);
     CHECKED_MALLOC(intraMode, uint8_t, cuCount);
 
@@ -155,6 +178,16 @@ bool Lowres::create(x265_param* param, PicYuv *origPic, uint32_t qgSize)
         CHECKED_MALLOC(lowresMvs[1][i], MV, cuCount);
         CHECKED_MALLOC(lowresMvCosts[0][i], int32_t, cuCount);
         CHECKED_MALLOC(lowresMvCosts[1][i], int32_t, cuCount);
+        if (bEnableHME)
+        {
+            int maxBlocksInRowLowerRes = ((width/2) + X265_LOWRES_CU_SIZE - 1) >> X265_LOWRES_CU_BITS;
+            int maxBlocksInColLowerRes = ((lines/2) + X265_LOWRES_CU_SIZE - 1) >> X265_LOWRES_CU_BITS;
+            int cuCountLowerRes = maxBlocksInRowLowerRes * maxBlocksInColLowerRes;
+            CHECKED_MALLOC(lowerResMvs[0][i], MV, cuCountLowerRes);
+            CHECKED_MALLOC(lowerResMvs[1][i], MV, cuCountLowerRes);
+            CHECKED_MALLOC(lowerResMvCosts[0][i], int32_t, cuCountLowerRes);
+            CHECKED_MALLOC(lowerResMvCosts[1][i], int32_t, cuCountLowerRes);
+        }
     }
 
     return true;
@@ -166,6 +199,8 @@ fail:
 void Lowres::destroy()
 {
     X265_FREE(buffer[0]);
+    if(bEnableHME)
+        X265_FREE(lowerResBuffer[0]);
     X265_FREE(intraCost);
     X265_FREE(intraMode);
 
@@ -184,12 +219,20 @@ void Lowres::destroy()
         X265_FREE(lowresMvs[1][i]);
         X265_FREE(lowresMvCosts[0][i]);
         X265_FREE(lowresMvCosts[1][i]);
+        if (bEnableHME)
+        {
+            X265_FREE(lowerResMvs[0][i]);
+            X265_FREE(lowerResMvs[1][i]);
+            X265_FREE(lowerResMvCosts[0][i]);
+            X265_FREE(lowerResMvCosts[1][i]);
+        }
     }
     X265_FREE(qpAqOffset);
     X265_FREE(invQscaleFactor);
     X265_FREE(qpCuTreeOffset);
     X265_FREE(propagateCost);
     X265_FREE(invQscaleFactor8x8);
+    X265_FREE(edgeInclined);
     X265_FREE(qpAqMotionOffset);
     X265_FREE(blockVariance);
     if (maxAQDepth > 0)
@@ -253,5 +296,18 @@ void Lowres::init(PicYuv *origPic, int poc)
     extendPicBorder(lowresPlane[1], lumaStride, width, lines, origPic->m_lumaMarginX, origPic->m_lumaMarginY);
     extendPicBorder(lowresPlane[2], lumaStride, width, lines, origPic->m_lumaMarginX, origPic->m_lumaMarginY);
     extendPicBorder(lowresPlane[3], lumaStride, width, lines, origPic->m_lumaMarginX, origPic->m_lumaMarginY);
+    
+    if (origPic->m_param->bEnableHME)
+    {
+        primitives.frameInitLowerRes(lowresPlane[0],
+            lowerResPlane[0], lowerResPlane[1], lowerResPlane[2], lowerResPlane[3],
+            lumaStride, lumaStride/2, (width / 2), (lines / 2));
+        extendPicBorder(lowerResPlane[0], lumaStride/2, width/2, lines/2, origPic->m_lumaMarginX/2, origPic->m_lumaMarginY/2);
+        extendPicBorder(lowerResPlane[1], lumaStride/2, width/2, lines/2, origPic->m_lumaMarginX/2, origPic->m_lumaMarginY/2);
+        extendPicBorder(lowerResPlane[2], lumaStride/2, width/2, lines/2, origPic->m_lumaMarginX/2, origPic->m_lumaMarginY/2);
+        extendPicBorder(lowerResPlane[3], lumaStride/2, width/2, lines/2, origPic->m_lumaMarginX/2, origPic->m_lumaMarginY/2);
+        fpelLowerResPlane[0] = lowerResPlane[0];
+    }
+
     fpelPlane[0] = lowresPlane[0];
 }
