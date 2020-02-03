@@ -1,5 +1,5 @@
 /*****************************************************************************
- * Copyright (C) 2013-2015 x265 project
+ * Copyright (C) 2013-2020 x265 project
  *
  * Authors: Xinyue Lu <i@7086.in>
  *
@@ -53,18 +53,13 @@ protected:
     bool bFail;
     bool byPass;
     int csp;
-    zimg_resize_context* resizeCtx[3];
-    zimg_depth_context* depthCtx;
+    zimg_image_format src_format;
+    zimg_image_format dst_format;
+    zimg_graph_builder_params graph_params;
+    zimg_filter_graph* graph;
     int stride[3];
     void* planes[3];
     void* temp;
-    int upconvStride[3];
-    void* upconvBuffer[3];
-    int resizeStride[3];
-    void* resizeBuffer[3];
-    void U16(x265_picture&);
-    void R16(x265_picture&);
-    void Oxx(x265_picture&);
 public:
     ZimgFilter(char*);
     ~ZimgFilter() {}
