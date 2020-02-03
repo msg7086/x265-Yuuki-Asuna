@@ -1,5 +1,5 @@
 /*****************************************************************************
- * Copyright (C) 2013-2015 x265 project
+ * Copyright (C) 2013-2020 x265 project
  *
  * Authors: Xinyue Lu <i@7086.in>
  *
@@ -50,19 +50,22 @@ uint32_t mod4(uint32_t size)
     return size - size % 4;
 }
 
+uint32_t round_up_64(uint32_t size)
+{
+    if ((size & 63) == 0) return size;
+    return size - (size & 63) + 64;
+}
+
 ZimgFilter::ZimgFilter(char* paramString)
 {
     // zimg:crop(a,b,c,d)lanczos(a,b)
-    cLeft = cRight = cTop = cBottom = 0.;
+    cLeft = cRight = cTop = cBottom = 0;
     rWidth = rHeight = 0;
     resizer = -1;
     param1 = param2 = NAN;
     bFail = false;
-    resizeCtx[0] = NULL;
-    depthCtx = NULL;
+    graph = NULL;
     planes[0] = NULL;
-    upconvBuffer[0] = NULL;
-    resizeBuffer[0] = NULL;
     temp = NULL;
 
     char* begin = paramString;
@@ -200,220 +203,152 @@ void ZimgFilter::setParam(x265_param* xParam)
     xp->sourceWidth = rWidth;
     xp->sourceHeight = rHeight;
 
-    /* Now create core filter */
-    char fail_str[1024];
+    zimg_image_format_default(&src_format, ZIMG_API_VERSION);
+    zimg_image_format_default(&dst_format, ZIMG_API_VERSION);
+    zimg_graph_builder_params_default(&graph_params, ZIMG_API_VERSION);
+
+    src_format.width  = (int)sWidth;
+    dst_format.width  = (int)rWidth;
+    src_format.height = (int)sHeight;
+    dst_format.height = (int)rHeight;
+
     csp = xp->internalCsp;
-    depthCtx = zimg_depth_create(ZIMG_DITHER_NONE);
-    if (!depthCtx)
+    if (x265_cli_csps[csp].planes > 1)
     {
-        zimg_get_last_error(fail_str, sizeof(fail_str));
-        general_log(NULL, "zimg", X265_LOG_ERROR, "Depth: %s\n", fail_str);
-        bFail = true;
-        return;
+        src_format.subsample_w =
+        dst_format.subsample_w = x265_cli_csps[csp].width[1];
+        src_format.subsample_h =
+        dst_format.subsample_h = x265_cli_csps[csp].height[1];
     }
 
-    for (int i = 0; i < x265_cli_csps[csp].planes; i++)
-    {
-        int csWidth  = (int)(sWidth  >> x265_cli_csps[csp].width[i]);
-        int crWidth  = (int)(rWidth  >> x265_cli_csps[csp].width[i]);
-        int csHeight = (int)(sHeight >> x265_cli_csps[csp].height[i]);
-        int crHeight = (int)(rHeight >> x265_cli_csps[csp].height[i]);
-        double ccLeft   = cLeft   / (double)(1 << x265_cli_csps[csp].width[i]);
-        double ccRight  = cRight  / (double)(1 << x265_cli_csps[csp].width[i]);
-        double ccTop    = cTop    / (double)(1 << x265_cli_csps[csp].height[i]);
-        double ccBottom = cBottom / (double)(1 << x265_cli_csps[csp].height[i]);
+    src_format.active_region.left = cLeft / 1024.;
+    src_format.active_region.top = cTop / 1024.;
+    src_format.active_region.width = cRight / 1024.;
+    src_format.active_region.height = cBottom / 1024.;
 
-        resizeCtx[i] = zimg_resize_create(resizer,
-                                          csWidth, csHeight, crWidth, crHeight,
-                                          ccLeft / 1024., ccTop / 1024., ccRight / 1024., ccBottom / 1024.,
-                                          param1, param2);
-        if (!resizeCtx[i])
-        {
-            zimg_get_last_error(fail_str, sizeof(fail_str));
-            general_log(NULL, "zimg", X265_LOG_ERROR, "Resizer: %s\n", fail_str);
-            bFail = true;
-            return;
-        }
-    }
+    graph_params.resample_filter_uv =
+    graph_params.resample_filter = (zimg_resample_filter_e)resizer;
+    graph_params.filter_param_a_uv =
+    graph_params.filter_param_a = param1;
+    graph_params.filter_param_b_uv =
+    graph_params.filter_param_b = param2;
 }
 
-void ZimgFilter::U16(x265_picture& picture)
+void ZimgFilter::processFrame(x265_picture& picture)
 {
-    int pixelType = picture.bitDepth > 8 ? ZIMG_PIXEL_WORD : ZIMG_PIXEL_BYTE;
-    if (!upconvBuffer[0])
-    {
-        // Create buffer for upconv
-        for (int i = 0; i < x265_cli_csps[csp].planes; i++)
-        {
-            int w = sWidth  >> x265_cli_csps[csp].width[i];
-            int h = sHeight >> x265_cli_csps[csp].height[i];
-            upconvStride[i] = w * 2;
-            upconvBuffer[i] = X265_MALLOC(uint16_t, h * w);
-        }
-    }
+    if (byPass) return;
+    if (bFail) return;
+
     int err = 0;
     char fail_str[1024];
-    bool fullRange = xp->vui.bEnableVideoFullRangeFlag;
-    for (int i = 0; i < x265_cli_csps[csp].planes; i++)
+    int OutputDepth = X265_DEPTH;
+    if (!graph) // Init
     {
-        int w = sWidth  >> x265_cli_csps[csp].width[i];
-        int h = sHeight >> x265_cli_csps[csp].height[i];
-        err = zimg_depth_process(depthCtx,
-            /* Planes      */    picture.planes[i], upconvBuffer[i],
-            /* Temp buffer */    temp,
-            /* Resolution  */    w, h,
-            /* Stride      */    picture.stride[i], upconvStride[i],
-            /* Pixel Type  */    pixelType,         ZIMG_PIXEL_WORD,
-            /* Bitdepth    */    picture.bitDepth,  16,
-            /* Range Flag  */    fullRange,         fullRange,
-                                 i > 0);
-        if (err)
-        {
-            zimg_get_last_error(fail_str, sizeof(fail_str));
-            general_log(NULL, "zimg", X265_LOG_ERROR, "Upsample: %s\n", fail_str);
-            bFail = true;
-            return;
-        }
-    }
-}
+        int pixelSize = OutputDepth > 8 ? 2 : 1;
+        src_format.depth = picture.bitDepth;
+        dst_format.depth = OutputDepth;
+        src_format.pixel_type = picture.bitDepth > 8 ? ZIMG_PIXEL_WORD : ZIMG_PIXEL_BYTE;
+        dst_format.pixel_type = OutputDepth > 8 ? ZIMG_PIXEL_WORD : ZIMG_PIXEL_BYTE;
 
-void ZimgFilter::R16(x265_picture&)
-{
-    if (!resizeBuffer[0])
-    {
+        switch (picture.colorSpace)
+        {
+        case X265_CSP_BGR:
+        case X265_CSP_BGRA:
+        case X265_CSP_RGB:
+            src_format.color_family = dst_format.color_family = ZIMG_COLOR_RGB;
+            break;
+        case X265_CSP_I400:
+            src_format.color_family = dst_format.color_family = ZIMG_COLOR_GREY;
+            break;
+        default:
+            src_format.color_family = dst_format.color_family = ZIMG_COLOR_YUV;
+            break;
+        }
+        src_format.pixel_range =
+        dst_format.pixel_range = xp->vui.bEnableVideoFullRangeFlag ? ZIMG_RANGE_FULL : ZIMG_RANGE_LIMITED;
+
         // Create buffer for resize
         for (int i = 0; i < x265_cli_csps[csp].planes; i++)
         {
             int w = rWidth  >> x265_cli_csps[csp].width[i];
             int h = rHeight >> x265_cli_csps[csp].height[i];
-            resizeStride[i] = w * 2;
-            resizeBuffer[i] = X265_MALLOC(uint16_t, h * w);
+            stride[i] = round_up_64(w * pixelSize);
+            planes[i] = x265_malloc(h * stride[i]);
         }
-    }
-    int err = 0;
-    char fail_str[1024];
-    for (int i = 0; i < x265_cli_csps[csp].planes; i++)
-    {
-        int sw = sWidth  >> x265_cli_csps[csp].width[i];
-        int sh = sHeight >> x265_cli_csps[csp].height[i];
-        int rw = rWidth  >> x265_cli_csps[csp].width[i];
-        int rh = rHeight >> x265_cli_csps[csp].height[i];
-        err = zimg_resize_process(resizeCtx[i],
-            /* Planes      */     upconvBuffer[i],  resizeBuffer[i],
-            /* Temp buffer */     temp,
-            /* Resolution  */     sw, sh,           rw, rh,
-            /* Stride      */     upconvStride[i],  resizeStride[i],
-            /* Pixel Type  */     ZIMG_PIXEL_WORD);
-        if (err)
-        {
-            zimg_get_last_error(fail_str, sizeof(fail_str));
-            general_log(NULL, "zimg", X265_LOG_ERROR, "Resize: %s\n", fail_str);
-            bFail = true;
-            return;
-        }
-    }
-}
 
-void ZimgFilter::Oxx(x265_picture& picture)
-{
-    int OutputDepth = X265_DEPTH;
-    int pixelSize = OutputDepth > 8 ? 2 : 1;
-    int pixelType = OutputDepth > 8 ? ZIMG_PIXEL_WORD : ZIMG_PIXEL_BYTE;
-    if (!planes[0])
-    {
-        // Create buffer for output
-        for (int i = 0; i < x265_cli_csps[csp].planes; i++)
+        graph = zimg_filter_graph_build(&src_format, &dst_format, &graph_params);
+        if (!graph)
         {
-            int w = rWidth  >> x265_cli_csps[csp].width[i];
-            int h = rHeight >> x265_cli_csps[csp].height[i];
-            stride[i] = w * pixelSize;
-            planes[i] = x265_malloc(h * w * pixelSize);
+            zimg_get_last_error(fail_str, sizeof(fail_str));
+            general_log(NULL, "zimg", X265_LOG_ERROR, "Init: %s\n", fail_str);
+            bFail = true;
+            return;
         }
-    }
-    int err = 0;
-    char fail_str[1024];
-    bool fullRange = xp->vui.bEnableVideoFullRangeFlag;
-    for (int i = 0; i < x265_cli_csps[csp].planes; i++)
-    {
-        int w = rWidth  >> x265_cli_csps[csp].width[i];
-        int h = rHeight >> x265_cli_csps[csp].height[i];
-        err = zimg_depth_process(depthCtx,
-            /* Planes      */    resizeBuffer[i],   planes[i],
-            /* Temp buffer */    temp,
-            /* Resolution  */    w, h,
-            /* Stride      */    resizeStride[i],   stride[i],
-            /* Pixel Type  */    ZIMG_PIXEL_WORD,   pixelType,
-            /* Bitdepth    */    16,                OutputDepth,
-            /* Range Flag  */    fullRange,         fullRange,
-                                 i > 0);
+        // Create temp buffer
+        size_t tmp_size;
+        err = zimg_filter_graph_get_tmp_size(graph, &tmp_size);
         if (err)
         {
             zimg_get_last_error(fail_str, sizeof(fail_str));
-            general_log(NULL, "zimg", X265_LOG_ERROR, "Downsample: %s\n", fail_str);
+            general_log(NULL, "zimg", X265_LOG_ERROR, "Init: %s\n", fail_str);
+            bFail = true;
+            return;
+        }
+        temp = x265_malloc(tmp_size);
+        if (!temp)
+        {
+            general_log(NULL, "zimg", X265_LOG_ERROR, "Init: error allocating memory for temp buffer\n");
             bFail = true;
             return;
         }
     }
+
+    zimg_image_buffer_const src_buf = { ZIMG_API_VERSION };
+    zimg_image_buffer dst_buf = { ZIMG_API_VERSION };
+
+    for (int i = 0; i < x265_cli_csps[csp].planes; i++)
+    {
+        src_buf.plane[i].data = picture.planes[i];
+        src_buf.plane[i].stride = picture.stride[i];
+        src_buf.plane[i].mask = ZIMG_BUFFER_MAX;
+        dst_buf.plane[i].data = planes[i];
+        dst_buf.plane[i].stride = stride[i];
+        dst_buf.plane[i].mask = ZIMG_BUFFER_MAX;
+    }
+
+    err = zimg_filter_graph_process(graph, &src_buf, &dst_buf, temp, 0, 0, 0, 0);
+    if (err)
+    {
+        zimg_get_last_error(fail_str, sizeof(fail_str));
+        general_log(NULL, "zimg", X265_LOG_ERROR, "Resize: %s\n", fail_str);
+        bFail = true;
+        return;
+    }
+
     memcpy(picture.stride, stride, sizeof(stride));
     memcpy(picture.planes, planes, sizeof(planes));
     picture.bitDepth = OutputDepth;
 }
 
-void ZimgFilter::processFrame(x265_picture& picture)
-{
-    if (byPass)
-        return;
-    if (!temp)
-    {
-        int width = sWidth > rWidth ? sWidth : rWidth;
-        int tempSize = zimg_depth_tmp_size(depthCtx, width << 1);
-        for (int i = 0; i < x265_cli_csps[csp].planes; i++)
-        {
-            int size = zimg_resize_tmp_size(resizeCtx[i], ZIMG_PIXEL_WORD);
-            if (size > tempSize)
-                tempSize = size;
-        }
-        temp = x265_malloc(tempSize);
-    }
-
-    if (!bFail) U16(picture);
-    if (!bFail) R16(picture);
-    if (!bFail) Oxx(picture);
-
-    return;
-}
-
 void ZimgFilter::release()
 {
-    x265_free(temp);
-    temp = NULL;
-
-    if (depthCtx)
+    if (temp)
     {
-        zimg_depth_delete(depthCtx);
-        depthCtx = NULL;
+        x265_free(temp);
+        temp = NULL;
     }
-    for (int i = 2; i >= 0; i--)
+
+    if (graph)
     {
-        if (resizeCtx[0])
-        {
-            zimg_resize_delete(resizeCtx[i]);
-            resizeCtx[i] = NULL;
-        }
-        if (planes[0])
+        zimg_filter_graph_free(graph);
+        graph = NULL;
+    }
+    if (planes[0])
+    {
+        for (int i = 2; i >= 0; i--)
         {
             x265_free(planes[i]);
             planes[i] = NULL;
-        }
-        if (upconvBuffer[0])
-        {
-            x265_free(upconvBuffer[i]);
-            upconvBuffer[i] = NULL;
-        }
-        if (resizeBuffer[0])
-        {
-            x265_free(resizeBuffer[i]);
-            resizeBuffer[i] = NULL;
         }
     }
 }
