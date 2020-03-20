@@ -30,6 +30,9 @@
 #ifdef ENABLE_LAVF
     #include "lavf.h"
 #endif
+#ifdef ENABLE_VPYSYNTH
+    #include "vpy.h"
+#endif
 
 using namespace X265_NS;
 
@@ -43,6 +46,11 @@ InputFile* InputFile::open(InputFileInfo& info, bool bForceY4m)
 #ifdef ENABLE_AVISYNTH
     if (s && !strcmp(s, ".avs"))
         return new AVSInput(info);
+#endif
+
+#ifdef ENABLE_VPYSYNTH
+    if (s && !strcmp(s, ".vpy"))
+        return new VPYInput(info);
 #endif
 
 #ifdef ENABLE_LAVF
