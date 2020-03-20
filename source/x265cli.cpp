@@ -66,7 +66,7 @@ namespace X265_NS {
 #define H1 if (level >= X265_LOG_DEBUG) printf
 
         H0("\nSyntax: x265 [options] infile [-o] outfile\n");
-        H0("    infile can be YUV or Y4M\n");
+        H0("    infile can be YUV or Y4M, or frame server format\n");
         H0("    outfile is raw HEVC bitstream\n");
         H0("\nExecutable Options:\n");
         H0("-h/--help                        Show this help text and exit\n");
