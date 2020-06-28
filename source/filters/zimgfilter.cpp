@@ -328,6 +328,9 @@ void ZimgFilter::processFrame(x265_picture& picture)
     memcpy(picture.stride, stride, sizeof(stride));
     memcpy(picture.planes, planes, sizeof(planes));
     picture.bitDepth = OutputDepth;
+    picture.width = rWidth;
+    picture.height = rHeight;
+    // picture.framesize = framesize;
 }
 
 void ZimgFilter::release()
