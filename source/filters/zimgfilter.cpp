@@ -267,13 +267,19 @@ void ZimgFilter::processFrame(x265_picture& picture)
         src_format.pixel_range =
         dst_format.pixel_range = xp->vui.bEnableVideoFullRangeFlag ? ZIMG_RANGE_FULL : ZIMG_RANGE_LIMITED;
 
+        framesize = 0;
+        auto stride_all = round_up_64(rWidth * pixelSize);
+        planes_all = x265_malloc(rHeight * stride_all * x265_cli_csps[csp].planes);
+        char * planes_ptr = reinterpret_cast<char *>(planes_all);
         // Create buffer for resize
         for (int i = 0; i < x265_cli_csps[csp].planes; i++)
         {
             int w = rWidth  >> x265_cli_csps[csp].width[i];
             int h = rHeight >> x265_cli_csps[csp].height[i];
             stride[i] = round_up_64(w * pixelSize);
-            planes[i] = x265_malloc(h * stride[i]);
+            planes[i] = planes_ptr;
+            planes_ptr += h * stride[i];
+            framesize += h * stride[i];
         }
 
         graph = zimg_filter_graph_build(&src_format, &dst_format, &graph_params);
@@ -328,6 +334,9 @@ void ZimgFilter::processFrame(x265_picture& picture)
     memcpy(picture.stride, stride, sizeof(stride));
     memcpy(picture.planes, planes, sizeof(planes));
     picture.bitDepth = OutputDepth;
+    picture.width = rWidth;
+    picture.height = rHeight;
+    picture.framesize = framesize;
 }
 
 void ZimgFilter::release()
@@ -335,21 +344,18 @@ void ZimgFilter::release()
     if (temp)
     {
         x265_free(temp);
-        temp = NULL;
+        temp = nullptr;
     }
 
     if (graph)
     {
         zimg_filter_graph_free(graph);
-        graph = NULL;
+        graph = nullptr;
     }
-    if (planes[0])
+    if (planes_all)
     {
-        for (int i = 2; i >= 0; i--)
-        {
-            x265_free(planes[i]);
-            planes[i] = NULL;
-        }
+        x265_free(planes_all);
+        planes_all = nullptr;
     }
 }
 
