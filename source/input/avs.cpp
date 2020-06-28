@@ -134,14 +134,19 @@ bool AVSInput::readPicture(x265_picture& pic)
         b_fail = true;
         return false;
     }
+    pic.framesize = 0;
+    pic.width = _info.width;
+    pic.height = _info.height;
     pic.planes[0] = frm->vfb->data + frm->offset;
     pic.stride[0] = frm->pitch;
+    pic.framesize += frm->height * frm->row_size;
     if (h->plane_count > 1)
     {
         pic.planes[1] = frm->vfb->data + frm->offsetU;
         pic.stride[1] = frm->pitchUV;
         pic.planes[2] = frm->vfb->data + frm->offsetV;
         pic.stride[2] = frm->pitchUV;
+        pic.framesize += frm->heightUV * frm->row_sizeUV * 2;
     }
     pic.colorSpace = _info.csp;
     pic.bitDepth = _info.depth;
