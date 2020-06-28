@@ -58,8 +58,10 @@ protected:
     zimg_graph_builder_params graph_params;
     zimg_filter_graph* graph;
     int stride[3];
+    void* planes_all;
     void* planes[3];
     void* temp;
+    int framesize;
 public:
     ZimgFilter(char*);
     ~ZimgFilter() {}
