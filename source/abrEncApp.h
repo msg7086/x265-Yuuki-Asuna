@@ -142,6 +142,7 @@ namespace X265_NS {
         PassEncoder *m_parentEnc;
         int m_id;
         InputFile* m_input;
+        CLIOptions* m_cliopt;
         int m_threadActive;
 
         Reader(int id, PassEncoder *parentEnc);
