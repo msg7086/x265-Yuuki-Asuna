@@ -57,6 +57,39 @@ static int handle_jpeg(int csp, int *fullrange)
     }
 }
 
+void LavfInput::fill_buffer(x265_picture& pic, uint8_t** planes, int* stride) {
+    auto height = _info.height;
+    auto height_uv = _info.height >> height_uv_ss;
+
+    pic.width = _info.width;
+    pic.height = _info.height;
+
+    if (frame_size == 0 || frame_buffer == nullptr) {
+        frame_size = height * stride[0];
+        if (stride[1])
+            frame_size += height_uv * stride[1] + height_uv * stride[2];
+        frame_buffer = reinterpret_cast<uint8_t*>(x265_malloc(frame_size));
+    }
+    pic.framesize = frame_size;
+
+    uint8_t* ptr = frame_buffer;
+    pic.planes[0] = ptr;
+    pic.stride[0] = stride[0];
+    memcpy(pic.planes[0], planes[0], stride[0] * height);
+    if (stride[1])
+    {
+        ptr += stride[0] * height;
+        pic.planes[1] = ptr;
+        pic.stride[1] = stride[1];
+        memcpy(pic.planes[1], planes[1], stride[1] * height_uv);
+
+        ptr += stride[1] * height_uv;
+        pic.planes[2] = ptr;
+        pic.stride[2] = stride[2];
+        memcpy(pic.planes[2], planes[2], stride[2] * height_uv);
+    }
+}
+
 bool LavfInput::readPicture(x265_picture& p_pic)
 {
     return readPicture(p_pic, NULL);
@@ -73,6 +106,9 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
         p_pic.pts = h->first_pic->pts;
         p_pic.colorSpace = h->first_pic->colorSpace;
         p_pic.bitDepth = h->first_pic->bitDepth;
+        p_pic.framesize = frame_size;
+        p_pic.width = _info.width;
+        p_pic.height = _info.height;
         free(h->first_pic);
         h->first_pic = NULL;
         return true;
@@ -159,14 +195,11 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
     if(!finished || fail)
         return false;
 
-    h->next_frame++;
-
-    memcpy(p_pic.stride, h->frame->linesize, sizeof(p_pic.stride));
-    memcpy(p_pic.planes, h->frame->data, sizeof(p_pic.planes));
     int is_fullrange   = 0;
 
     if(info)
     {
+        height_uv_ss = 0;
         info->csp     = handle_jpeg(h->cocon->pix_fmt, &is_fullrange);
         switch(info->csp)
         {
@@ -195,6 +228,7 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
         case AV_PIX_FMT_YUV420P9LE:
         case AV_PIX_FMT_YUV420P10LE:
             info->csp = X265_CSP_I420;
+            height_uv_ss = 1;
             break;
         case AV_PIX_FMT_YUV422P:
         case AV_PIX_FMT_YUV422P9LE:
@@ -231,6 +265,9 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
     if(info == NULL) info = &_info;
     p_pic.colorSpace = info->csp;
     p_pic.bitDepth = info->depth;
+
+    h->next_frame++;
+    fill_buffer(p_pic, h->frame->data, h->frame->linesize);
 
     return true;
 }
@@ -289,6 +326,8 @@ void LavfInput::openfile(InputFileInfo& info)
     /* prefetch the first frame and set/confirm flags */
     h->first_pic = (x265_picture*) malloc(sizeof(x265_picture));
     FAIL_IF_ERROR(!h->first_pic, "malloc failed\n")
+    _info.width  = cp->width;
+    _info.height = cp->height;
     if(readPicture(*h->first_pic, &info) == false)
     {
         b_fail = true;
