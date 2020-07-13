@@ -33,17 +33,19 @@ typedef struct
 class LavfInput : public InputFile
 {
 protected:
-    bool b_fail;
-    bool b_eof;
+    bool b_fail {false};
+    bool b_eof {false};
+    size_t frame_size {0};
+    uint8_t* frame_buffer {nullptr};
+    int height_uv_ss {0};
     lavf_hnd_t handle;
     lavf_hnd_t* h;
     InputFileInfo _info;
     void openfile(InputFileInfo& info);
+    void fill_buffer(x265_picture& p_pic, uint8_t** planes, int* stride);
 public:
     LavfInput(InputFileInfo& info)
     {
-        b_fail = false;
-        b_eof = false;
         h = &handle;
         memset(h, 0, sizeof(handle));
         openfile(info);

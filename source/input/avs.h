@@ -62,29 +62,29 @@ typedef struct
 class AVSInput : public InputFile
 {
 protected:
-    bool b_fail;
-    bool b_eof;
+    bool b_fail {false};
+    bool b_eof {false};
     avs_hnd_t handle;
     avs_hnd_t* h;
+    size_t frame_size {0};
+    uint8_t* frame_buffer {nullptr};
     InputFileInfo _info;
     void load_avs();
     void info_avs();
     void openfile(InputFileInfo& info);
     #if _WIN32
         void avs_open() { h->library = LoadLibraryW(L"avisynth"); }
-        void avs_close() { FreeLibrary(h->library); }
+        void avs_close() { FreeLibrary(h->library); h->library = nullptr; }
         func_t avs_address(LPCSTR func) { return GetProcAddress(h->library, func); }
     #else
         void avs_open() { h->library = dlopen("libavisynth.so", RTLD_NOW); }
-        void avs_close() { dlclose(h->library); }
+        void avs_close() { dlclose(h->library); h->library = nullptr; }
         func_t avs_address(const char * func) { return dlsym(h->library, func); }
     #endif
 
 public:
     AVSInput(InputFileInfo& info)
     {
-        b_fail = false;
-        b_eof = false;
         h = &handle;
         memset(h, 0, sizeof(handle));
         load_avs();
