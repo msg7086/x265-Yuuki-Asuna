@@ -156,8 +156,8 @@ VPYInput::VPYInput(InputFileInfo& info) : frameCount(-1), vpyFailed(false)
 
     const VSMap* frameProps0 = vsapi->getFramePropsRO(frame0);
 
-    info.sarWidth = vsapi->propGetInt(frameProps0, "_SARNum", 0, nullptr);
-    info.sarHeight = vsapi->propGetInt(frameProps0, "_SARDen", 0, nullptr);
+    info.sarWidth = vsapi->propNumElements(frameProps0, "_SARNum") > 0 ? vsapi->propGetInt(frameProps0, "_SARNum", 0, nullptr) : 0;
+    info.sarHeight =vsapi->propNumElements(frameProps0, "_SARDen") > 0 ? vsapi->propGetInt(frameProps0, "_SARDen", 0, nullptr) : 0;
     if(vi->fpsNum == 0 && vi->fpsDen == 0) // VFR detection
     {
         int errDurNum, errDurDen;
