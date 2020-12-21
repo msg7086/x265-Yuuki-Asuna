@@ -1860,9 +1860,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
         {
             double lqmin = m_lmin[m_sliceType];
             double lqmax = m_lmax[m_sliceType];
-            if (m_param->bEnableSceneCutAwareQp == FORWARD || m_param->bEnableSceneCutAwareQp == BI_DIRECTIONAL)
+            if (m_param->bEnableSceneCutAwareQp & FORWARD)
                 qScale = forwardMasking(curFrame, qScale);
-            if (m_param->bEnableSceneCutAwareQp == BACKWARD || m_param->bEnableSceneCutAwareQp == BI_DIRECTIONAL)
+            if (m_param->bEnableSceneCutAwareQp & BACKWARD)
                 qScale = backwardMasking(curFrame, qScale);
             qScale = x265_clip3(lqmin, lqmax, qScale);
             q = x265_qScale2qp(qScale);
@@ -1987,9 +1987,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                 double qmin = m_lmin[m_sliceType];
                 double qmax = m_lmax[m_sliceType];
 
-                if (m_param->bEnableSceneCutAwareQp == FORWARD || m_param->bEnableSceneCutAwareQp == BI_DIRECTIONAL)
+                if (m_param->bEnableSceneCutAwareQp & FORWARD)
                     q = forwardMasking(curFrame, q);
-                if (m_param->bEnableSceneCutAwareQp == BACKWARD || m_param->bEnableSceneCutAwareQp == BI_DIRECTIONAL)
+                if (m_param->bEnableSceneCutAwareQp & BACKWARD)
                     q = backwardMasking(curFrame, q);
 
                 q = x265_clip3(qmin, qmax, q);
@@ -2156,9 +2156,9 @@ double RateControl::rateEstimateQscale(Frame* curFrame, RateControlEntry *rce)
                 double qmin = m_lmin[m_sliceType];
                 double qmax = m_lmax[m_sliceType];
 
-                if (m_param->bEnableSceneCutAwareQp == FORWARD || m_param->bEnableSceneCutAwareQp == BI_DIRECTIONAL)
+                if (m_param->bEnableSceneCutAwareQp & FORWARD)
                     q = forwardMasking(curFrame, q);
-                if (m_param->bEnableSceneCutAwareQp == BACKWARD || m_param->bEnableSceneCutAwareQp == BI_DIRECTIONAL)
+                if (m_param->bEnableSceneCutAwareQp & BACKWARD)
                     q = backwardMasking(curFrame, q);
 
                 q = x265_clip3(qmin, qmax, q);
@@ -3192,8 +3192,6 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
     int lastIFrame = m_top->m_rateControl->m_lastScenecutAwareIFrame;
     double fwdRefQpDelta = double(m_param->fwdRefQpDelta);
     double fwdNonRefQpDelta = double(m_param->fwdNonRefQpDelta);
-    double bwdRefQpDelta = double(m_param->bwdRefQpDelta);
-    double bwdNonRefQpDelta = double(m_param->bwdNonRefQpDelta);
     double sliceTypeDelta = SLICE_TYPE_DELTA * fwdRefQpDelta;
     double window2Delta = WINDOW2_DELTA * fwdRefQpDelta;
     double window3Delta = WINDOW3_DELTA * fwdRefQpDelta;

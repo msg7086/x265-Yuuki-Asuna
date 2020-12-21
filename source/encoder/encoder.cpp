@@ -1810,7 +1810,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
                 inFrame->m_lowres.m_bIsHardScenecut = isHardSC;
         }
 
-        if ((m_param->bEnableSceneCutAwareQp == BI_DIRECTIONAL || m_param->bEnableSceneCutAwareQp == BACKWARD) && m_param->rc.bStatRead)
+        if ((m_param->bEnableSceneCutAwareQp & BACKWARD) && m_param->rc.bStatRead)
         {
             RateControlEntry * rcEntry = NULL;
             rcEntry = &(m_rateControl->m_rce2Pass[inFrame->m_poc]);
@@ -2242,7 +2242,7 @@ int Encoder::encode(const x265_picture* pic_in, x265_picture* pic_out)
             frameEnc = m_lookahead->getDecidedPicture();
         if (frameEnc && !pass && (!m_param->chunkEnd || (m_encodedFrameNum < m_param->chunkEnd)))
         {
-            if ((m_param->bEnableSceneCutAwareQp == BI_DIRECTIONAL || m_param->bEnableSceneCutAwareQp == FORWARD) && m_param->rc.bStatRead)
+            if ((m_param->bEnableSceneCutAwareQp & FORWARD) && m_param->rc.bStatRead)
             {
                 RateControlEntry * rcEntry;
                 rcEntry = &(m_rateControl->m_rce2Pass[frameEnc->m_poc]);

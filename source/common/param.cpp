@@ -1831,6 +1831,8 @@ int x265_check_params(x265_param* param)
         }
         else
         {
+            CHECK(param->bEnableSceneCutAwareQp < 0 || param->bEnableSceneCutAwareQp > 3,
+            "Invalid masking direction. Value must be between 0 and 3(inclusive)");
             CHECK(param->fwdScenecutWindow < 0 || param->fwdScenecutWindow > 1000,
             "Invalid forward scenecut Window duration. Value must be between 0 and 1000(inclusive)");
             CHECK(param->fwdRefQpDelta < 0 || param->fwdRefQpDelta > 10,

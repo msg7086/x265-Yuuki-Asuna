@@ -181,7 +181,7 @@ namespace X265_NS {
         H1("                                 1 - Forward masking\n");
         H1("                                 2 - Backward masking\n");
         H1("                                 3 - Bidirectional masking\n");
-        H1("   --masking-strength <string>   Comma separated values which specifies the duration and offset for the QP increment for inter-frames");
+        H1("   --masking-strength <string>   Comma separated values which specify the duration and offset for the QP increment for inter-frames when scenecut-aware-qp is enabled.\n");
         H0("   --radl <integer>              Number of RADL pictures allowed in front of IDR. Default %d\n", param->radl);
         H0("   --intra-refresh               Use Periodic Intra Refresh instead of IDR frames\n");
         H0("   --rc-lookahead <integer>      Number of frames for frame-type lookahead (determines encoder latency) Default %d\n", param->lookaheadDepth);
