@@ -45,7 +45,7 @@ static void frameDoneCallback(void* userData, const VSFrameRef* f, const int n, 
 
         if(vpyCallbackData->requestedFrames < vpyCallbackData->totalFrames)
         {
-            //x265::general_log(NULL, "vpy", X265_LOG_FULL, "Callback: retries: %d, current frame: %d, requested: %d, completed: %d, output: %d  \n", retries, n, vpyCallbackData->requestedFrames.load(), vpyCallbackData->completedFrames.load(), vpyCallbackData->outputFrames.load());
+            //x265::general_log(nullptr, "vpy", X265_LOG_FULL, "Callback: retries: %d, current frame: %d, requested: %d, completed: %d, output: %d  \n", retries, n, vpyCallbackData->requestedFrames.load(), vpyCallbackData->completedFrames.load(), vpyCallbackData->outputFrames.load());
             vpyCallbackData->vsapi->getFrameAsync(vpyCallbackData->requestedFrames, node, frameDoneCallback, vpyCallbackData);
             ++vpyCallbackData->requestedFrames;
         }
@@ -54,7 +54,7 @@ static void frameDoneCallback(void* userData, const VSFrameRef* f, const int n, 
 
 using namespace X265_NS;
 
-VPYInput::VPYInput(InputFileInfo& info) : frameCount(-1), vpyFailed(false)
+VPYInput::VPYInput(InputFileInfo& info) : nextFrame(0), vpyFailed(false)
 {
     vss_library = vs_open();
     if(!vss_library)
@@ -137,8 +137,8 @@ VPYInput::VPYInput(InputFileInfo& info) : frameCount(-1), vpyFailed(false)
         vpyFailed = true;
     }
 
-    info.width = width = vi->width;
-    info.height = height = vi->height;
+    info.width = vi->width;
+    info.height = vi->height;
 
     vpyCallbackData.parallelRequests = core_info->numThreads;
 
@@ -189,22 +189,30 @@ VPYInput::VPYInput(InputFileInfo& info) : frameCount(-1), vpyFailed(false)
         info.fpsDenom = vi->fpsDen;
     }
 
-    info.frameCount = vpyCallbackData.totalFrames = frameCount = vi->numFrames;
-    info.depth = depth = vi->format->bitsPerSample;
+    info.frameCount = vpyCallbackData.totalFrames = vi->numFrames;
+    info.depth = vi->format->bitsPerSample;
 
     if(vi->format->bitsPerSample >= 8 && vi->format->bitsPerSample <= 16)
     {
         if(vi->format->colorFamily == cmYUV)
         {
-            if(vi->format->subSamplingW == 0 && vi->format->subSamplingH == 0)
-                colorSpace = X265_CSP_I444;
-            else if(vi->format->subSamplingW == 1 && vi->format->subSamplingH == 0)
-                colorSpace = X265_CSP_I422;
-            else if(vi->format->subSamplingW == 1 && vi->format->subSamplingH == 1)
-                colorSpace = X265_CSP_I420;
+            if(vi->format->subSamplingW == 0 && vi->format->subSamplingH == 0) {
+                info.csp = X265_CSP_I444;
+                general_log(nullptr, "vpy", X265_LOG_INFO, "Video colorspace: YUV444 (YV24)\n");
+            }
+            else if(vi->format->subSamplingW == 1 && vi->format->subSamplingH == 0) {
+                info.csp = X265_CSP_I422;
+                general_log(nullptr, "vpy", X265_LOG_INFO, "Video colorspace: YUV422 (YV16)\n");
+            }
+            else if(vi->format->subSamplingW == 1 && vi->format->subSamplingH == 1) {
+                info.csp = X265_CSP_I420;
+                general_log(nullptr, "vpy", X265_LOG_INFO, "Video colorspace: YUV420 (YV12)\n");
+            }
         }
-        else if(vi->format->colorFamily == cmGray)
-            colorSpace = X265_CSP_I400;
+        else if(vi->format->colorFamily == cmGray) {
+            info.csp = X265_CSP_I400;
+            general_log(nullptr, "vpy", X265_LOG_INFO, "Video colorspace: YUV400 (Y8)\n");
+        }
     }
     else
     {
@@ -212,7 +220,11 @@ VPYInput::VPYInput(InputFileInfo& info) : frameCount(-1), vpyFailed(false)
         vpyFailed = true;
         return;
     }
-    info.csp = colorSpace;
+    general_log(nullptr, "vpy", X265_LOG_INFO, "Video depth: %d\n", info.depth);
+    general_log(nullptr, "vpy", X265_LOG_INFO, "Video resolution: %dx%d\n", info.width, info.height);
+    general_log(nullptr, "vpy", X265_LOG_INFO, "Video framerate: %d/%d\n", info.fpsNum, info.fpsDenom);
+    general_log(nullptr, "vpy", X265_LOG_INFO, "Video framecount: %d\n", info.frameCount);
+    _info = info;
 }
 
 VPYInput::~VPYInput()
@@ -235,7 +247,7 @@ void VPYInput::startReader()
     general_log(nullptr, "vpy", X265_LOG_INFO, "using %d parallel requests\n", vpyCallbackData.parallelRequests);
 
     const int requestStart = vpyCallbackData.completedFrames;
-    const int intitalRequestSize = std::min<int>(vpyCallbackData.parallelRequests, frameCount - requestStart);
+    const int intitalRequestSize = std::min<int>(vpyCallbackData.parallelRequests, _info.frameCount - requestStart);
     vpyCallbackData.requestedFrames = requestStart + intitalRequestSize;
 
     for (int n = requestStart; n < requestStart + intitalRequestSize; n++)
@@ -246,35 +258,51 @@ bool VPYInput::readPicture(x265_picture& pic)
 {
     const VSFrameRef* currentFrame = nullptr;
 
-    if(pic.poc >= frameCount)
+    if(nextFrame >= _info.frameCount)
         return false;
 
-    pic.bitDepth = depth;
-
-    while (!!!vpyCallbackData.reorderMap[pic.poc])
+    while (!!!vpyCallbackData.reorderMap[nextFrame])
     {
         Sleep(10); // wait for completition a bit
     }
 
-    currentFrame = vpyCallbackData.reorderMap[pic.poc];
-    vpyCallbackData.reorderMap.erase(pic.poc);
+    currentFrame = vpyCallbackData.reorderMap[nextFrame];
+    vpyCallbackData.reorderMap.erase(nextFrame);
     ++vpyCallbackData.outputFrames;
 
     if(!currentFrame)
     {
-        general_log(nullptr, "vpy", X265_LOG_ERROR, "error occurred while reading frame %d\n", pic.poc);
+        general_log(nullptr, "vpy", X265_LOG_ERROR, "error occurred while reading frame %d\n", nextFrame);
         vpyFailed = true;
     }
 
-    for(int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
+    pic.width = _info.width;
+    pic.height = _info.height;
+    pic.colorSpace = _info.csp;
+    pic.bitDepth = _info.depth;
+
+    if (frame_size == 0 || frame_buffer == nullptr) {
+        for (int i = 0; i < x265_cli_csps[_info.csp].planes; i++)
+            frame_size += vsapi->getFrameHeight(currentFrame, i) * vsapi->getStride(currentFrame, i);
+        frame_buffer = reinterpret_cast<uint8_t*>(x265_malloc(frame_size));
+    }
+
+    pic.framesize = frame_size;
+
+    uint8_t* ptr = frame_buffer;
+    for(int i = 0; i < x265_cli_csps[_info.csp].planes; i++)
     {
         pic.stride[i] = vsapi->getStride(currentFrame, i);
-        pic.planes[i] = const_cast<unsigned char*>(vsapi->getReadPtr(currentFrame, i));
+        pic.planes[i] = ptr;
+        auto len = vsapi->getFrameHeight(currentFrame, i) * pic.stride[i];
+
+        memcpy(pic.planes[i], const_cast<unsigned char*>(vsapi->getReadPtr(currentFrame, i)), len);
+        ptr += len;
     }
 
     vsapi->freeFrame(currentFrame);
 
-    nextFrame = pic.poc + 1; // for Eof method
+    nextFrame++; // for Eof method
 
     return true;
 }
