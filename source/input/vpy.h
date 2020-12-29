@@ -89,19 +89,13 @@ class VPYInput : public InputFile
 {
 protected:
 
-    int depth;
-
-    int width;
-
-    int height;
-
-    int colorSpace;
-
-    int frameCount;
-
     int nextFrame;
 
     bool vpyFailed;
+
+    size_t frame_size {0};
+    uint8_t* frame_buffer {nullptr};
+    InputFileInfo _info;
 
 #if defined(_WIN32_WINNT)
     HMODULE vss_library;
@@ -128,7 +122,7 @@ public:
 
     void release() {};
 
-    bool isEof() const { return nextFrame >= frameCount; }
+    bool isEof() const { return nextFrame >= _info.frameCount; }
 
     bool isFail() { return vpyFailed; }
 
@@ -138,9 +132,9 @@ public:
 
     const char* getName() const { return "vpy"; }
 
-    int getWidth() const { return width; }
+    int getWidth() const { return _info.width; }
 
-    int getHeight() const { return height; }
+    int getHeight() const { return _info.height; }
 };
 }
 
