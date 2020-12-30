@@ -36,12 +36,16 @@
     #include <windows.h>
     typedef HMODULE lib_t;
     typedef FARPROC func_t;
+    typedef LPCWSTR string_t;
 #else
     #include <dlfcn.h>
     typedef void* lib_t;
     typedef void* func_t;
+    typedef const char* string_t;
     #define __stdcall
 #endif
+
+#define BUFFER_SIZE 4096
 
 #ifdef X86_64
     #define LOAD_VS_FUNC(name, _) \
@@ -80,6 +84,7 @@ protected:
 
     size_t frame_size {0};
     uint8_t* frame_buffer {nullptr};
+    char real_filename[BUFFER_SIZE] {0};
     InputFileInfo _info;
 
     lib_t vss_library;
@@ -108,15 +113,19 @@ protected:
     void load_vs();
 
     #if _WIN32
-        void vs_open() { vss_library = LoadLibraryW(L"vsscript"); }
+        string_t libname = L"vsscript";
+        wchar_t libname_buffer[BUFFER_SIZE];
+        void vs_open() { vss_library = LoadLibraryW(libname); }
         void vs_close() { FreeLibrary(vss_library); vss_library = nullptr; }
         func_t vs_address(LPCSTR func) { return GetProcAddress(vss_library, func); }
     #else
         #ifdef __MACH__
-            void vs_open() { vss_library = dlopen("libvapoursynth-script.dylib", RTLD_LAZY | RTLD_NOW); }
+            string_t libname = "libvapoursynth-script.dylib";
         #else
-            void vs_open() { vss_library = dlopen("libvapoursynth-script.so", RTLD_LAZY | RTLD_NOW); }
+            string_t libname = "libvapoursynth-script.so";
         #endif
+        char libname_buffer[BUFFER_SIZE];
+        void vs_open() { vss_library = dlopen(libname, RTLD_LAZY | RTLD_NOW); }
         void vs_close() { dlclose(vss_library); vss_library = nullptr; }
         func_t vs_address(const char * func) { return dlsym(vss_library, func); }
     #endif

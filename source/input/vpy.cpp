@@ -87,11 +87,36 @@ fail:
 
 VPYInput::VPYInput(InputFileInfo& info)
 {
+    const char * filename_pos = strstr(info.filename, "]://");
+    if(info.filename[0] == '[' && filename_pos) {
+        char real_libname[BUFFER_SIZE] {0};
+        strncpy(real_libname, info.filename + 1, BUFFER_SIZE - 1);
+        strncpy(real_filename, filename_pos + 4, BUFFER_SIZE - 1);
+        real_libname[filename_pos - info.filename - 1] = 0;
+        #if _WIN32
+            if(MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, real_libname, -1, libname_buffer, sizeof(libname_buffer)/sizeof(wchar_t))) {
+                libname = libname_buffer;
+            }
+            else {
+                general_log(nullptr, "vpy", X265_LOG_ERROR, "Unable to parse VapourSynth library path\n");
+                vpyFailed = true;
+                return;
+            }
+        #else
+            strncpy(libname_buffer, real_libname, BUFFER_SIZE);
+            libname = libname_buffer;
+        #endif
+        general_log(nullptr, "vpy", X265_LOG_INFO, "Using external VapourSynth library from %s\n", real_libname);
+    }
+    else {
+        strncpy(real_filename, info.filename, BUFFER_SIZE - 1);
+    }
+
     load_vs();
     if(vpyFailed)
         return;
 
-    if(vss_func.evaluateFile(&script, info.filename, efSetWorkingDir))
+    if(vss_func.evaluateFile(&script, real_filename, efSetWorkingDir))
     {
         general_log(nullptr, "vpy", X265_LOG_ERROR, "Can't evaluate script: %s\n", vss_func.getError(script));
         vpyFailed = true;
@@ -103,7 +128,7 @@ VPYInput::VPYInput(InputFileInfo& info)
     node = vss_func.getOutput(script, 0);
     if(!node)
     {
-        general_log(nullptr, "vpy", X265_LOG_ERROR, "`%s' has no video data\n", info.filename);
+        general_log(nullptr, "vpy", X265_LOG_ERROR, "`%s' has no video data\n", real_filename);
         vpyFailed = true;
         return;
     }
