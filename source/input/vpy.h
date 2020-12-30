@@ -27,82 +27,73 @@
 #include <unordered_map>
 #include <atomic>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
 #include <vapoursynth/VSScript.h>
 #include <vapoursynth/VSHelper.h>
 
 #include "input.h"
 
-#ifdef __unix__
-#include <dlfcn.h>
-#ifdef __MACH__
-#define vs_open() dlopen("libvapoursynth-script.dylib", RTLD_LAZY | RTLD_NOW)
+#if _WIN32
+    #include <windows.h>
+    typedef HMODULE lib_t;
+    typedef FARPROC func_t;
 #else
-#define vs_open() dlopen("libvapoursynth-script.so", RTLD_LAZY | RTLD_NOW)
+    #include <dlfcn.h>
+    typedef void* lib_t;
+    typedef void* func_t;
+    #define __stdcall
 #endif
-#define vs_close dlclose
-#define vs_address dlsym
+
+#ifdef X86_64
+    #define LOAD_VS_FUNC(name, _) \
+    {\
+        vss_func.name = reinterpret_cast<decltype(vss_func.name)>((void*)vs_address("vsscript_" #name));\
+        if (!vss_func.name) goto fail;\
+    }
 #else
-#define vs_open() LoadLibraryW(L"vsscript")
-#define vs_close FreeLibrary
-#define vs_address GetProcAddress
+    #define LOAD_VS_FUNC(name, decorated_name) \
+    {\
+        vss_func.name = reinterpret_cast<decltype(vss_func.name)>((void*)vs_address(decorated_name));\
+        if (!vss_func.name) goto fail;\
+    }
 #endif
 
 struct VSFDCallbackData {
-    const VSAPI* vsapi = nullptr;
+    const VSAPI* vsapi {nullptr};
     std::unordered_map<int, const VSFrameRef*> reorderMap;
-    int parallelRequests;
-    std::atomic<int> outputFrames;
-    std::atomic<int> requestedFrames;
-    std::atomic<int> completedFrames;
-    int totalFrames;
-    int startFrame;
+    int parallelRequests {1};
+    std::atomic<int> outputFrames {0};
+    std::atomic<int> requestedFrames {0};
+    std::atomic<int> completedFrames {0};
+    int totalFrames {-1};
+    int startFrame {0};
 };
 
 namespace X265_NS {
-// x265 private namespace
-
-using func_init = int (VS_CC *)();
-using func_finalize = int (VS_CC *)();
-using func_evaluateFile = int (VS_CC *)(VSScript** handle, const char* scriptFilename, int flags);
-using func_freeScript = void (VS_CC *)(VSScript* handle);
-using func_getError = const char* (VS_CC *)(VSScript* handle);
-using func_getOutput = VSNodeRef* (VS_CC *)(VSScript* handle, int index);
-using func_getCore = VSCore* (VS_CC *)(VSScript* handle);
-using func_getVSApi2 = const VSAPI* (VS_CC *)(int version);
-
-struct VSSFunc {
-    func_init init;
-    func_finalize finalize;
-    func_evaluateFile evaluateFile;
-    func_freeScript freeScript;
-    func_getError getError;
-    func_getOutput getOutput;
-    func_getCore getCore;
-    func_getVSApi2 getVSApi2;
-};
 
 class VPYInput : public InputFile
 {
 protected:
 
-    int nextFrame;
+    int nextFrame {0};
 
-    bool vpyFailed;
+    bool vpyFailed {false};
 
     size_t frame_size {0};
     uint8_t* frame_buffer {nullptr};
     InputFileInfo _info;
 
-#if defined(_WIN32_WINNT)
-    HMODULE vss_library;
-#else
-    void* vss_library;
-#endif
-    VSSFunc vss_func;
+    lib_t vss_library;
+
+    struct {
+        int (VS_CC *init)();
+        int (VS_CC *finalize)();
+        int (VS_CC *evaluateFile)(VSScript** handle, const char* scriptFilename, int flags);
+        void (VS_CC *freeScript)(VSScript* handle);
+        const char* (VS_CC *getError)(VSScript* handle);
+        VSNodeRef* (VS_CC *getOutput)(VSScript* handle, int index);
+        VSCore* (VS_CC *getCore)(VSScript* handle);
+        const VSAPI* (VS_CC *getVSApi2)(int version);
+    } vss_func;
 
     const VSAPI* vsapi = nullptr;
 
@@ -113,6 +104,22 @@ protected:
     const VSFrameRef* frame0 = nullptr;
 
     VSFDCallbackData vpyCallbackData;
+
+    void load_vs();
+
+    #if _WIN32
+        void vs_open() { vss_library = LoadLibraryW(L"vsscript"); }
+        void vs_close() { FreeLibrary(vss_library); vss_library = nullptr; }
+        func_t vs_address(LPCSTR func) { return GetProcAddress(vss_library, func); }
+    #else
+        #ifdef __MACH__
+            void vs_open() { vss_library = dlopen("libvapoursynth-script.dylib", RTLD_LAZY | RTLD_NOW); }
+        #else
+            void vs_open() { vss_library = dlopen("libvapoursynth-script.so", RTLD_LAZY | RTLD_NOW); }
+        #endif
+        void vs_close() { dlclose(vss_library); vss_library = nullptr; }
+        func_t vs_address(const char * func) { return dlsym(vss_library, func); }
+    #endif
 
 public:
 

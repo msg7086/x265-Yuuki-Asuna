@@ -54,63 +54,43 @@ static void frameDoneCallback(void* userData, const VSFrameRef* f, const int n, 
 
 using namespace X265_NS;
 
-VPYInput::VPYInput(InputFileInfo& info) : nextFrame(0), vpyFailed(false)
-{
-    vss_library = vs_open();
-    if(!vss_library)
+void VPYInput::load_vs() {
+    vpyFailed = true;
+    vs_open();
+    if (!vss_library)
     {
         general_log(nullptr, "vpy", X265_LOG_ERROR, "failed to load VapourSynth\n");
-        vpyFailed = true;
+        return;
     }
-
-    vpyCallbackData.outputFrames = 0;
-    vpyCallbackData.requestedFrames = 0;
-    vpyCallbackData.completedFrames = 0;
-    vpyCallbackData.totalFrames = -1;
-    vpyCallbackData.startFrame = 0;
-
-    #if defined(__GNUC__) && __GNUC__ >= 8
-    #pragma GCC diagnostic push
-    #pragma GCC diagnostic ignored "-Wcast-function-type"
-    #endif
-
-    vss_func.init = reinterpret_cast<func_init>(vs_address(vss_library, X86_64 ? "vsscript_init" : "_vsscript_init@0"));
-    if(!vss_func.init)
-        vpyFailed = true;
-    vss_func.finalize = reinterpret_cast<func_finalize>(vs_address(vss_library, X86_64 ? "vsscript_finalize" : "_vsscript_finalize@0"));
-    if(!vss_func.finalize)
-        vpyFailed = true;
-    vss_func.evaluateFile = reinterpret_cast<func_evaluateFile>(vs_address(vss_library, X86_64 ? "vsscript_evaluateFile" : "_vsscript_evaluateFile@12"));
-    if(!vss_func.evaluateFile)
-        vpyFailed = true;
-    vss_func.freeScript = reinterpret_cast<func_freeScript>(vs_address(vss_library, X86_64 ? "vsscript_freeScript" : "_vsscript_freeScript@4")    );
-    if(!vss_func.freeScript)
-        vpyFailed = true;
-    vss_func.getError = reinterpret_cast<func_getError>(vs_address(vss_library, X86_64 ? "vsscript_getError" : "_vsscript_getError@4"));
-    if(!vss_func.getError)
-        vpyFailed = true;
-    vss_func.getOutput = reinterpret_cast<func_getOutput>(vs_address(vss_library, X86_64 ? "vsscript_getOutput" : "_vsscript_getOutput@8"));
-    if(!vss_func.getOutput)
-        vpyFailed = true;
-    vss_func.getCore = reinterpret_cast<func_getCore>(vs_address(vss_library, X86_64 ? "vsscript_getCore" : "_vsscript_getCore@4"));
-    if(!vss_func.getCore)
-        vpyFailed = true;
-    vss_func.getVSApi2 = reinterpret_cast<func_getVSApi2>(vs_address(vss_library, X86_64 ? "vsscript_getVSApi2" : "_vsscript_getVSApi2@4"));
-    if(!vss_func.getVSApi2)
-        vpyFailed = true;
-
-    #if defined(__GNUC__) && __GNUC__ >= 8
-    #pragma GCC diagnostic pop
-    #endif
+    LOAD_VS_FUNC(init, "_vsscript_init@0");
+    LOAD_VS_FUNC(finalize, "_vsscript_finalize@0");
+    LOAD_VS_FUNC(evaluateFile, "_vsscript_evaluateFile@12");
+    LOAD_VS_FUNC(freeScript, "_vsscript_freeScript@4");
+    LOAD_VS_FUNC(getError, "_vsscript_getError@4");
+    LOAD_VS_FUNC(getOutput, "_vsscript_getOutput@8");
+    LOAD_VS_FUNC(getCore, "_vsscript_getCore@4");
+    LOAD_VS_FUNC(getVSApi2, "_vsscript_getVSApi2@4");
 
     if(!vss_func.init())
     {
         general_log(nullptr, "vpy", X265_LOG_ERROR, "failed to initialize VapourSynth environment\n");
-        vpyFailed = true;
         return;
     }
-
     vpyCallbackData.vsapi = vsapi = vss_func.getVSApi2(VAPOURSYNTH_API_VERSION);
+
+    vpyFailed = false;
+    return;
+fail:
+    general_log(nullptr, "vpy", X265_LOG_ERROR, "failed to load VapourSynth\n");
+    vs_close();
+}
+
+VPYInput::VPYInput(InputFileInfo& info)
+{
+    load_vs();
+    if(vpyFailed)
+        return;
+
     if(vss_func.evaluateFile(&script, info.filename, efSetWorkingDir))
     {
         general_log(nullptr, "vpy", X265_LOG_ERROR, "Can't evaluate script: %s\n", vss_func.getError(script));
@@ -129,6 +109,8 @@ VPYInput::VPYInput(InputFileInfo& info) : nextFrame(0), vpyFailed(false)
     }
 
     const VSCoreInfo* core_info = vsapi->getCoreInfo(vss_func.getCore(script));
+    vpyCallbackData.parallelRequests = core_info->numThreads;
+    general_log(nullptr, "vpy", X265_LOG_INFO, "VapourSynth Core R%d\n", core_info->core);
 
     const VSVideoInfo* vi = vsapi->getVideoInfo(node);
     if(!isConstantFormat(vi))
@@ -139,8 +121,6 @@ VPYInput::VPYInput(InputFileInfo& info) : nextFrame(0), vpyFailed(false)
 
     info.width = vi->width;
     info.height = vi->height;
-
-    vpyCallbackData.parallelRequests = core_info->numThreads;
 
     char errbuf[256];
     frame0 = vsapi->getFrame(0, node, errbuf, sizeof(errbuf));
@@ -239,7 +219,7 @@ VPYInput::~VPYInput()
     vss_func.finalize();
 
     if(vss_library)
-        vs_close(vss_library);
+        vs_close();
 }
 
 void VPYInput::startReader()
