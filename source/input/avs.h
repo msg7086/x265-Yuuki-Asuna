@@ -6,17 +6,19 @@
 
 #if _WIN32
 #include <windows.h>
-typedef HMODULE lib_t;
-typedef FARPROC func_t;
+    typedef HMODULE lib_t;
+    typedef FARPROC func_t;
+    typedef LPCWSTR string_t;
 #else
 #include <dlfcn.h>
-typedef void* lib_t;
-typedef void* func_t;
-#define __stdcall
+    typedef void* lib_t;
+    typedef void* func_t;
+    typedef const char* string_t;
+    #define __stdcall
 #endif
 
-#define QUEUE_SIZE 5
 #define AVS_INTERFACE_26 6
+#define BUFFER_SIZE 4096
 
 #define LOAD_AVS_FUNC(name) \
 {\
@@ -68,16 +70,25 @@ protected:
     avs_hnd_t* h;
     size_t frame_size {0};
     uint8_t* frame_buffer {nullptr};
+    char real_filename[BUFFER_SIZE] {0};
     InputFileInfo _info;
     void load_avs();
     void info_avs();
     void openfile(InputFileInfo& info);
     #if _WIN32
-        void avs_open() { h->library = LoadLibraryW(L"avisynth"); }
+        string_t libname = L"avisynth";
+        wchar_t libname_buffer[BUFFER_SIZE];
+        void avs_open() { h->library = LoadLibraryW(libname); }
         void avs_close() { FreeLibrary(h->library); h->library = nullptr; }
         func_t avs_address(LPCSTR func) { return GetProcAddress(h->library, func); }
     #else
-        void avs_open() { h->library = dlopen("libavisynth.so", RTLD_NOW); }
+        #ifdef __MACH__
+            string_t libname = "libavisynth.dylib";
+        #else
+            string_t libname = "libavisynth.so";
+        #endif
+        char libname_buffer[BUFFER_SIZE];
+        void avs_open() { h->library = dlopen(libname, RTLD_NOW); }
         void avs_close() { dlclose(h->library); h->library = nullptr; }
         func_t avs_address(const char * func) { return dlsym(h->library, func); }
     #endif
@@ -87,13 +98,38 @@ public:
     {
         h = &handle;
         memset(h, 0, sizeof(handle));
+
+        const char * filename_pos = strstr(info.filename, "]://");
+        if(info.filename[0] == '[' && filename_pos) {
+            char real_libname[BUFFER_SIZE] {0};
+            strncpy(real_libname, info.filename + 1, BUFFER_SIZE - 1);
+            strncpy(real_filename, filename_pos + 4, BUFFER_SIZE - 1);
+            real_libname[filename_pos - info.filename - 1] = 0;
+            #if _WIN32
+                if(MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, real_libname, -1, libname_buffer, sizeof(libname_buffer)/sizeof(wchar_t))) {
+                    libname = libname_buffer;
+                }
+                else {
+                    general_log(nullptr, "avs+", X265_LOG_ERROR, "Unable to parse AviSynth+ library path\n");
+                    b_fail = true;
+                    return;
+                }
+            #else
+                strncpy(libname_buffer, real_libname, BUFFER_SIZE);
+                libname = libname_buffer;
+            #endif
+            general_log(nullptr, "avs+", X265_LOG_INFO, "Using external AviSynth+ library from %s\n", real_libname);
+        }
+        else {
+            strncpy(real_filename, info.filename, BUFFER_SIZE - 1);
+        }
         load_avs();
-        info_avs();
         if (!h->library)
         {
             b_fail = true;
             return;
         }
+        info_avs();
         openfile(info);
         _info = info;
     }
