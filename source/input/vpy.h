@@ -38,6 +38,8 @@
     typedef FARPROC func_t;
     typedef LPCWSTR string_t;
 #else
+    #include <unistd.h>
+    #define Sleep(x) usleep(x)
     #include <dlfcn.h>
     typedef void* lib_t;
     typedef void* func_t;
@@ -125,7 +127,7 @@ protected:
             string_t libname = "libvapoursynth-script.so";
         #endif
         char libname_buffer[BUFFER_SIZE];
-        void vs_open() { vss_library = dlopen(libname, RTLD_LAZY | RTLD_NOW); }
+        void vs_open() { vss_library = dlopen(libname, RTLD_GLOBAL | RTLD_LAZY | RTLD_NOW); }
         void vs_close() { dlclose(vss_library); vss_library = nullptr; }
         func_t vs_address(const char * func) { return dlsym(vss_library, func); }
     #endif
