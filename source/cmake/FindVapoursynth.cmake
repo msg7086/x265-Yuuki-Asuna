@@ -14,5 +14,5 @@ else()
 endif()
 
 # Provide standardized success/failure messages
-find_package_handle_standard_args("Vapoursynth include directory"
+find_package_handle_standard_args("Vapoursynth"
     REQUIRED_VARS VS_INCLUDE_DIR ENABLE_VPYSYNTH)
