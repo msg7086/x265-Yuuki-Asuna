@@ -118,6 +118,8 @@ void AVSInput::openfile(InputFileInfo& info)
     general_log(NULL, "avs+", X265_LOG_INFO, "Video resolution: %dx%d\n", info.width, info.height);
     general_log(NULL, "avs+", X265_LOG_INFO, "Video framerate: %d/%d\n", info.fpsNum, info.fpsDenom);
     general_log(NULL, "avs+", X265_LOG_INFO, "Video framecount: %d\n", info.frameCount);
+    if (info.skipFrames)
+        h->next_frame = info.skipFrames;
 }
 
 bool AVSInput::readPicture(x265_picture& pic)
