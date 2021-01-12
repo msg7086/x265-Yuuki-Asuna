@@ -116,6 +116,15 @@ VPYInput::VPYInput(InputFileInfo& info)
     if(vpyFailed)
         return;
 
+    if (info.skipFrames)
+    {
+        nextFrame = info.skipFrames;
+        vpyCallbackData.outputFrames = nextFrame;
+        vpyCallbackData.requestedFrames = nextFrame;
+        vpyCallbackData.completedFrames = nextFrame;
+        vpyCallbackData.startFrame = nextFrame;
+    }
+
     if(vss_func.evaluateFile(&script, real_filename, efSetWorkingDir))
     {
         general_log(nullptr, "vpy", X265_LOG_ERROR, "Can't evaluate script: %s\n", vss_func.getError(script));
@@ -148,7 +157,7 @@ VPYInput::VPYInput(InputFileInfo& info)
     info.height = vi->height;
 
     char errbuf[256];
-    frame0 = vsapi->getFrame(0, node, errbuf, sizeof(errbuf));
+    frame0 = vsapi->getFrame(nextFrame, node, errbuf, sizeof(errbuf));
     if(!frame0)
     {
         general_log(nullptr, "vpy", X265_LOG_ERROR, "%s occurred while getting frame 0\n", errbuf);
@@ -156,7 +165,7 @@ VPYInput::VPYInput(InputFileInfo& info)
         return;
     }
 
-    vpyCallbackData.reorderMap[0] = frame0;
+    vpyCallbackData.reorderMap[nextFrame] = frame0;
     ++vpyCallbackData.completedFrames;
 
     const VSMap* frameProps0 = vsapi->getFramePropsRO(frame0);
