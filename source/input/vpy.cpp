@@ -43,7 +43,7 @@ static void frameDoneCallback(void* userData, const VSFrameRef* f, const int n, 
             retries++;
         }
 
-        if(vpyCallbackData->requestedFrames < vpyCallbackData->totalFrames)
+        if(vpyCallbackData->requestedFrames < vpyCallbackData->totalFrames && vpyCallbackData->isRunning) // don't ask for new frames if user cancelled execution
         {
             //x265::general_log(nullptr, "vpy", X265_LOG_FULL, "Callback: retries: %d, current frame: %d, requested: %d, completed: %d, output: %d  \n", retries, n, vpyCallbackData->requestedFrames.load(), vpyCallbackData->completedFrames.load(), vpyCallbackData->outputFrames.load());
             vpyCallbackData->vsapi->getFrameAsync(vpyCallbackData->requestedFrames, node, frameDoneCallback, vpyCallbackData);
@@ -206,6 +206,11 @@ VPYInput::VPYInput(InputFileInfo& info)
     info.frameCount = vpyCallbackData.totalFrames = vi->numFrames;
     info.depth = vi->format->bitsPerSample;
 
+    if (info.encodeToFrame)
+    {
+        vpyCallbackData.totalFrames = info.encodeToFrame + nextFrame;
+    }
+
     if(vi->format->bitsPerSample >= 8 && vi->format->bitsPerSample <= 16)
     {
         if(vi->format->colorFamily == cmYUV)
@@ -266,6 +271,30 @@ void VPYInput::startReader()
 
     for (int n = requestStart; n < requestStart + intitalRequestSize; n++)
         vsapi->getFrameAsync(n, node, frameDoneCallback, &vpyCallbackData);
+}
+
+void VPYInput::release()
+{
+    vpyCallbackData.isRunning = false;
+
+    while (vpyCallbackData.requestedFrames != vpyCallbackData.completedFrames)
+    {
+        general_log(nullptr, "vpy", X265_LOG_INFO, "waiting completion of %d requested frames...    \r", vpyCallbackData.requestedFrames.load() - vpyCallbackData.completedFrames.load());
+        Sleep(100);
+    }
+
+    for (int frame = nextFrame; frame < vpyCallbackData.completedFrames; frame++)
+    {
+        const VSFrameRef* currentFrame = nullptr;
+        currentFrame = vpyCallbackData.reorderMap[frame];
+        vpyCallbackData.reorderMap.erase(frame);
+        if (currentFrame)
+        {
+            vsapi->freeFrame(currentFrame);
+        }
+    }
+
+    delete this;
 }
 
 bool VPYInput::readPicture(x265_picture& pic)
