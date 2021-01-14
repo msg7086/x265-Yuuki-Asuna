@@ -53,6 +53,7 @@ struct InputFileInfo
 
     /* user supplied */
     int skipFrames;
+    int encodeToFrame;
     const char *filename;
 };
 
