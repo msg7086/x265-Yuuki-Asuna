@@ -72,6 +72,7 @@ struct VSFDCallbackData {
     std::atomic<int> completedFrames {0};
     int totalFrames {-1};
     int startFrame {0};
+    std::atomic<bool> isRunning {true};
 };
 
 namespace X265_NS {
@@ -138,7 +139,7 @@ public:
 
     virtual ~VPYInput();
 
-    void release() {};
+    void release();
 
     bool isEof() const { return nextFrame >= _info.frameCount; }
 
