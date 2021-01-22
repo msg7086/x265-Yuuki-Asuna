@@ -47,8 +47,6 @@ FrameEncoder::FrameEncoder()
     m_slicetypeWaitTime = 0;
     m_activeWorkerCount = 0;
     m_completionCount = 0;
-    m_bAllRowsStop = false;
-    m_vbvResetTriggerRow = -1;
     m_outStreams = NULL;
     m_backupStreams = NULL;
     m_substreamSizes = NULL;
@@ -88,6 +86,8 @@ void FrameEncoder::destroy()
     delete[] m_outStreams;
     delete[] m_backupStreams;
     X265_FREE(m_sliceBaseRow);
+    X265_FREE((void*)m_bAllRowsStop);
+    X265_FREE((void*)m_vbvResetTriggerRow);
     X265_FREE(m_sliceMaxBlockRow);
     X265_FREE(m_cuGeoms);
     X265_FREE(m_ctuGeomMap);
@@ -118,6 +118,8 @@ bool FrameEncoder::init(Encoder *top, int numRows, int numCols)
     bool ok = !!m_numRows;
 
     m_sliceBaseRow = X265_MALLOC(uint32_t, m_param->maxSlices + 1);
+    m_bAllRowsStop = X265_MALLOC(bool, m_param->maxSlices);
+    m_vbvResetTriggerRow = X265_MALLOC(int, m_param->maxSlices);
     ok &= !!m_sliceBaseRow;
     m_sliceGroupSize = (uint16_t)(m_numRows + m_param->maxSlices - 1) / m_param->maxSlices;
     uint32_t sliceGroupSizeAccu = (m_numRows << 8) / m_param->maxSlices;    
@@ -438,8 +440,8 @@ void FrameEncoder::compressFrame()
     m_stallStartTime = 0;
 
     m_completionCount = 0;
-    m_bAllRowsStop = false;
-    m_vbvResetTriggerRow = -1;
+    memset((void*)m_bAllRowsStop, 0, sizeof(bool) * m_param->maxSlices);
+    memset((void*)m_vbvResetTriggerRow, -1, sizeof(int) * m_param->maxSlices);
     m_rowSliceTotalBits[0] = 0;
     m_rowSliceTotalBits[1] = 0;
 
@@ -1469,16 +1471,16 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld)
                 curRow.bufferedEntropy.copyState(rowCoder);
                 curRow.bufferedEntropy.loadContexts(rowCoder);
             }
-            if (bFirstRowInSlice && m_vbvResetTriggerRow != intRow)            
+            if (bFirstRowInSlice && m_vbvResetTriggerRow[curRow.sliceId] != intRow)
             {
                 curEncData.m_rowStat[row].rowQp = curEncData.m_avgQpRc;
                 curEncData.m_rowStat[row].rowQpScale = x265_qp2qScale(curEncData.m_avgQpRc);
             }
 
             FrameData::RCStatCU& cuStat = curEncData.m_cuStat[cuAddr];
-            if (m_param->bEnableWavefront && rowInSlice >= col && !bFirstRowInSlice && m_vbvResetTriggerRow != intRow)
+            if (m_param->bEnableWavefront && rowInSlice >= col && !bFirstRowInSlice && m_vbvResetTriggerRow[curRow.sliceId] != intRow)
                 cuStat.baseQp = curEncData.m_cuStat[cuAddr - numCols + 1].baseQp;
-            else if (!m_param->bEnableWavefront && !bFirstRowInSlice && m_vbvResetTriggerRow != intRow)
+            else if (!m_param->bEnableWavefront && !bFirstRowInSlice && m_vbvResetTriggerRow[curRow.sliceId] != intRow)
                 cuStat.baseQp = curEncData.m_rowStat[row - 1].rowQp;
             else
                 cuStat.baseQp = curEncData.m_rowStat[row].rowQp;
@@ -1655,7 +1657,7 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld)
                     x265_log(m_param, X265_LOG_DEBUG, "POC %d row %d - encode restart required for VBV, to %.2f from %.2f\n",
                         m_frame->m_poc, row, qpBase, curEncData.m_cuStat[cuAddr].baseQp);
 
-                    m_vbvResetTriggerRow = row;
+                    m_vbvResetTriggerRow[curRow.sliceId] = row;
                     m_outStreams[0].copyBits(&m_backupStreams[0]);
 
                     rowCoder.copyState(curRow.bufferedEntropy);
@@ -1707,8 +1709,8 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld)
                              m_frame->m_poc, row, qpBase, curEncData.m_cuStat[cuAddr].baseQp);
 
                     // prevent the WaveFront::findJob() method from providing new jobs
-                    m_vbvResetTriggerRow = row;
-                    m_bAllRowsStop = true;
+                    m_vbvResetTriggerRow[curRow.sliceId] = row;
+                    m_bAllRowsStop[curRow.sliceId] = true;
 
                     for (uint32_t r = m_sliceBaseRow[sliceId + 1] - 1; r >= row; r--)
                     {
@@ -1720,7 +1722,7 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld)
                             stopRow.lock.acquire();
                             while (stopRow.active)
                             {
-                                if (dequeueRow(r * 2))
+                                if (dequeueRow(m_row_to_idx[r] * 2))
                                     stopRow.active = false;
                                 else
                                 {
@@ -1758,13 +1760,13 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld)
                         curEncData.m_rowStat[r].sumQpAq = 0;
                     }
 
-                    m_bAllRowsStop = false;
+                    m_bAllRowsStop[curRow.sliceId] = false;
                 }
             }
         }
 
         if (m_param->bEnableWavefront && curRow.completed >= 2 && !bLastRowInSlice &&
-            (!m_bAllRowsStop || intRow + 1 < m_vbvResetTriggerRow))
+            (!m_bAllRowsStop[curRow.sliceId] || intRow + 1 < m_vbvResetTriggerRow[curRow.sliceId]))
         {
             /* activate next row */
             ScopedLock below(m_rows[row + 1].lock);
@@ -1779,7 +1781,7 @@ void FrameEncoder::processRowEncoder(int intRow, ThreadLocalData& tld)
         }
 
         ScopedLock self(curRow.lock);
-        if ((m_bAllRowsStop && intRow > m_vbvResetTriggerRow) ||
+        if ((m_bAllRowsStop[curRow.sliceId] && intRow > m_vbvResetTriggerRow[curRow.sliceId]) ||
             (!bFirstRowInSlice && ((curRow.completed < numCols - 1) || (m_rows[row - 1].completed < numCols)) && m_rows[row - 1].completed < curRow.completed + 2))
         {
             curRow.active = false;

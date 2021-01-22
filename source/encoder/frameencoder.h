@@ -140,9 +140,9 @@ public:
     int                      m_localTldIdx;
     bool                     m_reconfigure; /* reconfigure in progress */
     volatile bool            m_threadActive;
-    volatile bool            m_bAllRowsStop;
+    volatile bool            *m_bAllRowsStop;
     volatile int             m_completionCount;
-    volatile int             m_vbvResetTriggerRow;
+    volatile int             *m_vbvResetTriggerRow;
     volatile int             m_sliceCnt;
 
     uint32_t                 m_numRows;
