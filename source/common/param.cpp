@@ -1355,41 +1355,62 @@ int x265_param_parse(x265_param* p, const char* name, const char* value)
 
             if (p->bEnableSceneCutAwareQp == FORWARD)
             {
-                sscanf(value, "%d,%lf,%lf", &window1, &refQpDelta1, &nonRefQpDelta1);
-                if (window1 > 0)
-                    p->fwdScenecutWindow = window1;
-                if (refQpDelta1 > 0)
-                    p->fwdRefQpDelta = refQpDelta1;
-                if (nonRefQpDelta1 > 0)
-                    p->fwdNonRefQpDelta = nonRefQpDelta1;
+                if (3 == sscanf(value, "%d,%lf,%lf", &window1, &refQpDelta1, &nonRefQpDelta1))
+                {
+                    if (window1 > 0)
+                        p->fwdScenecutWindow = window1;
+                    if (refQpDelta1 > 0)
+                        p->fwdRefQpDelta = refQpDelta1;
+                    if (nonRefQpDelta1 > 0)
+                        p->fwdNonRefQpDelta = nonRefQpDelta1;
+                }
+                else
+                {
+                    x265_log(NULL, X265_LOG_ERROR, "Specify all the necessary offsets for masking-strength \n");
+                    bError = true;
+                }
             }
             else if (p->bEnableSceneCutAwareQp == BACKWARD)
             {
-                sscanf(value, "%d,%lf,%lf", &window1, &refQpDelta1, &nonRefQpDelta1);
-                if (window1 > 0)
-                    p->bwdScenecutWindow = window1;
-                if (refQpDelta1 > 0)
-                    p->bwdRefQpDelta = refQpDelta1;
-                if (nonRefQpDelta1 > 0)
-                    p->bwdNonRefQpDelta = nonRefQpDelta1;
+                if (3 == sscanf(value, "%d,%lf,%lf", &window1, &refQpDelta1, &nonRefQpDelta1))
+                {
+                    if (window1 > 0)
+                        p->bwdScenecutWindow = window1;
+                    if (refQpDelta1 > 0)
+                        p->bwdRefQpDelta = refQpDelta1;
+                    if (nonRefQpDelta1 > 0)
+                        p->bwdNonRefQpDelta = nonRefQpDelta1;
+                }
+                else
+                {
+                    x265_log(NULL, X265_LOG_ERROR, "Specify all the necessary offsets for masking-strength \n");
+                    bError = true;
+                }
             }
             else if (p->bEnableSceneCutAwareQp == BI_DIRECTIONAL)
             {
                 int window2;
                 double refQpDelta2, nonRefQpDelta2;
-                sscanf(value, "%d,%lf,%lf,%d,%lf,%lf", &window1, &refQpDelta1, &nonRefQpDelta1, &window2, &refQpDelta2, &nonRefQpDelta2);
-                if (window1 > 0)
-                    p->fwdScenecutWindow = window1;
-                if (refQpDelta1 > 0)
-                    p->fwdRefQpDelta = refQpDelta1;
-                if (nonRefQpDelta1 > 0)
-                    p->fwdNonRefQpDelta = nonRefQpDelta1;
-                if (window2 > 0)
-                    p->bwdScenecutWindow = window2;
-                if (refQpDelta2 > 0)
-                    p->bwdRefQpDelta = refQpDelta2;
-                if (nonRefQpDelta2 > 0)
-                    p->bwdNonRefQpDelta = nonRefQpDelta2;
+                if (6 == sscanf(value, "%d,%lf,%lf,%d,%lf,%lf", &window1, &refQpDelta1, &nonRefQpDelta1, &window2, &refQpDelta2, &nonRefQpDelta2))
+                {
+                    if (window1 > 0)
+                        p->fwdScenecutWindow = window1;
+                    if (refQpDelta1 > 0)
+                        p->fwdRefQpDelta = refQpDelta1;
+                    if (nonRefQpDelta1 > 0)
+                        p->fwdNonRefQpDelta = nonRefQpDelta1;
+                    if (window2 > 0)
+                        p->bwdScenecutWindow = window2;
+                    if (refQpDelta2 > 0)
+                        p->bwdRefQpDelta = refQpDelta2;
+                    if (nonRefQpDelta2 > 0)
+                        p->bwdNonRefQpDelta = nonRefQpDelta2;
+                }
+                else
+                {
+                    x265_log(NULL, X265_LOG_ERROR, "Specify all the necessary offsets for masking-strength \n");
+                    bError = true;
+                }
             }
         }
         OPT("field") p->bField = atobool( value );

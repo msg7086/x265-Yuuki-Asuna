@@ -3193,9 +3193,8 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
     double fwdRefQpDelta = double(m_param->fwdRefQpDelta);
     double fwdNonRefQpDelta = double(m_param->fwdNonRefQpDelta);
     double sliceTypeDelta = SLICE_TYPE_DELTA * fwdRefQpDelta;
-    double window2Delta = WINDOW2_DELTA * fwdRefQpDelta;
-    double window3Delta = WINDOW3_DELTA * fwdRefQpDelta;
 
+    //Check whether the current frame is within the forward window
     if (curFrame->m_poc > lastScenecut && curFrame->m_poc <= (lastScenecut + int(maxWindowSize)))
         curFrame->m_isInsideWindow = FORWARD_WINDOW;
     if (curFrame->m_isInsideWindow == FORWARD_WINDOW)
@@ -3209,11 +3208,13 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
             if (!(lastIFrame > lastScenecut && lastIFrame <= (lastScenecut + int(maxWindowSize))
                 && curFrame->m_poc >= lastIFrame))
             {
-                qp += fwdRefQpDelta - sliceTypeDelta;
-                if (((curFrame->m_poc) > (lastScenecut + int(windowSize))) && ((curFrame->m_poc) <= (lastScenecut + 2 * int(windowSize))))
-                    qp -= window2Delta;
+                //Add offsets corresponding to the window in which the P-frame occurs
+                if (curFrame->m_poc <= (lastScenecut + int(windowSize)))
+                    qp += WINDOW1_DELTA * (fwdRefQpDelta - sliceTypeDelta);
+                else if (((curFrame->m_poc) > (lastScenecut + int(windowSize))) && ((curFrame->m_poc) <= (lastScenecut + 2 * int(windowSize))))
+                    qp += WINDOW2_DELTA * (fwdRefQpDelta - sliceTypeDelta);
                 else if (curFrame->m_poc > lastScenecut + 2 * int(windowSize))
-                    qp -= window3Delta;
+                    qp += WINDOW3_DELTA * (fwdRefQpDelta - sliceTypeDelta);
             }
         }
         else if (curFrame->m_lowres.sliceType == X265_TYPE_BREF)
@@ -3221,11 +3222,13 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
             if (!(lastIFrame > lastScenecut && lastIFrame <= (lastScenecut + int(maxWindowSize))
                 && curFrame->m_poc >= lastIFrame))
             {
-                qp += fwdRefQpDelta;
-                if (((curFrame->m_poc) > (lastScenecut + int(windowSize))) && ((curFrame->m_poc) <= (lastScenecut + 2 * int(windowSize))))
-                    qp -= window2Delta;
+                //Add offsets corresponding to the window in which the B-frame occurs
+                if (curFrame->m_poc <= (lastScenecut + int(windowSize)))
+                    qp += WINDOW1_DELTA * fwdRefQpDelta;
+                else if (((curFrame->m_poc) > (lastScenecut + int(windowSize))) && ((curFrame->m_poc) <= (lastScenecut + 2 * int(windowSize))))
+                    qp += WINDOW2_DELTA * fwdRefQpDelta;
                 else if (curFrame->m_poc > lastScenecut + 2 * int(windowSize))
-                    qp -= window3Delta;
+                    qp += WINDOW3_DELTA * fwdRefQpDelta;
             }
         }
         else if (curFrame->m_lowres.sliceType == X265_TYPE_B)
@@ -3233,11 +3236,13 @@ double RateControl::forwardMasking(Frame* curFrame, double q)
             if (!(lastIFrame > lastScenecut && lastIFrame <= (lastScenecut + int(maxWindowSize))
                 && curFrame->m_poc >= lastIFrame))
             {
-                qp += fwdNonRefQpDelta;
-                if (((curFrame->m_poc) > (lastScenecut + int(windowSize))) && ((curFrame->m_poc) <= (lastScenecut + 2 * int(windowSize))))
-                    qp -= window2Delta;
+                //Add offsets corresponding to the window in which the b-frame occurs
+                if (curFrame->m_poc <= (lastScenecut + int(windowSize)))
+                    qp += WINDOW1_DELTA * fwdNonRefQpDelta;
+                else if (((curFrame->m_poc) > (lastScenecut + int(windowSize))) && ((curFrame->m_poc) <= (lastScenecut + 2 * int(windowSize))))
+                    qp += WINDOW2_DELTA * fwdNonRefQpDelta;
                 else if (curFrame->m_poc > lastScenecut + 2 * int(windowSize))
-                    qp -= window3Delta;
+                    qp += WINDOW3_DELTA * fwdNonRefQpDelta;
             }
         }
     }
@@ -3248,14 +3253,13 @@ double RateControl::backwardMasking(Frame* curFrame, double q)
 {
     double qp = x265_qScale2qp(q);
     double fwdRefQpDelta = double(m_param->fwdRefQpDelta);
-    double window3Delta = WINDOW3_DELTA * fwdRefQpDelta;
     double bwdRefQpDelta = double(m_param->bwdRefQpDelta);
     double bwdNonRefQpDelta = double(m_param->bwdNonRefQpDelta);
 
     if (curFrame->m_isInsideWindow == BACKWARD_WINDOW)
     {
         if (bwdRefQpDelta < 0)
-            bwdRefQpDelta = fwdRefQpDelta - window3Delta;
+            bwdRefQpDelta = WINDOW3_DELTA * fwdRefQpDelta;
         double sliceTypeDelta = SLICE_TYPE_DELTA * bwdRefQpDelta;
         if (bwdNonRefQpDelta < 0)
             bwdNonRefQpDelta = bwdRefQpDelta + sliceTypeDelta;
