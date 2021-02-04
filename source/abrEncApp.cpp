@@ -830,14 +830,16 @@ ret:
             /* clear progress report */
             if (m_cliopt.bProgress)
             {
-                if (!m_param->bStylish)
-                    fprintf(stderr, "%*s\r", 100, " ");
-                else if (outFrameCount)
+                if (outFrameCount)
                 {
                     m_cliopt.prevUpdateTime = 0;
+                    m_cliopt.prevUpdateTimeFile = 0;
                     m_cliopt.printStatus(outFrameCount);
-                    fprintf(stderr, "\n");
                 }
+                if (m_param->bStylish)
+                    fprintf(stderr, "\n");
+                else
+                    fprintf(stderr, "%*s\r", 100, " ");
             }
 
         fail:
