@@ -85,6 +85,7 @@ namespace X265_NS {
         H0("   --log-level <string>          Logging level: none error warning info debug full. Default %s\n", X265_NS::logLevelNames[param->logLevel + 1]);
         H1("   --log-file <filename>         Save log to file\n" );
         H1("   --log-file-level <string>     Log-file logging level: none error warning info debug full. Default %s\n", X265_NS::logLevelNames[param->logfLevel + 1]);
+        H1("   --progress-file <filename>    Save progress to file\n" );
         H0("   --no-progress                 Disable CLI progress reports\n");
         H0("   --stylish                     Enable x264-r2204 style awesome progress indicator\n");
         H0("   --csv <filename>              Comma separated log file, if csv-log-level > 0 frame level statistics, else one line per run\n");
@@ -440,13 +441,28 @@ namespace X265_NS {
 
     void CLIOptions::printStatus(uint32_t frameNum)
     {
-        char buf[200];
+        char buf[1024];
         int64_t time = x265_mdate();
+
+        int64_t elapsed = time - startTime;
+
+        if (param->pgfn && frameNum && !(prevUpdateTimeFile && time - prevUpdateTimeFile < UPDATE_INTERVAL_FILE)) {
+            // Update progress file
+            sprintf(buf,
+                "{\n \"current_frame\": %u,\n \"total_frames\": %u,\n \"current_size\": %" PRIu64 ",\n \"elapsed\": %" PRIu64 "\n}",
+                frameNum, framesToBeEncoded, totalbytes, elapsed
+            );
+            FILE* fp = fopen(param->pgfn, "wb");
+            if (fp) {
+                fputs(buf, fp);
+                fclose(fp);
+            }
+            prevUpdateTimeFile = time;
+        }
 
         if (!bProgress || !frameNum || (prevUpdateTime && time - prevUpdateTime < UPDATE_INTERVAL))
             return;
 
-        int64_t elapsed = time - startTime;
         double fps = elapsed > 0 ? frameNum * 1000000. / elapsed : 0;
         float bitrate = 0.008f * totalbytes * (param->fpsNum / param->fpsDenom) / ((float)frameNum);
 
