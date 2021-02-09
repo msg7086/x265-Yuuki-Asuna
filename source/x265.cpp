@@ -46,9 +46,11 @@
 using namespace X265_NS;
 
 #define X265_HEAD_ENTRIES 3
+#define CONSOLE_TITLE_SIZE 200
 
 #ifdef _WIN32
 #define strdup _strdup
+static char orgConsoleTitle[CONSOLE_TITLE_SIZE] = "";
 #endif
 
 #ifdef _WIN32
