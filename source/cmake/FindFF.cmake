@@ -32,7 +32,7 @@ MACRO(FFMPEG_FIND varname shortname headername)
 
 #   GET_DIRECTORY_PROPERTY(FFMPEG_PARENT DIRECTORY ${${varname}_INCLUDE_DIR} PARENT_DIRECTORY)
     GET_FILENAME_COMPONENT(FFMPEG_PARENT ${${varname}_INCLUDE_DIR} PATH)
-    IF(WIN32)
+    IF(MSVC)
       SET(ENV{PKG_CONFIG_PATH} "${CMAKE_PREFIX_PATH}/lib/pkgconfig/")
       PKG_CHECK_MODULES(PC_${varname} lib${shortname})
     ENDIF()
