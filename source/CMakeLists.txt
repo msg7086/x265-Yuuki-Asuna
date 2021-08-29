@@ -626,6 +626,7 @@ if((WIN32 AND ENABLE_CLI) OR (WIN32 AND ENABLE_SHARED))
         install(FILES "${PROJECT_BINARY_DIR}/libx265.pdb" DESTINATION ${BIN_INSTALL_DIR} CONFIGURATIONS RelWithDebInfo OPTIONAL NAMELINK_ONLY)
     endif()
 endif()
+option(ENABLE_UTF8 "Build UTF-8 binary" ON)
 if(CMAKE_RC_COMPILER)
     # The resource compiler does not need CFLAGS or macro defines. It
     # often breaks them
@@ -640,12 +641,17 @@ if(CMAKE_RC_COMPILER)
     set(X265_RC_FILE "${CMAKE_CURRENT_BINARY_DIR}/x265.rc")
     set(X265LIB_RC_FILE "${CMAKE_CURRENT_BINARY_DIR}/libx265.rc")
     set(X265_RC_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/x265res.manifest")
-    set(X265_FNAME "265.exe")
-    set(CLI_MANIFEST "\n1 RT_MANIFEST \"x265res.manifest\"\n")
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/x265.rc.in" "${X265_RC_FILE}" @ONLY)
+
     set(X265_FNAME "libx265.dll")
     set(CLI_MANIFEST "")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/x265.rc.in" "${X265LIB_RC_FILE}" @ONLY)
+
+    set(X265_FNAME "265.exe")
+    if(ENABLE_UTF8)
+        set(CLI_MANIFEST "\n1 RT_MANIFEST \"x265res.manifest\"\n")
+    endif()
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/x265.rc.in" "${X265_RC_FILE}" @ONLY)
+
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/x265res.manifest.in" "${X265_RC_MANIFEST}" @ONLY)
 endif()
 
