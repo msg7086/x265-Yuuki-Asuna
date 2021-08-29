@@ -41,7 +41,7 @@ FILE* GOPOutput::open_file_for_write(const string fname, bool retry)
 {
     while(true)
     {
-        FILE* fp = fopen(fname.c_str(), "wb");
+        FILE* fp = x265_fopen(fname.c_str(), "wb");
         if(fp != NULL)
             return fp;
         if(!retry)

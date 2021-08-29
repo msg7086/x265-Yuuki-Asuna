@@ -133,7 +133,7 @@ void MP4Output::closeFile(int64_t largest_pts, int64_t second_largest_pts)
 
 int MP4Output::openFile(const char *psz_filename)
 {
-    FILE *fh = fopen(psz_filename, "wb");
+    FILE *fh = x265_fopen(psz_filename, "wb");
     MP4_FAIL_IF_ERR(!fh, "cannot open output file `%s'.\n", psz_filename);
     fclose(fh);
 
