@@ -77,6 +77,9 @@ void AVSInput::info_avs()
 
 void AVSInput::openfile(InputFileInfo& info)
 {
+    wchar_t real_filename_wchar[MAX_PATH * 4];
+    MultiByteToWideChar(CP_UTF8, 0, real_filename, -1, real_filename_wchar, 1024);
+    WideCharToMultiByte(CP_THREAD_ACP, 0, real_filename_wchar, -1, real_filename, 1024, NULL, NULL);
     AVS_Value res = h->func.avs_invoke(h->env, "Import", avs_new_value_string(real_filename), NULL);
     FAIL_IF_ERROR(avs_is_error(res), "Error loading file: %s\n", avs_as_string(res));
     FAIL_IF_ERROR(!avs_is_clip(res), "File didn't return a video clip\n");
