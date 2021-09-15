@@ -116,7 +116,7 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
 
     // Deprecated since ffmpeg ~3.1
     // AVCodecContext *c = stream->codec;
-    // 
+    //
     // Use the following
     if (!h->cocon)
     {
@@ -338,6 +338,14 @@ void LavfInput::openfile(InputFileInfo& info)
     info.sarHeight  = cp->sample_aspect_ratio.den;
     info.sarWidth   = cp->sample_aspect_ratio.num;
 
+    if (!s->nb_frames) {
+        // Matroska store frame count in metadata
+        AVDictionaryEntry *entry = av_dict_get(s->metadata, "NUMBER_OF_FRAMES", NULL, AV_DICT_MATCH_CASE);
+        if (entry) {
+            info.frameCount = atoi(entry->value);
+        }
+    }
+
     /* show video info */
     double duration = s->duration * av_q2d(s->time_base);
     if(duration < 0.)
@@ -362,7 +370,7 @@ void LavfInput::release()
 {
     // Deprecated since ffmpeg ~3.1
     // avcodec_close(h->lavf->streams[h->stream_id]->codec);
-    // 
+    //
     // Use the following
     avcodec_free_context(&h->cocon);
     avformat_close_input(&h->lavf);
