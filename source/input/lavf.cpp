@@ -127,10 +127,8 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
         avcodec_open2(h->cocon, codec, NULL);
     }
 
-    AVPacket pkt;
-    av_init_packet(&pkt);
-    pkt.data = NULL;
-    pkt.size = 0;
+    AVPacket* pkt;
+    pkt = av_packet_alloc();
 
     int finished = 0;
     int ret = 0;
@@ -145,25 +143,23 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
             finished = 1;
             break;
         }
-        ret = av_read_frame(h->lavf, &pkt);
+        ret = av_read_frame(h->lavf, pkt);
 
         if(ret < 0)
         {
-            av_init_packet(&pkt);
-            pkt.data = NULL;
-            pkt.size = 0;
+            av_packet_unref(pkt);
         }
 
         // We got a new valid packet, or EOF, let's feed it
-        if(ret < 0 || pkt.stream_index == h->stream_id)
+        if(ret < 0 || pkt->stream_index == h->stream_id)
         {
             // avcodec_decode_video2 deprecated
-            // avcodec_decode_video2(h->cocon, h->frame, &finished, &pkt)
+            // avcodec_decode_video2(h->cocon, h->frame, &finished, pkt)
             // Use the following
-            codec_ret = avcodec_send_packet(h->cocon, &pkt);
+            codec_ret = avcodec_send_packet(h->cocon, pkt);
             // AVERROR(EAGAIN): not possible
             // AVERROR(EINVAL): fvcked up
-            // AVERROR_EOF && pkt.data = NULL: continue
+            // AVERROR_EOF && pkt->data = NULL: continue
             // 0: continue
             if(codec_ret == AVERROR(EINVAL))
             {
@@ -188,9 +184,11 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
         }
 
         if(ret >= 0)
-            av_packet_unref(&pkt);
+            av_packet_unref(pkt);
     }
     while(!finished && !fail && ret >= 0);
+
+    av_packet_free(&pkt);
 
     if(!finished || fail)
         return false;
