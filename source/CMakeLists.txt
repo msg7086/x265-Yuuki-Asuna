@@ -23,6 +23,8 @@ include(CheckFunctionExists)
 include(CheckSymbolExists)
 include(CheckCXXCompilerFlag)
 
+set(CMAKE_CXX_STANDARD 11)
+
 option(FPROFILE_GENERATE "Compile executable to generate usage data" OFF)
 option(FPROFILE_USE "Compile executable using generated usage data" OFF)
 option(NATIVE_BUILD "Target the build CPU" OFF)
