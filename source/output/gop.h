@@ -1,7 +1,7 @@
 /*****************************************************************************
  * MIT License
  * 
- * Copyright (c) 2018-2019 Xinyue Lu
+ * Copyright (c) 2018-2022 Xinyue Lu
  *
  * Authors: Xinyue Lu <i@7086.in>
  * 
@@ -29,64 +29,38 @@
 #ifndef X265_HEVC_GOP_H
 #define X265_HEVC_GOP_H
 
+#include <memory>
 #include "output.h"
 #include "common.h"
-#include <string>
-// #include <fstream>
-// #include <iostream>
-#include <sstream>
-#include <iomanip>
-
-enum
-{
-    GOP_ISOM_MATRIX_INDEX_UNSPECIFIED = 2
-};
 
 using namespace X265_NS;
 using namespace std;
 
+#include "gop_engine.hpp"
+
 class GOPOutput : public OutputFile
 {
 protected:
-    bool b_fail;
-    int openFile(const char* fname);
-    FILE* open_file_for_write(const string fname, bool retry);
-    void smart_fwrite(const void* data, size_t size, FILE* file);
-    void clean_up();
-
-    FILE* gop_file;
-    FILE* data_file;
-    size_t data_pos;
-    string filename_prefix;
-    string dir_prefix;
-    InputFileInfo info;
-    int i_numframe;
+    std::unique_ptr<GOPEngine> gop_engine;
 
 public:
-    GOPOutput(const char* fname, InputFileInfo& inputInfo)
-    {
-        info = inputInfo;
-        b_fail = false;
-        gop_file = NULL;
-        data_file = NULL;
-        openFile(fname);
-    }
-    bool isFail() const
-    {
-        return b_fail;
-    }
+    GOPOutput(const char* fname, InputFileInfo& inputInfo) : gop_engine(std::make_unique<GOPEngine>(fname, inputInfo)) { }
+
+    const char *getName() const { return "gop+"; }
+
+    bool isFail() const { return gop_engine->fail; }
 
     bool needPTS() const { return true; }
 
-    const char *getName() const { return "gop"; }
-    void setParam(x265_param* param);
-    int writeHeaders(const x265_nal* nal, uint32_t nalcount);
-    int writeFrame(const x265_nal* nal, uint32_t nalcount, x265_picture& pic);
-    void closeFile(int64_t largest_pts, int64_t second_largest_pts);
-    void release()
-    {
-        delete this;
-    }
+    void setParam(x265_param* param) { gop_engine->SetParam(param); }
+
+    int writeHeaders(const x265_nal* nal, uint32_t nalcount) { return gop_engine->WriteHeaders(nal, nalcount); }
+
+    int writeFrame(const x265_nal* nal, uint32_t nalcount, x265_picture& pic) { return gop_engine->WriteFrame(nal, nalcount, pic); }
+
+    void closeFile(int64_t, int64_t) { gop_engine->Release(); }
+
+    void release() { delete this; }
 };
 
 #endif

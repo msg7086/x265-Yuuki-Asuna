@@ -59,7 +59,7 @@ OutputFile* OutputFile::open(const char *fname, InputFileInfo& inputInfo)
     if (s && !strcmp(s, ".mkv"))
         return new MKVOutput(fname, inputInfo);
 #endif
-    if (s && !strcmp(s, ".gop"))
+    if (s && !strncmp(s, ".gop", 4))
         return new GOPOutput(fname, inputInfo);
 
     return new RAWOutput(fname, inputInfo);
