@@ -554,7 +554,7 @@ function x265_cpy2Dto1D_shr_16x16_neon
     vsri.s16        q1, #1
     vneg.s16        q0, q0
     mov             r3, #4
-.Loop_cpy2Dto1D_shr_16:
+.loop_cpy2Dto1D_shr_16:
     subs            r3, #1
 .rept 4
     vld1.s16        {q2-q3}, [r1], r2
@@ -564,7 +564,7 @@ function x265_cpy2Dto1D_shr_16x16_neon
     vshl.s16        q3, q0
     vst1.16         {q2-q3}, [r0]!
 .endr
-    bgt             .Loop_cpy2Dto1D_shr_16
+    bgt             .loop_cpy2Dto1D_shr_16
     bx              lr
 endfunc
 
@@ -577,7 +577,7 @@ function x265_cpy2Dto1D_shr_32x32_neon
     vsri.s16        q1, #1
     vneg.s16        q0, q0
     mov             r3, 16
-.Loop_cpy2Dto1D_shr_32:
+.loop_cpy2Dto1D_shr_32:
     subs            r3, #1
 .rept 2
     vld1.s16        {q2-q3}, [r1]!
@@ -593,7 +593,7 @@ function x265_cpy2Dto1D_shr_32x32_neon
     vst1.16         {q2-q3}, [r0]!
     vst1.16         {q8-q9}, [r0]!
 .endr
-    bgt             .Loop_cpy2Dto1D_shr_32
+    bgt             .loop_cpy2Dto1D_shr_32
     bx              lr
 endfunc
 

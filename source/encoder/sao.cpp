@@ -36,6 +36,12 @@ inline int32_t roundIBDI(int32_t num, int32_t den)
     return num >= 0 ? ((num * 2 + den) / (den * 2)) : -((-num * 2 + den) / (den * 2));
 }
 
+/* get the sign of input variable (TODO: this is a dup, make common) */
+inline int8_t signOf(int x)
+{
+    return (x >> 31) | ((int)((((uint32_t)-x)) >> 31));
+}
+
 inline int signOf2(const int a, const int b)
 {
     // NOTE: don't reorder below compare, both ICL, VC, GCC optimize strong depends on order!
@@ -267,7 +273,7 @@ void SAO::startSlice(Frame* frame, Entropy& initState)
 // CTU-based SAO process without slice granularity
 void SAO::applyPixelOffsets(int addr, int typeIdx, int plane)
 {
-    PicYuv* reconPic = m_frame->m_reconPic[0];
+    PicYuv* reconPic = m_frame->m_reconPic;
     pixel* rec = reconPic->getPlaneAddr(plane, addr);
     intptr_t stride = plane ? reconPic->m_strideC : reconPic->m_stride;
     uint32_t picWidth  = m_param->sourceWidth;
@@ -322,10 +328,10 @@ void SAO::applyPixelOffsets(int addr, int typeIdx, int plane)
         {
             for (int y = 0; y < ctuHeight; y++, rec += stride)
             {
-                int signLeft = x265_signOf(rec[startX] - tmpL[y]);
+                int signLeft = signOf(rec[startX] - tmpL[y]);
                 for (int x = startX; x < endX; x++)
                 {
-                    int signRight = x265_signOf(rec[x] - rec[x + 1]);
+                    int signRight = signOf(rec[x] - rec[x + 1]);
                     int edgeType = signRight + signLeft + 2;
                     signLeft = -signRight;
 
@@ -337,8 +343,8 @@ void SAO::applyPixelOffsets(int addr, int typeIdx, int plane)
         {
             for (int y = 0; y < ctuHeight; y += 2, rec += 2 * stride)
             {
-                signLeft1[0] = x265_signOf(rec[startX] - tmpL[y]);
-                signLeft1[1] = x265_signOf(rec[stride + startX] - tmpL[y + 1]);
+                signLeft1[0] = signOf(rec[startX] - tmpL[y]);
+                signLeft1[1] = signOf(rec[stride + startX] - tmpL[y + 1]);
 
                 if (!lpelx)
                 {
@@ -379,13 +385,13 @@ void SAO::applyPixelOffsets(int addr, int typeIdx, int plane)
         if (ctuWidth & 15)
         {
             for (int x = 0; x < ctuWidth; x++)
-                upBuff1[x] = x265_signOf(rec[x] - tmpU[x]);
+                upBuff1[x] = signOf(rec[x] - tmpU[x]);
 
             for (int y = startY; y < endY; y++, rec += stride)
             {
                 for (int x = 0; x < ctuWidth; x++)
                 {
-                    int8_t signDown = x265_signOf(rec[x] - rec[x + stride]);
+                    int8_t signDown = signOf(rec[x] - rec[x + stride]);
                     int edgeType = signDown + upBuff1[x] + 2;
                     upBuff1[x] = -signDown;
 
@@ -439,17 +445,17 @@ void SAO::applyPixelOffsets(int addr, int typeIdx, int plane)
         else
         {
             for (int x = startX; x < endX; x++)
-                upBuff1[x] = x265_signOf(rec[x] - tmpU[x - 1]);
+                upBuff1[x] = signOf(rec[x] - tmpU[x - 1]);
         }
 
         if (ctuWidth & 15)
         {
              for (int y = startY; y < endY; y++, rec += stride)
              {
-                 upBufft[startX] = x265_signOf(rec[stride + startX] - tmpL[y]);
+                 upBufft[startX] = signOf(rec[stride + startX] - tmpL[y]);
                  for (int x = startX; x < endX; x++)
                  {
-                     int8_t signDown = x265_signOf(rec[x] - rec[x + stride + 1]);
+                     int8_t signDown = signOf(rec[x] - rec[x + stride + 1]);
                      int edgeType = signDown + upBuff1[x] + 2;
                      upBufft[x + 1] = -signDown;
                      rec[x] = m_clipTable[rec[x] + offsetEo[edgeType]];
@@ -462,7 +468,7 @@ void SAO::applyPixelOffsets(int addr, int typeIdx, int plane)
         {
             for (int y = startY; y < endY; y++, rec += stride)
             {
-                int8_t iSignDown2 = x265_signOf(rec[stride + startX] - tmpL[y]);
+                int8_t iSignDown2 = signOf(rec[stride + startX] - tmpL[y]);
 
                 primitives.saoCuOrgE2[endX > 16](rec + startX, upBufft + startX, upBuff1 + startX, offsetEo, endX - startX, stride);
 
@@ -487,25 +493,25 @@ void SAO::applyPixelOffsets(int addr, int typeIdx, int plane)
         if (ctuWidth & 15)
         {
             for (int x = startX - 1; x < endX; x++)
-                upBuff1[x] = x265_signOf(rec[x] - tmpU[x + 1]);
+                upBuff1[x] = signOf(rec[x] - tmpU[x + 1]);
 
             for (int y = startY; y < endY; y++, rec += stride)
             {
                 int x = startX;
-                int8_t signDown = x265_signOf(rec[x] - tmpL[y + 1]);
+                int8_t signDown = signOf(rec[x] - tmpL[y + 1]);
                 int edgeType = signDown + upBuff1[x] + 2;
                 upBuff1[x - 1] = -signDown;
                 rec[x] = m_clipTable[rec[x] + offsetEo[edgeType]];
 
                 for (x = startX + 1; x < endX; x++)
                 {
-                    signDown = x265_signOf(rec[x] - rec[x + stride - 1]);
+                    signDown = signOf(rec[x] - rec[x + stride - 1]);
                     edgeType = signDown + upBuff1[x] + 2;
                     upBuff1[x - 1] = -signDown;
                     rec[x] = m_clipTable[rec[x] + offsetEo[edgeType]];
                 }
 
-                upBuff1[endX - 1] = x265_signOf(rec[endX - 1 + stride] - rec[endX]);
+                upBuff1[endX - 1] = signOf(rec[endX - 1 + stride] - rec[endX]);
             }
         }
         else
@@ -513,7 +519,7 @@ void SAO::applyPixelOffsets(int addr, int typeIdx, int plane)
             int8_t firstSign, lastSign;
 
             if (lpelx)
-                firstSign = x265_signOf(rec[-1] - tmpU[0]);
+                firstSign = signOf(rec[-1] - tmpU[0]);
             if (rpelx == picWidth)
                 lastSign = upBuff1[ctuWidth - 1];
 
@@ -527,14 +533,14 @@ void SAO::applyPixelOffsets(int addr, int typeIdx, int plane)
             for (int y = startY; y < endY; y++, rec += stride)
             {
                 int x = startX;
-                int8_t signDown = x265_signOf(rec[x] - tmpL[y + 1]);
+                int8_t signDown = signOf(rec[x] - tmpL[y + 1]);
                 int edgeType = signDown + upBuff1[x] + 2;
                 upBuff1[x - 1] = -signDown;
                 rec[x] = m_clipTable[rec[x] + offsetEo[edgeType]];
 
                 primitives.saoCuOrgE3[endX > 16](rec, upBuff1, offsetEo, stride - 1, startX, endX);
 
-                upBuff1[endX - 1] = x265_signOf(rec[endX - 1 + stride] - rec[endX]);
+                upBuff1[endX - 1] = signOf(rec[endX - 1 + stride] - rec[endX]);
             }
         }
 
@@ -565,7 +571,7 @@ void SAO::applyPixelOffsets(int addr, int typeIdx, int plane)
 /* Process SAO unit */
 void SAO::generateLumaOffsets(SaoCtuParam* ctuParam, int idxY, int idxX)
 {
-    PicYuv* reconPic = m_frame->m_reconPic[0];
+    PicYuv* reconPic = m_frame->m_reconPic;
     intptr_t stride = reconPic->m_stride;
     int ctuWidth = m_param->maxCUSize;
     int ctuHeight = m_param->maxCUSize;
@@ -625,7 +631,7 @@ void SAO::generateLumaOffsets(SaoCtuParam* ctuParam, int idxY, int idxX)
 /* Process SAO unit (Chroma only) */
 void SAO::generateChromaOffsets(SaoCtuParam* ctuParam[3], int idxY, int idxX)
 {
-    PicYuv* reconPic = m_frame->m_reconPic[0];
+    PicYuv* reconPic = m_frame->m_reconPic;
     intptr_t stride = reconPic->m_strideC;
     int ctuWidth  = m_param->maxCUSize;
     int ctuHeight = m_param->maxCUSize;
@@ -729,7 +735,7 @@ void SAO::generateChromaOffsets(SaoCtuParam* ctuParam[3], int idxY, int idxX)
 void SAO::calcSaoStatsCTU(int addr, int plane)
 {
     Slice* slice = m_frame->m_encData->m_slice;
-    const PicYuv* reconPic = m_frame->m_reconPic[0];
+    const PicYuv* reconPic = m_frame->m_reconPic;
     const CUData* cu = m_frame->m_encData->getPicCTU(addr);
     const pixel* fenc0 = m_frame->m_fencPic->getPlaneAddr(plane, addr);
     const pixel* rec0  = reconPic->getPlaneAddr(plane, addr);
@@ -916,7 +922,7 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
 
     int x, y;
     const CUData* cu = frame->m_encData->getPicCTU(addr);
-    const PicYuv* reconPic = m_frame->m_reconPic[0];
+    const PicYuv* reconPic = m_frame->m_reconPic;
     const pixel* fenc;
     const pixel* rec;
     intptr_t stride = reconPic->m_stride;
@@ -1024,10 +1030,10 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
             for (y = 0; y < ctuHeight; y++)
             {
                 x = (y < startY ? startX : firstX);
-                int signLeft = x265_signOf(rec[x] - rec[x - 1]);
+                int signLeft = signOf(rec[x] - rec[x - 1]);
                 for (; x < endX; x++)
                 {
-                    int signRight = x265_signOf(rec[x] - rec[x + 1]);
+                    int signRight = signOf(rec[x] - rec[x + 1]);
                     int edgeType = signRight + signLeft + 2;
                     signLeft = -signRight;
 
@@ -1063,13 +1069,13 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
             }
 
             for (x = startX; x < ctuWidth; x++)
-                upBuff1[x] = x265_signOf(rec[x] - rec[x - stride]);
+                upBuff1[x] = signOf(rec[x] - rec[x - stride]);
 
             for (y = firstY; y < endY; y++)
             {
                 for (x = (y < startY - 1 ? startX : 0); x < ctuWidth; x++)
                 {
-                    int signDown = x265_signOf(rec[x] - rec[x + stride]);
+                    int signDown = signOf(rec[x] - rec[x + stride]);
                     int edgeType = signDown + upBuff1[x] + 2;
                     upBuff1[x] = -signDown;
 
@@ -1111,15 +1117,15 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
             }
 
             for (x = startX; x < endX; x++)
-                upBuff1[x] = x265_signOf(rec[x] - rec[x - stride - 1]);
+                upBuff1[x] = signOf(rec[x] - rec[x - stride - 1]);
 
             for (y = firstY; y < endY; y++)
             {
                 x = (y < startY - 1 ? startX : firstX);
-                upBufft[x] = x265_signOf(rec[x + stride] - rec[x - 1]);
+                upBufft[x] = signOf(rec[x + stride] - rec[x - 1]);
                 for (; x < endX; x++)
                 {
-                    int signDown = x265_signOf(rec[x] - rec[x + stride + 1]);
+                    int signDown = signOf(rec[x] - rec[x + stride + 1]);
                     int edgeType = signDown + upBuff1[x] + 2;
                     upBufft[x + 1] = -signDown;
 
@@ -1163,13 +1169,13 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
             }
 
             for (x = startX - 1; x < endX; x++)
-                upBuff1[x] = x265_signOf(rec[x] - rec[x - stride + 1]);
+                upBuff1[x] = signOf(rec[x] - rec[x - stride + 1]);
 
             for (y = firstY; y < endY; y++)
             {
                 for (x = (y < startY - 1 ? startX : firstX); x < endX; x++)
                 {
-                    int signDown = x265_signOf(rec[x] - rec[x + stride - 1]);
+                    int signDown = signOf(rec[x] - rec[x + stride - 1]);
                     int edgeType = signDown + upBuff1[x] + 2;
                     upBuff1[x - 1] = -signDown;
 
@@ -1180,7 +1186,7 @@ void SAO::calcSaoStatsCu_BeforeDblk(Frame* frame, int idxX, int idxY)
                     count[s_eoTable[edgeType]]++;
                 }
 
-                upBuff1[endX - 1] = x265_signOf(rec[endX - 1 + stride] - rec[endX]);
+                upBuff1[endX - 1] = signOf(rec[endX - 1 + stride] - rec[endX]);
 
                 rec += stride;
                 fenc += stride;
@@ -1783,11 +1789,11 @@ void saoCuStatsE0_c(const int16_t *diff, const pixel *rec, intptr_t stride, int 
 
     for (int y = 0; y < endY; y++)
     {
-        int signLeft = x265_signOf(rec[0] - rec[-1]);
+        int signLeft = signOf(rec[0] - rec[-1]);
         for (int x = 0; x < endX; x++)
         {
             int signRight = signOf2(rec[x], rec[x + 1]);
-            X265_CHECK(signRight == x265_signOf(rec[x] - rec[x + 1]), "signDown check failure\n");
+            X265_CHECK(signRight == signOf(rec[x] - rec[x + 1]), "signDown check failure\n");
             uint32_t edgeType = signRight + signLeft + 2;
             signLeft = -signRight;
 
@@ -1824,7 +1830,7 @@ void saoCuStatsE1_c(const int16_t *diff, const pixel *rec, intptr_t stride, int8
         for (int x = 0; x < endX; x++)
         {
             int signDown = signOf2(rec[x], rec[x + stride]);
-            X265_CHECK(signDown == x265_signOf(rec[x] - rec[x + stride]), "signDown check failure\n");
+            X265_CHECK(signDown == signOf(rec[x] - rec[x + stride]), "signDown check failure\n");
             uint32_t edgeType = signDown + upBuff1[x] + 2;
             upBuff1[x] = (int8_t)(-signDown);
 
@@ -1856,11 +1862,11 @@ void saoCuStatsE2_c(const int16_t *diff, const pixel *rec, intptr_t stride, int8
 
     for (int y = 0; y < endY; y++)
     {
-        upBufft[0] = x265_signOf(rec[stride] - rec[-1]);
+        upBufft[0] = signOf(rec[stride] - rec[-1]);
         for (int x = 0; x < endX; x++)
         {
             int signDown = signOf2(rec[x], rec[x + stride + 1]);
-            X265_CHECK(signDown == x265_signOf(rec[x] - rec[x + stride + 1]), "signDown check failure\n");
+            X265_CHECK(signDown == signOf(rec[x] - rec[x + stride + 1]), "signDown check failure\n");
             uint32_t edgeType = signDown + upBuff1[x] + 2;
             upBufft[x + 1] = (int8_t)(-signDown);
             tmp_stats[edgeType] += diff[x];
@@ -1896,7 +1902,7 @@ void saoCuStatsE3_c(const int16_t *diff, const pixel *rec, intptr_t stride, int8
         for (int x = 0; x < endX; x++)
         {
             int signDown = signOf2(rec[x], rec[x + stride - 1]);
-            X265_CHECK(signDown == x265_signOf(rec[x] - rec[x + stride - 1]), "signDown check failure\n");
+            X265_CHECK(signDown == signOf(rec[x] - rec[x + stride - 1]), "signDown check failure\n");
             X265_CHECK(abs(upBuff1[x]) <= 1, "upBuffer1 check failure\n");
 
             uint32_t edgeType = signDown + upBuff1[x] + 2;
@@ -1905,7 +1911,7 @@ void saoCuStatsE3_c(const int16_t *diff, const pixel *rec, intptr_t stride, int8
             tmp_count[edgeType]++;
         }
 
-        upBuff1[endX - 1] = x265_signOf(rec[endX - 1 + stride] - rec[endX]);
+        upBuff1[endX - 1] = signOf(rec[endX - 1 + stride] - rec[endX]);
 
         rec += stride;
         diff += MAX_CU_SIZE;

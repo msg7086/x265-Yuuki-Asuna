@@ -84,6 +84,14 @@ void BitCost::setQP(unsigned int qp)
  * Class static data and methods
  */
 
+uint16_t *BitCost::s_costs[BC_MAX_QP];
+
+uint16_t* BitCost::s_fpelMvCosts[BC_MAX_QP][4];
+
+float *BitCost::s_bitsizes;
+
+Lock BitCost::s_costCalcLock;
+
 void BitCost::CalculateLogs()
 {
     if (!s_bitsizes)
@@ -103,7 +111,6 @@ void BitCost::CalculateLogs()
 
 void BitCost::destroy()
 {
-    ScopedLock s(s_costCalcLock);
     for (int i = 0; i < BC_MAX_QP; i++)
     {
         if (s_costs[i])

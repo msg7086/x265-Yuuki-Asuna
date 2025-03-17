@@ -848,36 +848,36 @@ function x265_pixel_planecopy_cp_neon
     vdup.8          q2, r12
     sub             r5, #1
 
-.Loop_h:
+.loop_h:
     mov             r6, r0
     mov             r12, r2
     eor             r7, r7
-.Loop_w:
+.loop_w:
     vld1.u8         {q0}, [r6]!
     vshl.u8         q0, q0, q2
     vst1.u8         {q0}, [r12]!
 
     add             r7, #16
     cmp             r7, r4
-    blt             .Loop_w
+    blt             .loop_w
 
     add             r0, r1
     add             r2, r3
 
     subs             r5, #1
-    bgt             .Loop_h
+    bgt             .loop_h
 
 // handle last row
     mov             r5, r4
     lsr             r5, #3
 
-.LoopW8:
+.loopW8:
     vld1.u8         d0, [r0]!
     vshl.u8         d0, d0, d4
     vst1.u8         d0, [r2]!
     subs            r4, r4, #8
     subs            r5, #1
-    bgt             .LoopW8
+    bgt             .loopW8
 
     mov             r5,#8
     sub             r5, r4
@@ -1970,7 +1970,7 @@ function x265_quant_neon
     eor             r5, r5
     veor.s32        q12, q12
 
-.Loop_quant:
+.loop_quant:
 
     vld1.s16        d16, [r0]!
     vmovl.s16       q9, d16                // q9= coef[blockpos]
@@ -1999,7 +1999,7 @@ function x265_quant_neon
     vst1.s16        d16, [r3]!
 
     subs            r4, #1
-    bne             .Loop_quant
+    bne             .loop_quant
 
     vadd.u32        d8, d9
     vpadd.u32       d8, d8
@@ -2023,7 +2023,7 @@ function x265_nquant_neon
     eor             r4, r4
     veor.s32        q12, q12
 
-.Loop_nquant:
+.loop_nquant:
 
     vld1.s16        d16, [r0]!
     vmovl.s16       q9, d16                // q9= coef[blockpos]
@@ -2049,7 +2049,7 @@ function x265_nquant_neon
     vst1.s16        d17, [r2]!
 
     subs            r3, #1
-    bne             .Loop_nquant
+    bne             .loop_nquant
 
     vadd.u32        d8, d9
     vpadd.u32       d8, d8
@@ -2148,7 +2148,7 @@ function x265_pixel_sa8d_32x64_neon
     mov             r10, #4
     eor             r9, r9
 
-.Loop_32:
+.loop_32:
 
     sa8d_16x16 r4
 
@@ -2166,7 +2166,7 @@ function x265_pixel_sa8d_32x64_neon
     sub             r2,  r2,  #24
 
     subs            r10, #1
-    bgt            .Loop_32
+    bgt            .loop_32
 
     mov             r0, r9
     vpop            {d8-d11}
@@ -2183,7 +2183,7 @@ function x265_pixel_sa8d_64x64_neon
     mov             r10, #4
     eor             r9, r9
 
-.Loop_1:
+.loop_1:
 
     sa8d_16x16 r4
 
@@ -2217,7 +2217,7 @@ function x265_pixel_sa8d_64x64_neon
     sub             r2,  r2,  #56
 
     subs            r10, #1
-    bgt            .Loop_1
+    bgt            .loop_1
 
     mov             r0, r9
     vpop            {d8-d11}

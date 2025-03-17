@@ -174,14 +174,7 @@ cglobal safe_intel_cpu_indicator_init
     sub  rsp, 32 ; shadow space
 %endif
     and  rsp, ~31
-%if WIN64
-    lea rax, [intel_cpu_indicator_init]
-    call rax
-%elif UNIX64
-    call [rel intel_cpu_indicator_init wrt ..plt]
-%else
     call intel_cpu_indicator_init
-%endif
     leave
 %if ARCH_X86_64
     pop r14

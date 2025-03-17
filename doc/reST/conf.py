@@ -14,7 +14,7 @@ project = u'x265'
 copyright = u'2014 MulticoreWare Inc'
 
 # -- Options for HTML output ---------------------------------------------------
-html_theme = "sphinx_rtd_theme"
+html_theme = "default"
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).

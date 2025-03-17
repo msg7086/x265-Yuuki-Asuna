@@ -260,14 +260,8 @@ bool MBDstHarness::check_nquant_primitive(nquant_t ref, nquant_t opt)
         uint32_t optReturnValue = 0;
         uint32_t refReturnValue = 0;
 
-        int log2TrSize = rand() % 4 + 2;
-        const int qp = rand() % (QP_MAX_SPEC + QP_BD_OFFSET + 1);
-        const int per = qp / 6;
-        const int transformShift = MAX_TR_DYNAMIC_RANGE - X265_DEPTH - log2TrSize;
-
-        /* Right shift of non-RDOQ quantizer level = (coeff*Q + offset)>>q_bits */
-        int bits = QUANT_SHIFT + per + transformShift;
-        int valueToAdd = (1 << (bits - 1));
+        int bits = rand() % 32;
+        int valueToAdd = rand() % (1 << bits);
         int cmp_size = sizeof(short) * height * width;
         int numCoeff = height * width;
 

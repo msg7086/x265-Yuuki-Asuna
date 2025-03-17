@@ -78,13 +78,11 @@ public:
     PicYuv();
 
     bool  create(x265_param* param, bool picAlloc = true, pixel *pixelbuf = NULL);
-    bool  createScaledPicYUV(x265_param* param, uint8_t scaleFactor);
     bool  createOffsets(const SPS& sps);
     void  destroy();
     int   getLumaBufLen(uint32_t picWidth, uint32_t picHeight, uint32_t picCsp);
 
-    void  copyFromPicture(const x265_picture&, const x265_param& param, int padx, int pady, bool isBase = true);
-    void  copyFromFrame(PicYuv* source);
+    void  copyFromPicture(const x265_picture&, const x265_param& param, int padx, int pady);
 
     intptr_t getChromaAddrOffset(uint32_t ctuAddr, uint32_t absPartIdx) const { return m_cuOffsetC[ctuAddr] + m_buOffsetC[absPartIdx]; }
 

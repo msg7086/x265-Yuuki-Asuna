@@ -40,7 +40,6 @@
 #include "ratecontrol.h"
 #include "reference.h"
 #include "nal.h"
-#include "temporalfilter.h"
 
 namespace X265_NS {
 // private x265 namespace
@@ -114,64 +113,6 @@ struct CTURow
     }
 };
 
-/*Film grain characteristics*/
-struct FilmGrain
-{
-    bool    m_filmGrainCharacteristicsCancelFlag;
-    bool    m_filmGrainCharacteristicsPersistenceFlag;
-    bool    m_separateColourDescriptionPresentFlag;
-    uint8_t m_filmGrainModelId;
-    uint8_t m_blendingModeId;
-    uint8_t m_log2ScaleFactor;
-};
-
-struct ColourDescription
-{
-    bool        m_filmGrainFullRangeFlag;
-    uint8_t     m_filmGrainBitDepthLumaMinus8;
-    uint8_t     m_filmGrainBitDepthChromaMinus8;
-    uint8_t     m_filmGrainColourPrimaries;
-    uint8_t     m_filmGrainTransferCharacteristics;
-    uint8_t     m_filmGrainMatrixCoeffs;
-};
-
-struct FGPresent
-{
-    uint8_t     m_blendingModeId;
-    uint8_t     m_log2ScaleFactor;
-    bool        m_presentFlag[3];
-};
-
-struct AomFilmGrain
-{
-    int32_t     m_apply_grain;
-    int32_t     m_update_grain;
-    int32_t     m_scaling_points_y[14][2];
-    int32_t     m_num_y_points;
-    int32_t     m_scaling_points_cb[10][2];
-    int32_t     m_num_cb_points;
-    int32_t     m_scaling_points_cr[10][2];
-    int32_t     m_num_cr_points;
-    int32_t     m_scaling_shift;
-    int32_t     m_ar_coeff_lag;
-    int32_t     m_ar_coeffs_y[24];
-    int32_t     m_ar_coeffs_cb[25];
-    int32_t     m_ar_coeffs_cr[25];
-    int32_t     m_ar_coeff_shift;
-    int32_t     m_cb_mult;
-    int32_t     m_cb_luma_mult;
-    int32_t     m_cb_offset;
-    int32_t     m_cr_mult;
-    int32_t     m_cr_luma_mult;
-    int32_t     m_cr_offset;
-    int32_t     m_overlap_flag;
-    int32_t     m_clip_to_restricted_range;
-    int32_t     m_bitDepth;
-    int32_t     m_chroma_scaling_from_luma;
-    int32_t     m_grain_scale_shift;
-    uint16_t    m_grain_seed;
-};
-
 // Manages the wave-front processing of a single encoding frame
 class FrameEncoder : public WaveFront, public Thread
 {
@@ -186,12 +127,12 @@ public:
     void destroy();
 
     /* triggers encode of a new frame by the worker thread */
-    bool startCompressFrame(Frame* curFrame[MAX_LAYERS]);
+    bool startCompressFrame(Frame* curFrame);
 
     /* blocks until worker thread is done, returns access unit */
-    Frame **getEncodedPicture(NALList& list);
+    Frame *getEncodedPicture(NALList& list);
 
-    void initDecodedPictureHashSEI(int row, int cuAddr, int height, int layer);
+    void initDecodedPictureHashSEI(int row, int cuAddr, int height);
 
     Event                    m_enable;
     Event                    m_done;
@@ -220,35 +161,34 @@ public:
     RateControlEntry         m_rce;
     SEIDecodedPictureHash    m_seiReconPictureDigest;
 
-    uint64_t                 m_SSDY[MAX_LAYERS];
-    uint64_t                 m_SSDU[MAX_LAYERS];
-    uint64_t                 m_SSDV[MAX_LAYERS];
-    double                   m_ssim[MAX_LAYERS];
-    uint64_t                 m_accessUnitBits[MAX_LAYERS];
-    uint32_t                 m_ssimCnt[MAX_LAYERS];
+    uint64_t                 m_SSDY;
+    uint64_t                 m_SSDU;
+    uint64_t                 m_SSDV;
+    double                   m_ssim;
+    uint64_t                 m_accessUnitBits;
+    uint32_t                 m_ssimCnt;
 
     volatile int             m_activeWorkerCount;        // count of workers currently encoding or filtering CTUs
     volatile int             m_totalActiveWorkerCount;   // sum of m_activeWorkerCount sampled at end of each CTU
     volatile int             m_activeWorkerCountSamples; // count of times m_activeWorkerCount was sampled (think vbv restarts)
     volatile int             m_countRowBlocks;           // count of workers forced to abandon a row because of top dependency
-    int64_t                  m_startCompressTime[MAX_LAYERS];        // timestamp when frame encoder is given a frame
-    int64_t                  m_row0WaitTime[MAX_LAYERS];             // timestamp when row 0 is allowed to start
-    int64_t                  m_allRowsAvailableTime[MAX_LAYERS];     // timestamp when all reference dependencies are resolved
-    int64_t                  m_endCompressTime[MAX_LAYERS];          // timestamp after all CTUs are compressed
-    int64_t                  m_endFrameTime[MAX_LAYERS];             // timestamp after RCEnd, NR updates, etc
-    int64_t                  m_stallStartTime[MAX_LAYERS];           // timestamp when worker count becomes 0
-    int64_t                  m_prevOutputTime[MAX_LAYERS];           // timestamp when prev frame was retrieved by API thread
-    int64_t                  m_slicetypeWaitTime[MAX_LAYERS];        // total elapsed time waiting for decided frame
-    int64_t                  m_totalWorkerElapsedTime[MAX_LAYERS];   // total elapsed time spent by worker threads processing CTUs
-    int64_t                  m_totalNoWorkerTime[MAX_LAYERS];        // total elapsed time without any active worker threads
+    int64_t                  m_startCompressTime;        // timestamp when frame encoder is given a frame
+    int64_t                  m_row0WaitTime;             // timestamp when row 0 is allowed to start
+    int64_t                  m_allRowsAvailableTime;     // timestamp when all reference dependencies are resolved
+    int64_t                  m_endCompressTime;          // timestamp after all CTUs are compressed
+    int64_t                  m_endFrameTime;             // timestamp after RCEnd, NR updates, etc
+    int64_t                  m_stallStartTime;           // timestamp when worker count becomes 0
+    int64_t                  m_prevOutputTime;           // timestamp when prev frame was retrieved by API thread
+    int64_t                  m_slicetypeWaitTime;        // total elapsed time waiting for decided frame
+    int64_t                  m_totalWorkerElapsedTime;   // total elapsed time spent by worker threads processing CTUs
+    int64_t                  m_totalNoWorkerTime;        // total elapsed time without any active worker threads
 #if DETAILED_CU_STATS
     CUStats                  m_cuStats;
 #endif
 
     Encoder*                 m_top;
     x265_param*              m_param;
-    Frame*                   m_frame[MAX_LAYERS];
-    Frame**                  m_retFrameBuffer;
+    Frame*                   m_frame;
     NoiseReduction*          m_nr;
     ThreadLocalData*         m_tld; /* for --no-wpp */
     Bitstream*               m_outStreams;
@@ -264,8 +204,6 @@ public:
     Entropy                  m_initSliceContext;
     FrameFilter              m_frameFilter;
     NALList                  m_nalList;
-
-    int                      m_sLayerId;
 
     class WeightAnalysis : public BondedTaskGroup
     {
@@ -287,20 +225,20 @@ protected:
     bool initializeGeoms();
 
     /* analyze / compress frame, can be run in parallel within reference constraints */
-    void compressFrame(int layer);
+    void compressFrame();
 
     /* called by compressFrame to generate final per-row bitstreams */
-    void encodeSlice(uint32_t sliceAddr, int layer);
+    void encodeSlice(uint32_t sliceAddr);
 
     void threadMain();
     int  collectCTUStatistics(const CUData& ctu, FrameStats* frameLog);
     void noiseReductionUpdate();
-    void writeTrailingSEIMessages(int layer);
+    void writeTrailingSEIMessages();
     bool writeToneMapInfo(x265_sei_payload *payload);
 
     /* Called by WaveFront::findJob() */
-    virtual void processRow(int row, int threadId, int layer);
-    virtual void processRowEncoder(int row, ThreadLocalData& tld, int layer);
+    virtual void processRow(int row, int threadId);
+    virtual void processRowEncoder(int row, ThreadLocalData& tld);
 
     void enqueueRowEncoder(int row) { WaveFront::enqueueRow(row * 2 + 0); }
     void enqueueRowFilter(int row)  { WaveFront::enqueueRow(row * 2 + 1); }
@@ -309,11 +247,9 @@ protected:
 #if ENABLE_LIBVMAF
     void vmafFrameLevelScore();
 #endif
-    void collectDynDataFrame(int layer);
-    void computeAvgTrainingData(int layer);
+    void collectDynDataFrame();
+    void computeAvgTrainingData();
     void collectDynDataRow(CUData& ctu, FrameStats* rowStats);    
-    void readModel(FilmGrainCharacteristics* m_filmGrain, FILE* filmgrain);
-    void readAomModel(AomFilmGrainCharacteristics* m_aomFilmGrain, FILE* Aomfilmgrain);
 };
 }
 

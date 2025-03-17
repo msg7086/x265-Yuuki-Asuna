@@ -5,31 +5,30 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Which tag to upload to'
+        description: 'which tag to upload to'
         default: ''
 
 jobs:
-  build-win:
-    runs-on: windows-latest
+  build:
+    runs-on: windows-2019
     defaults:
       run:
         shell: msys2 {0}
     strategy:
       matrix:
         target_cpu:
-          - x86-64
-          - ivybridge
-          - haswell
-          - skylake
-          - alderlake
-          - bdver4
-          - znver1
-          - znver2
-          - znver3
-          - znver4
+        - x86-64
+        - ivybridge
+        - haswell
+        - skylake
+        - alderlake
+        - bdver4
+        - znver1
+        - znver2
+        - znver3
         toolchain:
-          - clang
-          #- ucrt
+        - clang
+        #- ucrt
     steps:
     - name: Parse matrix
       run: |
@@ -40,18 +39,18 @@ jobs:
         }
       shell: pwsh
     - name: Checkout x265
-      uses: actions/checkout@v4
+      uses: actions/checkout@v2
       with:
         path: x265
         fetch-depth: 0
     - name: Cache FFmpeg
       id: cache-ff
-      uses: actions/cache@v4
+      uses: actions/cache@v2
       with:
         path: ffmpeg
-        key: win-${{matrix.target_cpu}}-${{matrix.toolchain}}-ff
+        key: ${{matrix.target_cpu}}-${{matrix.toolchain}}-ff
     - name: Checkout FFmpeg
-      uses: actions/checkout@v4
+      uses: actions/checkout@v2
       with:
         path: ffmpeg
         repository: FFmpeg/FFmpeg
@@ -59,16 +58,16 @@ jobs:
       if: steps.cache-ff.outputs.cache-hit != 'true'
     - name: Cache mimalloc
       id: cache-mi
-      uses: actions/cache@v4
+      uses: actions/cache@v2
       with:
         path: mimalloc
-        key: win-${{matrix.target_cpu}}-${{matrix.toolchain}}-mi
+        key: ${{matrix.target_cpu}}-${{matrix.toolchain}}-mi-v2
     - name: Checkout mimalloc
-      uses: actions/checkout@v4
+      uses: actions/checkout@v2
       with:
         path: mimalloc
-        repository: microsoft/mimalloc
-        ref: master
+        repository: AmusementClub/mimalloc2
+        ref: v2.0.2-AC
       if: steps.cache-mi.outputs.cache-hit != 'true'
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
@@ -112,13 +111,13 @@ jobs:
       shell: pwsh
     - name: Compile x265 8bit
       run: |
-        cmake -GNinja ../../x265/source -DEXPORT_C_API=OFF -DENABLE_SHARED=OFF -DENABLE_CLI=OFF -DCUSTOM_TARGET_CPU=ON -DTARGET_CPU=${{matrix.target_cpu}} -DUSE_MIMALLOC=ON -DUSE_LTO=ON -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy
+        cmake -GNinja ../../x265/source -DEXPORT_C_API=OFF -DENABLE_SHARED=OFF -DENABLE_CLI=OFF -DTARGET_CPU=${{matrix.target_cpu}} -DUSE_MIMALLOC=ON -DUSE_LTO=ON -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy
         ninja
         cp libx265.a ../10b/libx265_8b.a
       working-directory: build/8b
     - name: Compile x265 12bit
       run: |
-        cmake -GNinja ../../x265/source -DHIGH_BIT_DEPTH=ON -DMAIN12=ON -DEXPORT_C_API=OFF -DENABLE_SHARED=OFF -DENABLE_CLI=OFF -DCUSTOM_TARGET_CPU=ON -DTARGET_CPU=${{matrix.target_cpu}} -DUSE_MIMALLOC=ON -DUSE_LTO=ON -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy
+        cmake -GNinja ../../x265/source -DHIGH_BIT_DEPTH=ON -DMAIN12=ON -DEXPORT_C_API=OFF -DENABLE_SHARED=OFF -DENABLE_CLI=OFF -DTARGET_CPU=${{matrix.target_cpu}} -DUSE_MIMALLOC=ON -DUSE_LTO=ON -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy
         ninja
         cp libx265.a ../10b/libx265_12b.a
       working-directory: build/12b
@@ -127,7 +126,7 @@ jobs:
       run: |
         cp -a 10b 10bprof
         export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
-        cmake_flags="-GNinja ../../x265/source -DEXTRA_LIB=x265_8b.a;x265_12b.a -DEXTRA_LINK_FLAGS=-L. -DLINKED_8BIT=ON -DLINKED_12BIT=ON -DENABLE_HDR10_PLUS=ON -DENABLE_AVISYNTH=OFF -DENABLE_VPYSYNTH=OFF -DHIGH_BIT_DEPTH=ON -DENABLE_SHARED=OFF -DENABLE_LAVF=ON -DENABLE_STATIC_LAVF=ON -DCUSTOM_TARGET_CPU=ON -DTARGET_CPU=${{matrix.target_cpu}} -DUSE_MIMALLOC=ON -DUSE_LTO=ON -DCMAKE_EXE_LINKER_FLAGS=-LD:/a/_temp/msys/msys64/usr/local/lib -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy"
+        cmake_flags="-GNinja ../../x265/source -DEXTRA_LIB=x265_8b.a;x265_12b.a -DEXTRA_LINK_FLAGS=-L. -DLINKED_8BIT=ON -DLINKED_12BIT=ON -DENABLE_HDR10_PLUS=ON -DENABLE_AVISYNTH=OFF -DENABLE_VPYSYNTH=OFF -DHIGH_BIT_DEPTH=ON -DENABLE_SHARED=OFF -DENABLE_LAVF=ON -DENABLE_STATIC_LAVF=ON -DTARGET_CPU=${{matrix.target_cpu}} -DUSE_MIMALLOC=ON -DUSE_LTO=ON -DCMAKE_EXE_LINKER_FLAGS=-LD:/a/_temp/msys/msys64/usr/local/lib -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy"
         pushd 10b
         cmake $cmake_flags "-DCMAKE_CXX_FLAGS=-I../../FFmpeg -fprofile-instr-use=${{github.workspace}}/x265.profdata"
         ninja
@@ -144,155 +143,24 @@ jobs:
         mkdir dist
         cp ${{env.DLL_DEPS}} build/10b*/x265*.exe dist
     - name: Upload
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v2
       with:
         name: x265-win64-${{matrix.target_cpu}}-${{matrix.toolchain}}-full
         path: dist/*
+
     - name: Compress artifact for release
       if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
       run: |
         cd dist
         # do not release profiling binary
         7za a -t7z -mx=7 ../x265-win64-${{matrix.target_cpu}}-${{matrix.toolchain}}.${{ github.event.inputs.tag }}.7z x265.exe
+
     - name: Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v1
       if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
       with:
         tag_name: ${{ github.event.inputs.tag }}
         files: x265-win64-${{matrix.target_cpu}}-${{matrix.toolchain}}.${{ github.event.inputs.tag }}.7z
-        fail_on_unmatched_files: true
-        generate_release_notes: false
-        prerelease: true
-
-  build-linux:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target_cpu:
-          - x86-64
-          - ivybridge
-          - haswell
-          - skylake
-          - alderlake
-          - bdver4
-          - znver1
-          - znver2
-          - znver3
-          - znver4
-        toolchain:
-          - clang
-    steps:
-    - name: Checkout x265
-      uses: actions/checkout@v4
-      with:
-        path: x265
-        fetch-depth: 0
-    - name: Cache FFmpeg
-      id: cache-ff
-      uses: actions/cache@v4
-      with:
-        path: ffmpeg
-        key: linux-${{matrix.target_cpu}}-${{matrix.toolchain}}-ff
-    - name: Checkout FFmpeg
-      uses: actions/checkout@v4
-      with:
-        path: ffmpeg
-        repository: FFmpeg/FFmpeg
-        ref: n4.4
-      if: steps.cache-ff.outputs.cache-hit != 'true'
-    - name: Cache mimalloc
-      id: cache-mi
-      uses: actions/cache@v4
-      with:
-        path: mimalloc
-        key: linux-${{matrix.target_cpu}}-${{matrix.toolchain}}-mi
-    - name: Checkout mimalloc
-      uses: actions/checkout@v4
-      with:
-        path: mimalloc
-        repository: microsoft/mimalloc
-        ref: master
-      if: steps.cache-mi.outputs.cache-hit != 'true'
-    - name: Install Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake ninja-build nasm p7zip-full wget
-    - name: Compile FFmpeg
-      run: |
-        ./configure --enable-gpl --enable-version3 --disable-runtime-cpudetect --disable-all --disable-autodetect --enable-avformat --enable-avcodec --enable-avformat --disable-everything --disable-network --enable-demuxer=mpegts,mov,matroska,h264,hevc --enable-decoder=h264,hevc,ffv1,ffvhuff,huffyuv --enable-protocol=file,pipe --cc=clang --cxx=clang++ --cpu=${{matrix.target_cpu}}
-        make -j$(nproc)
-      working-directory: ffmpeg
-      if: steps.cache-ff.outputs.cache-hit != 'true'
-    - name: Install FFmpeg
-      run: sudo make install
-      working-directory: ffmpeg
-    - name: Compile mimalloc
-      run: |
-        mkdir -p build && cd build
-        # our fork only supports static linking.
-        cmake -GNinja .. -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_POLICY_DEFAULT_CMP0069=NEW -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON -DMI_BUILD_SHARED=OFF -DMI_BUILD_STATIC=ON -DMI_BUILD_OBJECT=OFF -DMI_BUILD_TESTS=OFF
-        ninja
-      working-directory: mimalloc
-      if: steps.cache-mi.outputs.cache-hit != 'true'
-    - name: Install mimalloc
-      run: sudo ninja install
-      working-directory: mimalloc/build
-    - name: Fix mimalloc static lib path
-      run: |
-        sudo ln -sf $(find /usr/local/lib -maxdepth 1 -type d -name "mimalloc-*" | head -n1)/libmimalloc.a /usr/local/lib/libmimalloc-static.a
-    - name: Setup build dir
-      run: mkdir -p build/8b build/10b build/12b
-    - name: Download profdata
-      run: wget https://github.com/${{ github.repository }}/raw/profdata/x265.profdata -O x265.profdata
-    - name: Compile x265 8bit
-      run: |
-        cmake -GNinja ../../x265/source -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DEXPORT_C_API=OFF -DENABLE_SHARED=OFF -DENABLE_CLI=OFF -DCUSTOM_TARGET_CPU=ON -DTARGET_CPU=${{ matrix.target_cpu }} -DUSE_MIMALLOC=ON -DUSE_LTO=ON -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy
-        ninja
-        cp libx265.a ../10b/libx265_8b.a
-      working-directory: build/8b
-    - name: Compile x265 12bit
-      run: |
-        cmake -GNinja ../../x265/source -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DHIGH_BIT_DEPTH=ON -DMAIN12=ON -DEXPORT_C_API=OFF -DENABLE_SHARED=OFF -DENABLE_CLI=OFF -DCUSTOM_TARGET_CPU=ON -DTARGET_CPU=${{ matrix.target_cpu }} -DUSE_MIMALLOC=ON -DUSE_LTO=ON -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy
-        ninja
-        cp libx265.a ../10b/libx265_12b.a
-      working-directory: build/12b
-    - name: Compile x265 10bit (with PGO)
-      working-directory: build
-      run: |
-        cp -a 10b 10bprof
-        export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
-        cmake_flags="-GNinja ../../x265/source -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DEXTRA_LIB=x265_8b.a;x265_12b.a -DEXTRA_LINK_FLAGS=-L. -DLINKED_8BIT=ON -DLINKED_12BIT=ON -DENABLE_HDR10_PLUS=ON -DENABLE_AVISYNTH=OFF -DENABLE_VPYSYNTH=OFF -DHIGH_BIT_DEPTH=ON -DENABLE_SHARED=OFF -DENABLE_LAVF=ON -DENABLE_STATIC_LAVF=ON -DCUSTOM_TARGET_CPU=ON -DTARGET_CPU=${{ matrix.target_cpu }} -DUSE_MIMALLOC=ON -DUSE_LTO=ON -DCMAKE_EXE_LINKER_FLAGS=-L/usr/local/lib -DCMAKE_ASM_NASM_FLAGS=-w-macro-params-legacy"
-        pushd 10b
-        cmake $cmake_flags "-DCMAKE_CXX_FLAGS=-I../../ffmpeg -fprofile-instr-use=${{ github.workspace }}/x265.profdata"
-        ninja
-        strip -s x265
-        popd
-        pushd 10bprof
-        cmake $cmake_flags "-DCMAKE_CXX_FLAGS=-I../../ffmpeg -fprofile-instr-generate -fprofile-update=atomic"
-        ninja
-        strip -s x265
-        mv x265 x265-profiling
-        popd
-    - name: Package
-      run: |
-        mkdir -p dist
-        cp build/10b/x265 dist/
-    - name: Upload
-      uses: actions/upload-artifact@v4
-      with:
-        name: x265-linux-${{ matrix.target_cpu }}-${{ matrix.toolchain }}-full
-        path: dist/*
-    - name: Compress artifact for release
-      if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
-      run: |
-        cd dist
-        tar -czf ../x265-linux-${{ matrix.target_cpu }}-${{ matrix.toolchain }}.${{ github.event.inputs.tag }}.tar.gz x265
-    - name: Release
-      uses: softprops/action-gh-release@v2
-      if: github.event_name == 'workflow_dispatch' && github.event.inputs.tag != ''
-      with:
-        tag_name: ${{ github.event.inputs.tag }}
-        files: x265-linux-${{ matrix.target_cpu }}-${{ matrix.toolchain }}.${{ github.event.inputs.tag }}.tar.gz
         fail_on_unmatched_files: true
         generate_release_notes: false
         prerelease: true

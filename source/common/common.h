@@ -130,6 +130,7 @@ typedef uint64_t sum2_t;
 typedef uint64_t pixel4;
 typedef int64_t  ssum2_t;
 #define SHIFT_TO_BITPLANE 9
+#define HISTOGRAM_BINS 1024
 #else
 typedef uint8_t  pixel;
 typedef uint16_t sum_t;
@@ -137,6 +138,7 @@ typedef uint32_t sum2_t;
 typedef uint32_t pixel4;
 typedef int32_t  ssum2_t; // Signed sum
 #define SHIFT_TO_BITPLANE 7
+#define HISTOGRAM_BINS 256
 #endif // if HIGH_BIT_DEPTH
 
 #if X265_DEPTH < 10
@@ -150,7 +152,6 @@ typedef uint64_t sse_t;
 #endif
 
 #define MAX_UINT        0xFFFFFFFFU // max. value of unsigned 32-bit integer
-#define MAX_UINT64      0xFFFFFFFFFFFFFFFFULL // max. value of unsigned 64-bit integer
 #define MAX_INT         2147483647  // max. value of signed 32-bit integer
 #define MAX_INT64       0x7FFFFFFFFFFFFFFFLL  // max. value of signed 64-bit integer
 #define MAX_DOUBLE      1.7e+308    // max. value of double-type value
@@ -161,8 +162,6 @@ typedef uint64_t sse_t;
 
 #define MIN_QPSCALE     0.21249999999999999
 #define MAX_MAX_QPSCALE 615.46574234477100
-#define FRAME_BRIGHTNESS_THRESHOLD  50.0 // Min % of pixels in a frame, that are above BRIGHTNESS_THRESHOLD for it to be considered a bright frame
-#define FRAME_EDGE_THRESHOLD  10.0 // Min % of edge pixels in a frame, for it to be considered to have high edge density
 
 
 template<typename T>
@@ -176,12 +175,6 @@ inline T x265_clip3(T minVal, T maxVal, T a) { return x265_min(x265_max(minVal, 
 
 template<typename T> /* clip to pixel range, 0..255 or 0..1023 */
 inline pixel x265_clip(T x) { return (pixel)x265_min<T>(T((1 << X265_DEPTH) - 1), x265_max<T>(T(0), x)); }
-
-/* get the sign of input variable */
-static inline int8_t x265_signOf(int32_t x)
-{
-    return (x >> 31) | ((int32_t)((((uint32_t) - x)) >> 31));
-}
 
 typedef int16_t  coeff_t;      // transform coefficient
 
@@ -226,7 +219,7 @@ typedef int16_t  coeff_t;      // transform coefficient
 
 #define X265_MALLOC(type, count)    (type*)x265_malloc(sizeof(type) * (count))
 #define X265_FREE(ptr)              x265_free(ptr)
-#define X265_FREE_ZERO(ptr)         { x265_free(ptr); (ptr) = NULL; }
+#define X265_FREE_ZERO(ptr)         x265_free(ptr); (ptr) = NULL
 #define CHECKED_MALLOC(var, type, count) \
     { \
         var = (type*)x265_malloc(sizeof(type) * (count)); \
@@ -347,9 +340,6 @@ typedef int16_t  coeff_t;      // transform coefficient
 #define FILLER_OVERHEAD (NAL_TYPE_OVERHEAD + START_CODE_OVERHEAD + 1)
 
 #define MAX_NUM_DYN_REFINE          (NUM_CU_DEPTH * X265_REFINE_INTER_LEVELS)
-#define X265_BYTE 8
-
-#define MAX_MCSTF_TEMPORAL_WINDOW_LENGTH 8
 
 namespace X265_NS {
 
@@ -444,14 +434,6 @@ int      x265_rename(const char* oldName, const char* newName);
 #define  x265_unlink(fileName) unlink(fileName)
 #define  x265_rename(oldName, newName) rename(oldName, newName)
 #endif
-/* Close a file */
-#define  x265_fclose(file) if (file != NULL) fclose(file); file=NULL;
-#define x265_fread(val, size, readSize, fileOffset,errorMessage)\
-    if (fread(val, size, readSize, fileOffset) != readSize)\
-    {\
-        x265_log(NULL, X265_LOG_ERROR, errorMessage); \
-        return; \
-    }
 int      x265_exp2fix8(double x);
 
 double   x265_ssim2dB(double ssim);

@@ -36,7 +36,7 @@ const uint8_t SEIuserDataUnregistered::m_uuid_iso_iec_11578[16] = {
 
 /* marshal a single SEI message sei, storing the marshalled representation
 * in bitstream bs */
-void SEI::writeSEImessages(Bitstream& bs, const SPS& sps, NalUnitType nalUnitType, NALList& list, int isNested, int layer)
+void SEI::writeSEImessages(Bitstream& bs, const SPS& sps, NalUnitType nalUnitType, NALList& list, int isNested)
 {
     if (!isNested)
         bs.resetBits();
@@ -68,7 +68,7 @@ void SEI::writeSEImessages(Bitstream& bs, const SPS& sps, NalUnitType nalUnitTyp
     {
         if (nalUnitType != NAL_UNIT_UNSPECIFIED)
             bs.writeByteAlignment();
-        list.serialize(nalUnitType, bs, layer, (1 + (nalUnitType == NAL_UNIT_CODED_SLICE_TSA_N)));
+        list.serialize(nalUnitType, bs);
     }
 }
 
@@ -92,54 +92,60 @@ void SEI::setSize(uint32_t size)
 
 /* charSet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/" */
 
-char* SEI::base64Decode(char encodedString[], int base64EncodeLength, char* decodedString)
+char* SEI::base64Decode(char encodedString[], int base64EncodeLength)
 {
+    char* decodedString;
+    decodedString = (char*)malloc(sizeof(char) * ((base64EncodeLength / 4) * 3));
     int i, j, k = 0;
     // stores the bitstream
     int bitstream = 0;
-    // countBits stores the current number of bits in bitstream
+    // countBits stores current number of bits in bitstream
     int countBits = 0;
-
+    // selects 4 characters from encodedString at a time. Find the position of each encoded character in charSet and stores in bitstream
     for (i = 0; i < base64EncodeLength; i += 4)
     {
-        bitstream = 0;
-        countBits = 0;
-
+        bitstream = 0, countBits = 0;
         for (j = 0; j < 4; j++)
         {
+            // make space for 6 bits
             if (encodedString[i + j] != '=')
             {
-                int value = 0;
-                if (encodedString[i + j] >= 'A' && encodedString[i + j] <= 'Z')
-                    value = encodedString[i + j] - 'A';
-                else if (encodedString[i + j] >= 'a' && encodedString[i + j] <= 'z')
-                    value = encodedString[i + j] - 'a' + 26;
-                else if (encodedString[i + j] >= '0' && encodedString[i + j] <= '9')
-                    value = encodedString[i + j] - '0' + 52;
-                else if (encodedString[i + j] == '+')
-                    value = 62;
-                else if (encodedString[i + j] == '/')
-                    value = 63;
-                else
-                    value = 0;
-
-                bitstream = (bitstream << 6) | value;
+                bitstream = bitstream << 6;
                 countBits += 6;
             }
-        }
+            // Finding the position of each encoded character in charSet and storing in bitstream, use OR '|' operator to store bits
 
-        while (countBits >= 8)
+            if (encodedString[i + j] >= 'A' && encodedString[i + j] <= 'Z')
+                bitstream = bitstream | (encodedString[i + j] - 'A');
+
+            else if (encodedString[i + j] >= 'a' && encodedString[i + j] <= 'z')
+                bitstream = bitstream | (encodedString[i + j] - 'a' + 26);
+            
+            else if (encodedString[i + j] >= '0' && encodedString[i + j] <= '9')
+                bitstream = bitstream | (encodedString[i + j] - '0' + 52);
+            
+            // '+' occurs in 62nd position in charSet
+            else if (encodedString[i + j] == '+')
+                bitstream = bitstream | 62;
+            
+            // '/' occurs in 63rd position in charSet
+            else if (encodedString[i + j] == '/')
+                bitstream = bitstream | 63;
+            
+            // to delete appended bits during encoding
+            else
+            {
+                bitstream = bitstream >> 2;
+                countBits -= 2;
+            }
+        }
+    
+        while (countBits != 0)
         {
             countBits -= 8;
-            decodedString[k++] = (bitstream >> countBits) & 0xFF;
+            decodedString[k++] = (bitstream >> countBits) & 255;
         }
     }
-
-    if (k < base64EncodeLength)
-    {
-        decodedString[k] = '\0';
-    }
-
     return decodedString;
 }
 

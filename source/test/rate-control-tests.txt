@@ -15,7 +15,7 @@ fire_1920x1080_30.yuv,--preset medium --bitrate 1000 --vbv-maxrate 1500 --vbv-bu
 112_1920x1080_25.yuv,--preset ultrafast --bitrate 10000 --vbv-maxrate 10000 --vbv-bufsize 15000 --hrd --strict-cbr
 Traffic_4096x2048_30.yuv,--preset superfast --bitrate 20000 --vbv-maxrate 20000 --vbv-bufsize 20000 --repeat-headers --strict-cbr
 Traffic_4096x2048_30.yuv,--preset faster --bitrate 8000 --vbv-maxrate 8000 --vbv-bufsize 6000 --aud --repeat-headers --no-open-gop --hrd --pmode --pme
-News-4k.y4m,--preset veryfast --bitrate 3000 --vbv-maxrate 5000 --vbv-bufsize 5000 --repeat-headers --temporal-layers 3
+News-4k.y4m,--preset veryfast --bitrate 3000 --vbv-maxrate 5000 --vbv-bufsize 5000 --repeat-headers --temporal-layers
 NebutaFestival_2560x1600_60_10bit_crop.yuv,--preset medium --bitrate 18000 --vbv-bufsize 20000 --vbv-maxrate 18000 --strict-cbr
 NebutaFestival_2560x1600_60_10bit_crop.yuv,--preset medium --bitrate 8000 --vbv-bufsize 12000 --vbv-maxrate 10000  --tune grain
 big_buck_bunny_360p24.y4m,--preset medium --bitrate 400 --vbv-bufsize 600 --vbv-maxrate 600 --aud --hrd --tune fast-decode

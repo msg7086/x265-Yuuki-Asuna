@@ -75,14 +75,6 @@ public:
         PRED_nRx2N,
         PRED_INTRA_NxN, /* 4x4 intra PU blocks for 8x8 CU */
         PRED_LOSSLESS,  /* lossless encode of best mode */
-#if ENABLE_SCC_EXT
-        PRED_IBC_2Nx2N,
-        PRED_IBC_Nx2N,
-        PRED_IBC_2NxN,
-        PRED_MIXED_IBC_NX2N,
-        PRED_MIXED_IBC_2NXN,
-        PRED_MERGE_IBC,
-#endif
         MAX_PRED_TYPES
     };
 
@@ -121,7 +113,6 @@ public:
     bool      m_modeFlag[2];
     bool      m_checkMergeAndSkipOnly[2];
 
-    IBC       m_ibc;
     Analysis();
 
     bool create(ThreadLocalData* tld);
@@ -129,7 +120,6 @@ public:
 
     Mode& compressCTU(CUData& ctu, Frame& frame, const CUGeom& cuGeom, const Entropy& initialContext);
     int32_t loadTUDepth(CUGeom cuGeom, CUData parentCTU);
-
 protected:
     /* Analysis data for save/load mode, writes/reads data based on absPartIdx */
     x265_analysis_inter_data*  m_reuseInterDataCTU;
@@ -172,20 +162,12 @@ protected:
     void qprdRefine(const CUData& parentCTU, const CUGeom& cuGeom, int32_t qp, int32_t lqp);
 
     /* full analysis for an I-slice CU */
-#if ENABLE_SCC_EXT
-    uint64_t compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom, int32_t qp, IBC* ibc = NULL);
-#else
     uint64_t compressIntraCU(const CUData& parentCTU, const CUGeom& cuGeom, int32_t qp);
-#endif
 
     /* full analysis for a P or B slice CU */
     uint32_t compressInterCU_dist(const CUData& parentCTU, const CUGeom& cuGeom, int32_t qp);
     SplitData compressInterCU_rd0_4(const CUData& parentCTU, const CUGeom& cuGeom, int32_t qp);
-#if ENABLE_SCC_EXT
-    SplitData compressInterCU_rd5_6(const CUData& parentCTU, const CUGeom& cuGeom, int32_t qp, IBC* ibc = NULL);
-#else
     SplitData compressInterCU_rd5_6(const CUData& parentCTU, const CUGeom& cuGeom, int32_t qp);
-#endif
 
     void recodeCU(const CUData& parentCTU, const CUGeom& cuGeom, int32_t qp, int32_t origqp = -1);
 
@@ -195,17 +177,9 @@ protected:
 
     /* measure inter options */
     void checkInter_rd0_4(Mode& interMode, const CUGeom& cuGeom, PartSize partSize, uint32_t refmask[2]);
-#if !ENABLE_SCC_EXT
     void checkInter_rd5_6(Mode& interMode, const CUGeom& cuGeom, PartSize partSize, uint32_t refmask[2]);
-#endif
+
     void checkBidir2Nx2N(Mode& inter2Nx2N, Mode& bidir2Nx2N, const CUGeom& cuGeom);
-
-#if ENABLE_SCC_EXT
-    void checkInter_rd5_6(Mode& interMode, const CUGeom& cuGeom, PartSize partSize, uint32_t refmask[2], MV* iMVCandList = NULL);
-
-    void checkRDCostIntraBCMerge2Nx2N(Mode& merge, const CUGeom& cuGeom);
-    void checkIntraBC_rd5_6(Mode& intraBCMode, const CUGeom& cuGeom, PartSize ePartSize, bool testOnlyPred, bool bUse1DSearchFor8x8, IBC& ibc, MV* iMVCandList = NULL);
-#endif
 
     /* encode current bestMode losslessly, pick best RD cost */
     void tryLossless(const CUGeom& cuGeom);

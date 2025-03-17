@@ -162,9 +162,12 @@ void FrameFilter::destroy()
 
     if (m_parallelFilter)
     {
-        // NOTE: don't check m_useSao because it is dynamic controllable
-        for(int row = 0; row < m_numRows; row++)
-            m_parallelFilter[row].m_sao.destroy((row == 0 ? 1 : 0));
+        if (m_useSao)
+        {
+            for(int row = 0; row < m_numRows; row++)
+                m_parallelFilter[row].m_sao.destroy((row == 0 ? 1 : 0));
+        }
+
         delete[] m_parallelFilter;
         m_parallelFilter = NULL;
     }
@@ -253,7 +256,7 @@ static void restoreOrigLosslessYuv(const CUData* cu, Frame& frame, uint32_t absP
     const int size = cu->m_log2CUSize[absPartIdx] - 2;
     const uint32_t cuAddr = cu->m_cuAddr;
 
-    PicYuv* reconPic = frame.m_reconPic[0];
+    PicYuv* reconPic = frame.m_reconPic;
     PicYuv* fencPic  = frame.m_fencPic;
 
     pixel* dst = reconPic->getLumaAddr(cuAddr, absPartIdx);
@@ -334,7 +337,7 @@ void FrameFilter::ParallelFilter::processSaoCTU(SAOParam *saoParam, int col)
 
         uint32_t cuAddr = m_rowAddr + col;
         const CUData* ctu = m_encData->getPicCTU(cuAddr);
-        assert(m_frameFilter->m_frame->m_reconPic[0] == m_encData->m_reconPic[0]);
+        assert(m_frameFilter->m_frame->m_reconPic == m_encData->m_reconPic);
         origCUSampleRestoration(ctu, cuGeoms[ctuGeomMap[cuAddr]], *m_frameFilter->m_frame);
     }
 }
@@ -349,7 +352,7 @@ void FrameFilter::ParallelFilter::processPostCu(int col) const
     if ((col != 0) & (col != m_frameFilter->m_numCols - 1) & (m_row != 0) & (m_row != m_frameFilter->m_numRows - 1))
         return;
 
-    PicYuv *reconPic = m_frameFilter->m_frame->m_reconPic[0];
+    PicYuv *reconPic = m_frameFilter->m_frame->m_reconPic;
     const uint32_t lineStartCUAddr = m_rowAddr + col;
     const int realH = getCUHeight();
     const int realW = m_frameFilter->getCUWidth(col);
@@ -438,7 +441,7 @@ void FrameFilter::ParallelFilter::processTasks(int /*workerThreadId*/)
     SAOParam* saoParam = m_encData->m_saoParam;
     const CUGeom* cuGeoms = m_frameFilter->m_frameEncoder->m_cuGeoms;
     const uint32_t* ctuGeomMap = m_frameFilter->m_frameEncoder->m_ctuGeomMap;
-    PicYuv* reconPic = m_encData->m_reconPic[0];
+    PicYuv* reconPic = m_encData->m_reconPic;
     const int colStart = m_lastCol.get();
     const int numCols = m_frameFilter->m_numCols;
     // TODO: Waiting previous row finish or simple clip on it?
@@ -558,7 +561,7 @@ void FrameFilter::ParallelFilter::processTasks(int /*workerThreadId*/)
     }
 }
 
-void FrameFilter::processRow(int row, int layer)
+void FrameFilter::processRow(int row)
 {
     ProfileScopeEvent(filterCTURow);
 
@@ -569,7 +572,7 @@ void FrameFilter::processRow(int row, int layer)
 
     if (!m_param->bEnableLoopFilter && !m_useSao)
     {
-        processPostRow(row, layer);
+        processPostRow(row);
         return;
     }
     FrameData& encData = *m_frame->m_encData;
@@ -613,7 +616,7 @@ void FrameFilter::processRow(int row, int layer)
 
     // this row of CTUs has been encoded
     if (!ctu->m_bFirstRowInSlice)
-        processPostRow(row - 1, layer);
+        processPostRow(row - 1);
 
     // NOTE: slices parallelism will be execute out-of-order
     int numRowFinished = 0;
@@ -645,18 +648,18 @@ void FrameFilter::processRow(int row, int layer)
     }
 
     if (ctu->m_bLastRowInSlice)
-        processPostRow(row, layer);
+        processPostRow(row);
 }
 
-void FrameFilter::processPostRow(int row, int layer)
+void FrameFilter::processPostRow(int row)
 {
-    PicYuv *reconPic = m_frame->m_reconPic[0];
+    PicYuv *reconPic = m_frame->m_reconPic;
     const uint32_t numCols = m_frame->m_encData->m_slice->m_sps->numCuInWidth;
     const uint32_t lineStartCUAddr = row * numCols;
 
     /* Generate integral planes for SEA motion search */
     if(m_param->searchMethod == X265_SEA)
-        computeMEIntegral(row, layer);
+        computeMEIntegral(row);
     // Notify other FrameEncoders that this row of reconstructed pixels is available
     m_frame->m_reconRowFlag[row].set(1);
 
@@ -670,7 +673,7 @@ void FrameFilter::processPostRow(int row, int layer)
         uint32_t height = m_parallelFilter[row].getCUHeight();
 
         uint64_t ssdY = m_frameEncoder->m_top->computeSSD(fencPic->getLumaAddr(cuAddr), reconPic->getLumaAddr(cuAddr), stride, width, height, m_param);
-        m_frameEncoder->m_SSDY[layer] += ssdY;
+        m_frameEncoder->m_SSDY += ssdY;
 
         if (m_param->internalCsp != X265_CSP_I400)
         {
@@ -681,8 +684,8 @@ void FrameFilter::processPostRow(int row, int layer)
             uint64_t ssdU = m_frameEncoder->m_top->computeSSD(fencPic->getCbAddr(cuAddr), reconPic->getCbAddr(cuAddr), stride, width, height, m_param);
             uint64_t ssdV = m_frameEncoder->m_top->computeSSD(fencPic->getCrAddr(cuAddr), reconPic->getCrAddr(cuAddr), stride, width, height, m_param);
 
-            m_frameEncoder->m_SSDU[layer] += ssdU;
-            m_frameEncoder->m_SSDV[layer] += ssdV;
+            m_frameEncoder->m_SSDU += ssdU;
+            m_frameEncoder->m_SSDV += ssdV;
         }
     }
 
@@ -702,15 +705,15 @@ void FrameFilter::processPostRow(int row, int layer)
         /* SSIM is done for each row in blocks of 4x4 . The First blocks are offset by 2 pixels to the right
         * to avoid alignment of ssim blocks with DCT blocks. */
         minPixY += bStart ? 2 : -6;
-        m_frameEncoder->m_ssim[layer] += calculateSSIM(rec + 2 + minPixY * stride1, stride1, fenc + 2 + minPixY * stride2, stride2,
+        m_frameEncoder->m_ssim += calculateSSIM(rec + 2 + minPixY * stride1, stride1, fenc + 2 + minPixY * stride2, stride2,
                                                 m_param->sourceWidth - 2, maxPixY - minPixY, m_ssimBuf, ssim_cnt);
-        m_frameEncoder->m_ssimCnt[layer] += ssim_cnt;
+        m_frameEncoder->m_ssimCnt += ssim_cnt;
     }
 
     if (m_param->maxSlices == 1)
     {
         uint32_t height = m_parallelFilter[row].getCUHeight();
-        m_frameEncoder->initDecodedPictureHashSEI(row, cuAddr, height, layer);
+        m_frameEncoder->initDecodedPictureHashSEI(row, cuAddr, height);
     } // end of (m_param->maxSlices == 1)
 
     if (ATOMIC_INC(&m_frameEncoder->m_completionCount) == 2 * (int)m_frameEncoder->m_numRows)
@@ -719,10 +722,10 @@ void FrameFilter::processPostRow(int row, int layer)
     }
 }
 
-void FrameFilter::computeMEIntegral(int row, int layer)
+void FrameFilter::computeMEIntegral(int row)
 {
     int lastRow = row == (int)m_frame->m_encData->m_slice->m_sps->numCuInHeight - 1;
-    if (m_frame->m_lowres.sliceType != X265_TYPE_B || !layer)
+    if (m_frame->m_lowres.sliceType != X265_TYPE_B)
     {
         /* If WPP, other than first row, integral calculation for current row needs to wait till the
         * integral for the previous row is computed */
@@ -734,7 +737,7 @@ void FrameFilter::computeMEIntegral(int row, int layer)
             }
         }
 
-        int stride = (int)m_frame->m_reconPic[0]->m_stride;
+        int stride = (int)m_frame->m_reconPic->m_stride;
         int padX = m_param->maxCUSize + 32;
         int padY = m_param->maxCUSize + 16;
         int numCuInHeight = m_frame->m_encData->m_slice->m_sps->numCuInHeight;
@@ -760,7 +763,7 @@ void FrameFilter::computeMEIntegral(int row, int layer)
 
         for (int y = startRow; y < height; y++)
         {
-            pixel    *pix = m_frame->m_reconPic[0]->m_picOrg[0] + y * stride - padX;
+            pixel    *pix = m_frame->m_reconPic->m_picOrg[0] + y * stride - padX;
             uint32_t *sum32x32 = m_frame->m_encData->m_meIntegral[0] + (y + 1) * stride - padX;
             uint32_t *sum32x24 = m_frame->m_encData->m_meIntegral[1] + (y + 1) * stride - padX;
             uint32_t *sum32x8 = m_frame->m_encData->m_meIntegral[2] + (y + 1) * stride - padX;

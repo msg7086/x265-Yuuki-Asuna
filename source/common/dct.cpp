@@ -439,8 +439,7 @@ static void partialButterfly4(const int16_t* src, int16_t* dst, int shift, int l
     }
 }
 
-namespace X265_NS {
-void dst4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
+static void dst4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
 {
     const int shift_1st = 1 + X265_DEPTH - 8;
     const int shift_2nd = 8;
@@ -457,7 +456,7 @@ void dst4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
     fastForwardDst(coef, dst, shift_2nd);
 }
 
-void dct4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
+static void dct4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
 {
     const int shift_1st = 1 + X265_DEPTH - 8;
     const int shift_2nd = 8;
@@ -474,7 +473,7 @@ void dct4_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
     partialButterfly4(coef, dst, shift_2nd, 4);
 }
 
-void dct8_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
+static void dct8_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
 {
     const int shift_1st = 2 + X265_DEPTH - 8;
     const int shift_2nd = 9;
@@ -491,7 +490,7 @@ void dct8_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
     partialButterfly8(coef, dst, shift_2nd, 8);
 }
 
-void dct16_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
+static void dct16_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
 {
     const int shift_1st = 3 + X265_DEPTH - 8;
     const int shift_2nd = 10;
@@ -508,7 +507,7 @@ void dct16_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
     partialButterfly16(coef, dst, shift_2nd, 16);
 }
 
-void dct32_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
+static void dct32_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
 {
     const int shift_1st = 4 + X265_DEPTH - 8;
     const int shift_2nd = 11;
@@ -525,7 +524,7 @@ void dct32_c(const int16_t* src, int16_t* dst, intptr_t srcStride)
     partialButterfly32(coef, dst, shift_2nd, 32);
 }
 
-void idst4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
+static void idst4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12 - (X265_DEPTH - 8);
@@ -542,7 +541,7 @@ void idst4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
     }
 }
 
-void idct4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
+static void idct4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12 - (X265_DEPTH - 8);
@@ -559,7 +558,7 @@ void idct4_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
     }
 }
 
-void idct8_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
+static void idct8_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12 - (X265_DEPTH - 8);
@@ -576,7 +575,7 @@ void idct8_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
     }
 }
 
-void idct16_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
+static void idct16_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12 - (X265_DEPTH - 8);
@@ -593,7 +592,7 @@ void idct16_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
     }
 }
 
-void idct32_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
+static void idct32_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
 {
     const int shift_1st = 7;
     const int shift_2nd = 12 - (X265_DEPTH - 8);
@@ -609,7 +608,6 @@ void idct32_c(const int16_t* src, int16_t* dst, intptr_t dstStride)
         memcpy(&dst[i * dstStride], &block[i * 32], 32 * sizeof(int16_t));
     }
 }
-} // namespace X265_NS
 
 static void dequant_normal_c(const int16_t* quantCoef, int16_t* coef, int num, int scale, int shift)
 {

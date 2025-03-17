@@ -372,7 +372,7 @@ function x265_filterPixelToShort_32x16_neon
     vmov.u16    q1, #8192
     vneg.s16    q1, q1
     mov         r12, #8
-.Loop_filterP2S_32x16:
+.loop_filterP2S_32x16:
     subs        r12, #1
 .rept 2
     vld1.u8     {q9-q10}, [r0], r1
@@ -391,7 +391,7 @@ function x265_filterPixelToShort_32x16_neon
     vmla.s16    q3, q10, q0
     vst1.16     {q2-q3}, [r2], r3
 .endr
-    bgt         .Loop_filterP2S_32x16
+    bgt         .loop_filterP2S_32x16
     bx          lr
 endfunc
 
@@ -402,7 +402,7 @@ function x265_filterPixelToShort_32x24_neon
     vmov.u16    q1, #8192
     vneg.s16    q1, q1
     mov         r12, #12
-.Loop_filterP2S_32x24:
+.loop_filterP2S_32x24:
     subs        r12, #1
 .rept 2
     vld1.u8     {q9-q10}, [r0], r1
@@ -421,7 +421,7 @@ function x265_filterPixelToShort_32x24_neon
     vmla.s16    q3, q10, q0
     vst1.16     {q2-q3}, [r2], r3
 .endr
-    bgt         .Loop_filterP2S_32x24
+    bgt         .loop_filterP2S_32x24
     bx          lr
 endfunc
 
@@ -432,7 +432,7 @@ function x265_filterPixelToShort_32x32_neon
     vmov.u16    q1, #8192
     vneg.s16    q1, q1
     mov         r12, #16
-.Loop_filterP2S_32x32:
+.loop_filterP2S_32x32:
     subs        r12, #1
 .rept 2
     vld1.u8     {q9-q10}, [r0], r1
@@ -451,7 +451,7 @@ function x265_filterPixelToShort_32x32_neon
     vmla.s16    q3, q10, q0
     vst1.16     {q2-q3}, [r2], r3
 .endr
-    bgt         .Loop_filterP2S_32x32
+    bgt         .loop_filterP2S_32x32
     bx          lr
 endfunc
 
@@ -462,7 +462,7 @@ function x265_filterPixelToShort_32x64_neon
     vmov.u16    q1, #8192
     vneg.s16    q1, q1
     mov         r12, #32
-.Loop_filterP2S_32x64:
+.loop_filterP2S_32x64:
     subs        r12, #1
 .rept 2
     vld1.u8     {q9-q10}, [r0], r1
@@ -481,7 +481,7 @@ function x265_filterPixelToShort_32x64_neon
     vmla.s16    q3, q10, q0
     vst1.16     {q2-q3}, [r2], r3
 .endr
-    bgt         .Loop_filterP2S_32x64
+    bgt         .loop_filterP2S_32x64
     bx          lr
 endfunc
 
@@ -493,7 +493,7 @@ function x265_filterPixelToShort_64x16_neon
     vmov.u16    q1, #8192
     vneg.s16    q1, q1
     mov         r12, #8
-.Loop_filterP2S_64x16:
+.loop_filterP2S_64x16:
     subs        r12, #1
 .rept 2
     vld1.u8     {q9-q10}, [r0]!
@@ -528,7 +528,7 @@ function x265_filterPixelToShort_64x16_neon
     vmla.s16    q3, q10, q0
     vst1.16     {q2-q3}, [r2], r3
 .endr
-    bgt         .Loop_filterP2S_64x16
+    bgt         .loop_filterP2S_64x16
     bx          lr
 endfunc
 
@@ -540,7 +540,7 @@ function x265_filterPixelToShort_64x32_neon
     vmov.u16    q1, #8192
     vneg.s16    q1, q1
     mov         r12, #16
-.Loop_filterP2S_64x32:
+.loop_filterP2S_64x32:
     subs        r12, #1
 .rept 2
     vld1.u8     {q9-q10}, [r0]!
@@ -575,7 +575,7 @@ function x265_filterPixelToShort_64x32_neon
     vmla.s16    q3, q10, q0
     vst1.16     {q2-q3}, [r2], r3
 .endr
-    bgt         .Loop_filterP2S_64x32
+    bgt         .loop_filterP2S_64x32
     bx          lr
 endfunc
 
@@ -587,7 +587,7 @@ function x265_filterPixelToShort_64x48_neon
     vmov.u16    q1, #8192
     vneg.s16    q1, q1
     mov         r12, #24
-.Loop_filterP2S_64x48:
+.loop_filterP2S_64x48:
     subs        r12, #1
 .rept 2
     vld1.u8     {q9-q10}, [r0]!
@@ -622,7 +622,7 @@ function x265_filterPixelToShort_64x48_neon
     vmla.s16    q3, q10, q0
     vst1.16     {q2-q3}, [r2], r3
 .endr
-    bgt         .Loop_filterP2S_64x48
+    bgt         .loop_filterP2S_64x48
     bx          lr
 endfunc
 
@@ -634,7 +634,7 @@ function x265_filterPixelToShort_64x64_neon
     vmov.u16    q1, #8192
     vneg.s16    q1, q1
     mov         r12, #32
-.Loop_filterP2S_64x64:
+.loop_filterP2S_64x64:
     subs        r12, #1
 .rept 2
     vld1.u8     {q9-q10}, [r0]!
@@ -669,7 +669,7 @@ function x265_filterPixelToShort_64x64_neon
     vmla.s16    q3, q10, q0
     vst1.16     {q2-q3}, [r2], r3
 .endr
-    bgt         .Loop_filterP2S_64x64
+    bgt         .loop_filterP2S_64x64
     bx          lr
 endfunc
 
@@ -681,7 +681,7 @@ function x265_filterPixelToShort_48x64_neon
     vmov.u16    q1, #8192
     vneg.s16    q1, q1
     mov         r12, #32
-.Loop_filterP2S_48x64:
+.loop_filterP2S_48x64:
     subs        r12, #1
 .rept 2
     vld1.u8     {q9-q10}, [r0]!
@@ -709,7 +709,7 @@ function x265_filterPixelToShort_48x64_neon
     vmla.s16    q3, q9, q0
     vst1.16     {q2-q3}, [r2], r3
 .endr
-    bgt         .Loop_filterP2S_48x64
+    bgt         .loop_filterP2S_48x64
     bx          lr
 endfunc
 
@@ -756,7 +756,7 @@ function x265_interp_8tap_vert_pp_4x\h\()_neon
     vmovl.u8    q2, d4
     vmovl.u8    q3, d6
 
-.Loop_4x\h:
+.loop_4x\h:
     // TODO: read extra 1 row for speed optimize, may made crash on OS X platform!
     vld1.u32    {d16[0]}, [r0], r1
     vld1.u32    {d16[1]}, [r0], r1
@@ -795,7 +795,7 @@ function x265_interp_8tap_vert_pp_4x\h\()_neon
     vst1.u32    {d18[1]}, [r2], r3
 
     subs        r12, #2
-    bne        .Loop_4x4
+    bne        .loop_4x4
 
     pop         {pc}
     .ltorg
@@ -945,13 +945,13 @@ LUMA_VPP_4xN 16
 
 .macro FILTER_VPP a b filterv
 
-.Loop_\filterv\()_\a\()x\b:
+.loop_\filterv\()_\a\()x\b:
 
     mov             r7, r2
     mov             r6, r0
     eor             r8, r8
 
-.Loop_w8_\filterv\()_\a\()x\b:
+.loop_w8_\filterv\()_\a\()x\b:
 
     add             r6, r0, r8
 
@@ -988,12 +988,12 @@ LUMA_VPP_4xN 16
 
     add             r8, #8
     cmp             r8, #\a
-    blt             .Loop_w8_\filterv\()_\a\()x\b
+    blt             .loop_w8_\filterv\()_\a\()x\b
 
     add             r0, r1
     add             r2, r3
     subs            r4, #1
-    bne             .Loop_\filterv\()_\a\()x\b
+    bne             .loop_\filterv\()_\a\()x\b 
 
 .endm 
 
@@ -1063,7 +1063,7 @@ function x265_interp_8tap_vert_pp_12x16_neon
     sub             r0, r4
 
     mov             r4, #16
-.Loop_vpp_12x16:
+.loop_vpp_12x16:
 
     mov             r6, r0
     mov             r7, r2
@@ -1173,7 +1173,7 @@ function x265_interp_8tap_vert_pp_12x16_neon
     add             r0, r1
     add             r2, r3
     subs            r4, #1
-    bne             .Loop_vpp_12x16
+    bne             .loop_vpp_12x16
 
     pop             {r4, r5, r6, r7}
     bx              lr
@@ -1194,7 +1194,7 @@ function x265_interp_8tap_vert_sp_4x\h\()_neon
     add             r12, #2048
     vdup.32         q8, r12
     mov             r4, #\h
-.Loop_vsp_4x\h:
+.loop_vsp_4x\h:
     movrel          r12, g_lumaFilter
     add             r12, r5
     mov             r6, r0
@@ -1266,7 +1266,7 @@ function x265_interp_8tap_vert_sp_4x\h\()_neon
 
     add             r0, r1
     subs            r4, #1
-    bne             .Loop_vsp_4x\h
+    bne             .loop_vsp_4x\h
     pop             {r4, r5, r6}
     bx              lr
     .ltorg
@@ -1369,13 +1369,13 @@ LUMA_VSP_4xN 16
 .macro FILTER_VSP a b filterv
 
     vpush           { q4 - q7}
-.Loop_\filterv\()_\a\()x\b:
+.loop_\filterv\()_\a\()x\b:
 
     mov             r7, r2
     mov             r6, r0
     eor             r8, r8
 
-.Loop_w8_\filterv\()_\a\()x\b:
+.loop_w8_\filterv\()_\a\()x\b:
 
     add             r6, r0, r8
 
@@ -1417,12 +1417,12 @@ LUMA_VSP_4xN 16
     mov             r12, #\a
     lsl             r12, #1
     cmp             r8, r12
-    blt             .Loop_w8_\filterv\()_\a\()x\b
+    blt             .loop_w8_\filterv\()_\a\()x\b
 
     add             r0, r1
     add             r2, r3
     subs            r4, #1
-    bne             .Loop_\filterv\()_\a\()x\b
+    bne             .loop_\filterv\()_\a\()x\b
 
     vpop            { q4 - q7}
 
@@ -1498,7 +1498,7 @@ function x265_interp_8tap_vert_sp_12x16_neon
 
     mov             r4, #16
     vpush           { q4 - q7}
-.Loop1_12x16:
+.loop1_12x16:
 
     mov             r6, r0
     mov             r7, r2
@@ -1612,7 +1612,7 @@ function x265_interp_8tap_vert_sp_12x16_neon
     add             r0, r1
     add             r2, r3
     subs            r4, #1
-    bne             .Loop1_12x16
+    bne             .loop1_12x16
     vpop            { q4 - q7}
     pop             {r4, r5, r6, r7}
     bx              lr
@@ -1632,7 +1632,7 @@ function x265_interp_8tap_vert_ps_4x\h\()_neon
     vdup.32         q8, r4
     mov             r4, #\h
 
-.Loop_vps_4x\h:
+.loop_vps_4x\h:
     movrel          r12, g_lumaFilter
     add             r12, r5
     mov             r6, r0
@@ -1702,7 +1702,7 @@ function x265_interp_8tap_vert_ps_4x\h\()_neon
 
     add             r0, r1
     subs            r4, #1
-    bne             .Loop_vps_4x\h
+    bne             .loop_vps_4x\h
 
     pop             {r4, r5, r6}
     bx              lr
@@ -1717,13 +1717,13 @@ LUMA_VPS_4xN 16
 
 .macro FILTER_VPS a b filterv
 
-.Loop_ps_\filterv\()_\a\()x\b:
+.loop_ps_\filterv\()_\a\()x\b:
 
     mov             r7, r2
     mov             r6, r0
     eor             r8, r8
 
-.Loop_ps_w8_\filterv\()_\a\()x\b:
+.loop_ps_w8_\filterv\()_\a\()x\b:
 
     add             r6, r0, r8
 
@@ -1759,12 +1759,12 @@ LUMA_VPS_4xN 16
 
     add             r8, #8
     cmp             r8, #\a
-    blt             .Loop_ps_w8_\filterv\()_\a\()x\b
+    blt             .loop_ps_w8_\filterv\()_\a\()x\b
 
     add             r0, r1
     add             r2, r3
     subs            r4, #1
-    bne             .Loop_ps_\filterv\()_\a\()x\b
+    bne             .loop_ps_\filterv\()_\a\()x\b 
 
 .endm 
 
@@ -1836,7 +1836,7 @@ function x265_interp_8tap_vert_ps_12x16_neon
     sub             r0, r4
 
     mov             r4, #16
-.Loop_vps_12x16:
+.loop_vps_12x16:
 
     mov             r6, r0
     mov             r7, r2
@@ -1942,7 +1942,7 @@ function x265_interp_8tap_vert_ps_12x16_neon
     add             r0, r1
     add             r2, r3
     subs            r4, #1
-    bne             .Loop_vps_12x16
+    bne             .loop_vps_12x16
 
     pop             {r4, r5, r6, r7}
     bx              lr
@@ -2081,13 +2081,13 @@ endfunc
 
     vpush           {q4-q7}
 
-.Loop_\filterv\()_\a\()x\b:
+.loop_\filterv\()_\a\()x\b:
 
     mov             r7, r2
     mov             r6, r0
     eor             r8, r8
 
-.Loop_w8_\filterv\()_\a\()x\b:
+.loop_w8_\filterv\()_\a\()x\b:
 
     add             r6, r0, r8
 
@@ -2121,12 +2121,12 @@ endfunc
 
     add             r8, #8
     cmp             r8, #\a
-    blt             .Loop_w8_\filterv\()_\a\()x\b
+    blt             .loop_w8_\filterv\()_\a\()x\b
 
     add             r0, r1
     add             r2, r3
     subs            r4, #1
-    bne             .Loop_\filterv\()_\a\()x\b
+    bne             .loop_\filterv\()_\a\()x\b 
     vpop            {q4-q7}
 .endm 
 
@@ -2217,13 +2217,13 @@ CHROMA_VPP 48 64
 
     vpush           {q4-q7}
 
-.Loop_vps_\filterv\()_\a\()x\b:
+.loop_vps_\filterv\()_\a\()x\b:
 
     mov             r7, r2
     mov             r6, r0
     eor             r8, r8
 
-.Loop_vps_w8_\filterv\()_\a\()x\b:
+.loop_vps_w8_\filterv\()_\a\()x\b:
 
     add             r6, r0, r8
 
@@ -2256,12 +2256,12 @@ CHROMA_VPP 48 64
 
     add             r8, #8
     cmp             r8, #\a
-    blt             .Loop_vps_w8_\filterv\()_\a\()x\b
+    blt             .loop_vps_w8_\filterv\()_\a\()x\b
 
     add             r0, r1
     add             r2, r3
     subs            r4, #1
-    bne             .Loop_vps_\filterv\()_\a\()x\b
+    bne             .loop_vps_\filterv\()_\a\()x\b 
     vpop            {q4-q7}
 .endm 
 
@@ -2353,13 +2353,13 @@ CHROMA_VPS 48 64
 
     vpush           {q4-q7}
 
-.Loop_vsp_\filterv\()_\a\()x\b:
+.loop_vsp_\filterv\()_\a\()x\b:
 
     mov             r7, r2
     mov             r6, r0
     eor             r8, r8
 
-.Loop_vsp_w8_\filterv\()_\a\()x\b:
+.loop_vsp_w8_\filterv\()_\a\()x\b:
 
     add             r6, r0, r8
 
@@ -2392,12 +2392,12 @@ CHROMA_VPS 48 64
     mov             r12, #\a
     lsl             r12, #1
     cmp             r8, r12
-    blt             .Loop_vsp_w8_\filterv\()_\a\()x\b
+    blt             .loop_vsp_w8_\filterv\()_\a\()x\b
 
     add             r0, r1
     add             r2, r3
     subs            r4, #1
-    bne             .Loop_vsp_\filterv\()_\a\()x\b
+    bne             .loop_vsp_\filterv\()_\a\()x\b 
     vpop            {q4-q7}
 .endm 
 

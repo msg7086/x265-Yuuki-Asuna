@@ -28,13 +28,12 @@
 using namespace X265_NS;
 using namespace std;
 
-YUVOutput::YUVOutput(const char *filename, int w, int h, uint32_t d, int csp, int inputdepth)
+YUVOutput::YUVOutput(const char *filename, int w, int h, uint32_t d, int csp)
     : width(w)
     , height(h)
     , depth(d)
     , colorSpace(csp)
     , frameSize(0)
-    , inputDepth(inputdepth)
 {
     ofs.open(filename, ios::binary | ios::out);
     buf = new char[width];
@@ -58,48 +57,49 @@ bool YUVOutput::writePicture(const x265_picture& pic)
     X265_CHECK(pic.bitDepth == (int)depth, "invalid bit depth\n");
 
 #if HIGH_BIT_DEPTH
-	if (depth == 8)
-	{
-		int shift = pic.bitDepth - 8;
-		ofs.seekp((std::streamoff)fileOffset);
-		for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
-		{
-			uint16_t *src = (uint16_t*)pic.planes[i];
-			for (int h = 0; h < height >> x265_cli_csps[colorSpace].height[i]; h++)
-			{
-				for (int w = 0; w < width >> x265_cli_csps[colorSpace].width[i]; w++)
-					buf[w] = (char)(src[w] >> shift);
+    if (depth == 8)
+    {
+        int shift = pic.bitDepth - 8;
+        ofs.seekp((std::streamoff)fileOffset);
+        for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
+        {
+            uint16_t *src = (uint16_t*)pic.planes[i];
+            for (int h = 0; h < height >> x265_cli_csps[colorSpace].height[i]; h++)
+            {
+                for (int w = 0; w < width >> x265_cli_csps[colorSpace].width[i]; w++)
+                    buf[w] = (char)(src[w] >> shift);
 
-				ofs.write(buf, width >> x265_cli_csps[colorSpace].width[i]);
-				src += pic.stride[i] / sizeof(*src);
-			}
-		}
-	}
-	else
-	{
-		ofs.seekp((std::streamoff)(fileOffset * 2));
-		for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
-		{
-			uint16_t *src = (uint16_t*)pic.planes[i];
-			for (int h = 0; h < height >> x265_cli_csps[colorSpace].height[i]; h++)
-			{
-				ofs.write((const char*)src, (width * 2) >> x265_cli_csps[colorSpace].width[i]);
-				src += pic.stride[i] / sizeof(*src);
-			}
-		}
-	}
-#else
-	ofs.seekp((std::streamoff)fileOffset);
-	for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
-	{
-		char *src = (char*)pic.planes[i];
-		for (int h = 0; h < height >> x265_cli_csps[colorSpace].height[i]; h++)
-		{
-			ofs.write(src, width >> x265_cli_csps[colorSpace].width[i]);
-			src += pic.stride[i] / sizeof(*src);
-		}
-	}
-#endif
+                ofs.write(buf, width >> x265_cli_csps[colorSpace].width[i]);
+                src += pic.stride[i] / sizeof(*src);
+            }
+        }
+    }
+    else
+    {
+        ofs.seekp((std::streamoff)(fileOffset * 2));
+        for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
+        {
+            uint16_t *src = (uint16_t*)pic.planes[i];
+            for (int h = 0; h < height >> x265_cli_csps[colorSpace].height[i]; h++)
+            {
+                ofs.write((const char*)src, (width * 2) >> x265_cli_csps[colorSpace].width[i]);
+                src += pic.stride[i] / sizeof(*src);
+            }
+        }
+    }
+#else // if HIGH_BIT_DEPTH
+    ofs.seekp((std::streamoff)fileOffset);
+    for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
+    {
+        char *src = (char*)pic.planes[i];
+        for (int h = 0; h < height >> x265_cli_csps[colorSpace].height[i]; h++)
+        {
+            ofs.write(src, width >> x265_cli_csps[colorSpace].width[i]);
+            src += pic.stride[i] / sizeof(*src);
+        }
+    }
+
+#endif // if HIGH_BIT_DEPTH
 
     return true;
 }

@@ -121,7 +121,7 @@ bool LavfInput::readPicture(x265_picture& p_pic, InputFileInfo* info)
     if (!h->cocon)
     {
         AVStream *stream = h->lavf->streams[h->stream_id];
-        const AVCodec *codec = avcodec_find_decoder(stream->codecpar->codec_id);
+        AVCodec *codec = avcodec_find_decoder(stream->codecpar->codec_id);
         h->cocon = avcodec_alloc_context3(codec);
         avcodec_parameters_to_context(h->cocon, stream->codecpar);
         avcodec_open2(h->cocon, codec, NULL);
@@ -309,7 +309,7 @@ void LavfInput::openfile(InputFileInfo& info)
     //if( opt->demuxer_threads > 1 )
     //    c->thread_count = opt->demuxer_threads;
 
-    const AVCodec *codec = avcodec_find_decoder(cp->codec_id);
+    AVCodec *codec = avcodec_find_decoder(cp->codec_id);
     h->cocon = avcodec_alloc_context3(codec);
     avcodec_parameters_to_context(h->cocon, cp);
     avcodec_open2(h->cocon, codec, NULL);

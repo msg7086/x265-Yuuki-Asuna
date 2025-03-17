@@ -141,28 +141,28 @@ bool AVSInput::readPicture(x265_picture& pic)
     pic.height = _info.height;
 
     if (frame_size == 0 || frame_buffer == nullptr) {
-        frame_size = frm->_height * frm->_pitch;
+        frame_size = frm->height * frm->pitch;
         if (h->plane_count > 1)
-            frame_size += frm->_heightUV * frm->_pitchUV * 2;
+            frame_size += frm->heightUV * frm->pitchUV * 2;
         frame_buffer = reinterpret_cast<uint8_t*>(x265_malloc(frame_size));
     }
     pic.framesize = frame_size;
 
     uint8_t* ptr = frame_buffer;
     pic.planes[0] = ptr;
-    pic.stride[0] = frm->_pitch;
-    memcpy(pic.planes[0], frm->_vfb->data + frm->_offset, frm->_pitch * frm->_height);
+    pic.stride[0] = frm->pitch;
+    memcpy(pic.planes[0], frm->vfb->data + frm->offset, frm->pitch * frm->height);
     if (h->plane_count > 1)
     {
-        ptr += frm->_pitch * frm->_height;
+        ptr += frm->pitch * frm->height;
         pic.planes[1] = ptr;
-        pic.stride[1] = frm->_pitchUV;
-        memcpy(pic.planes[1], frm->_vfb->data + frm->_offsetU, frm->_pitchUV * frm->_heightUV);
+        pic.stride[1] = frm->pitchUV;
+        memcpy(pic.planes[1], frm->vfb->data + frm->offsetU, frm->pitchUV * frm->heightUV);
 
-        ptr += frm->_pitchUV * frm->_heightUV;
+        ptr += frm->pitchUV * frm->heightUV;
         pic.planes[2] = ptr;
-        pic.stride[2] = frm->_pitchUV;
-        memcpy(pic.planes[2], frm->_vfb->data + frm->_offsetV, frm->_pitchUV * frm->_heightUV);
+        pic.stride[2] = frm->pitchUV;
+        memcpy(pic.planes[2], frm->vfb->data + frm->offsetV, frm->pitchUV * frm->heightUV);
     }
     pic.colorSpace = _info.csp;
     pic.bitDepth = _info.depth;

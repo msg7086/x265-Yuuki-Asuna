@@ -1,4 +1,0 @@
-#Multiview tests
-mv-config-file-f0.txt, --input-res 960x1080 --fps 25 --preset superfast --crf 22
-mv-config-file-f1.txt, --preset medium --crf 22  --slices 2 --no-cutree --vbv-maxrate 9000 --vbv-bufsize 7500 --me sea
-mv-config-file-f2.txt, --preset slow --bitrate 9000 --vbv-maxrate 9000 --vbv-bufsize 7500 --ctu 16 --ref 1

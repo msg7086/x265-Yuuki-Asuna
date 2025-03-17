@@ -43,7 +43,7 @@ public:
     ReconFile()           {}
 
     static ReconFile* open(const char *fname, int width, int height, uint32_t bitdepth,
-                           uint32_t fpsNum, uint32_t fpsDenom, int csp, int sourceBitDepth);
+                           uint32_t fpsNum, uint32_t fpsDenom, int csp);
 
     virtual bool isFail() const = 0;
 

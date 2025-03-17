@@ -103,7 +103,7 @@ function x265_pixel_sad_16x\h\()_neon
     vabal.u8        q9, d5, d7
     mov             r12, #(\h-2)/2
 
-.Loop_16x\h:
+.loop_16x\h:
 
     subs            r12, #1
     vld1.8          {q0}, [r0], r1
@@ -115,7 +115,7 @@ function x265_pixel_sad_16x\h\()_neon
     vabal.u8        q9, d1, d3
     vabal.u8        q8, d4, d6
     vabal.u8        q9, d5, d7
-    bne             .Loop_16x\h
+    bne             .loop_16x\h
 
     vadd.u16        q8, q8, q9
 .if \h == 64
@@ -147,7 +147,7 @@ function x265_pixel_sad_32x\h\()_neon
     veor.u8         q11, q11
     mov             r12, #\h/8
 
-.Loop_32x\h:
+.loop_32x\h:
 
     subs            r12, #1
 .rept 4
@@ -166,7 +166,7 @@ function x265_pixel_sad_32x\h\()_neon
     vabal.u8        q10, d26, d30
     vabal.u8        q11, d27, d31
 .endr
-    bne             .Loop_32x\h
+    bne             .loop_32x\h
 
     vadd.u16        q8, q8, q9
     vadd.u16        q10, q10, q11
@@ -213,7 +213,7 @@ function x265_pixel_sad_64x\h\()_neon
     sub             r3, r12
     mov             r12, #\h/8
 
-.Loop_64x\h:
+.loop_64x\h:
 
     subs            r12, #1
 .rept 4
@@ -246,7 +246,7 @@ function x265_pixel_sad_64x\h\()_neon
     vabal.u8        q10, d26, d30
     vabal.u8        q11, d27, d31
 .endr
-    bne             .Loop_64x\h
+    bne             .loop_64x\h
 
     vadd.u16        q8, q8, q9
     vadd.u16        q10, q10, q11
@@ -283,7 +283,7 @@ function x265_pixel_sad_24x32_neon
     sub             r3, #16
     mov             r12, #8
 
-.Loop_24x32:
+.loop_24x32:
 
     subs            r12, #1
 .rept 4
@@ -296,7 +296,7 @@ function x265_pixel_sad_24x32_neon
     vld1.8          {d1}, [r2], r3
     vabal.u8        q10, d0, d1
 .endr
-    bne             .Loop_24x32
+    bne             .loop_24x32
 
     vadd.u16        q8, q8, q9
     vadd.u16        d16, d16, d17
@@ -322,7 +322,7 @@ function x265_pixel_sad_48x64_neon
     sub             r3, #32
     mov             r12, #16
 
-.Loop_48x64:
+.loop_48x64:
 
     subs            r12, #1
 .rept 4
@@ -337,7 +337,7 @@ function x265_pixel_sad_48x64_neon
     vabal.u8        q14, d4, d20
     vabal.u8        q15, d5, d21
 .endr
-    bne             .Loop_48x64
+    bne             .loop_48x64
 
     vadd.u16        q3, q3, q11
     vadd.u16        d6, d6, d7
@@ -635,12 +635,12 @@ function x265_sad_x\x\()_16x\h\()_neon
     veor.u8         q15, q15
 .endif
 
-.Loop_sad_x\x\()_16x\h:
+.loop_sad_x\x\()_16x\h:
 .rept 8
     SAD_X_16 \x
 .endr
     subs            r6, #1
-    bne             .Loop_sad_x\x\()_16x\h
+    bne             .loop_sad_x\x\()_16x\h
 
     vadd.u16        q8, q8, q9
     vadd.u16        q10, q10, q11
@@ -929,12 +929,12 @@ function x265_sad_x\x\()_64x\h\()_neon
     veor.u8         q14, q14
     veor.u8         q15, q15
 .endif
-.Loop_sad_x\x\()_64x\h:
+.loop_sad_x\x\()_64x\h:
 .rept 8
     SAD_X_64 \x
 .endr
     subs            r6, #1
-    bne             .Loop_sad_x\x\()_64x\h
+    bne             .loop_sad_x\x\()_64x\h
 
 .if \h <= 16
     vadd.u16        q8, q8, q9
@@ -1071,12 +1071,12 @@ function x265_sad_x\x\()_48x64_neon
     veor.u8         q15, q15
 .endif
 
-.Loop_sad_x\x\()_48x64:
+.loop_sad_x\x\()_48x64:
 .rept 8
     SAD_X_48 \x
 .endr
     subs            r6, #1
-    bne             .Loop_sad_x\x\()_48x64
+    bne             .loop_sad_x\x\()_48x64
 
     vpaddl.u16      q8, q8
     vpaddl.u16      q9, q9
@@ -1179,12 +1179,12 @@ function x265_sad_x\x\()_24x32_neon
     veor.u8         q15, q15
 .endif
 
-.Loop_sad_x\x\()_24x32:
+.loop_sad_x\x\()_24x32:
 .rept 8
     SAD_X_24 \x
 .endr
     subs            r6, #1
-    bne             .Loop_sad_x\x\()_24x32
+    bne             .loop_sad_x\x\()_24x32
 
     vadd.u16        q8, q8, q9
     vadd.u16        q10, q10, q11

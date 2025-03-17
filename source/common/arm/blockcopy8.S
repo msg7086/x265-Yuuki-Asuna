@@ -795,7 +795,7 @@ function x265_count_nonzero_32_neon
     vmov            q2, q12
     vmov            q3, q14
 
-.Loop:
+.loop:    
     vldm            r0!, {q8-q15}
     subs            r1, #1
 
@@ -817,7 +817,7 @@ function x265_count_nonzero_32_neon
     vadd.s8         q1, q10
     vadd.s8         q2, q12
     vadd.s8         q3, q14
-    bgt            .Loop
+    bgt            .loop
 
     // sum
     vadd.s8         q0, q1
@@ -832,7 +832,7 @@ function x265_count_nonzero_32_neon
 
     vmov.u32        r0, d0[0]
     uasx            r0, r0, r0
-    lsr             r0, r0, #16
+    mov             r0, r0, lsr 16
     rsb             r0, #1024
     bx              lr
 endfunc

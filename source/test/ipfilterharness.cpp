@@ -67,7 +67,7 @@ bool IPFilterHarness::check_IPFilterChroma_primitive(filter_pp_t ref, filter_pp_
     {
         int index = i % TEST_CASES;
 
-        for (int coeffIdx = 1; coeffIdx < 8; coeffIdx++)
+        for (int coeffIdx = 0; coeffIdx < 8; coeffIdx++)
         {
             rand_srcStride = rand() % 100 + 2;
             rand_dstStride = rand() % 100 + 64;
@@ -102,7 +102,7 @@ bool IPFilterHarness::check_IPFilterChroma_ps_primitive(filter_ps_t ref, filter_
     {
         int index = i % TEST_CASES;
 
-        for (int coeffIdx = 1; coeffIdx < 8; coeffIdx++)
+        for (int coeffIdx = 0; coeffIdx < 8; coeffIdx++)
         {
             rand_srcStride = rand() % 100;
             rand_dstStride = rand() % 100 + 64;
@@ -144,7 +144,7 @@ bool IPFilterHarness::check_IPFilterChroma_hps_primitive(filter_hps_t ref, filte
     {
         int index = i % TEST_CASES;
 
-        for (int coeffIdx = 1; coeffIdx < 8; coeffIdx++)
+        for (int coeffIdx = 0; coeffIdx < 8; coeffIdx++)
         {
             // 0 : Interpolate W x H, 1 : Interpolate W x (H + 7)
             for (int isRowExt = 0; isRowExt < 2; isRowExt++)
@@ -185,7 +185,7 @@ bool IPFilterHarness::check_IPFilterChroma_sp_primitive(filter_sp_t ref, filter_
     {
         int index = i % TEST_CASES;
 
-        for (int coeffIdx = 1; coeffIdx < 8; coeffIdx++)
+        for (int coeffIdx = 0; coeffIdx < 8; coeffIdx++)
         {
             rand_srcStride = rand() % 100;
             rand_dstStride = rand() % 100 + 64;
@@ -220,7 +220,7 @@ bool IPFilterHarness::check_IPFilterChroma_ss_primitive(filter_ss_t ref, filter_
     {
         int index = i % TEST_CASES;
 
-        for (int coeffIdx = 1; coeffIdx < 8; coeffIdx++)
+        for (int coeffIdx = 0; coeffIdx < 8; coeffIdx++)
         {
             rand_srcStride = rand() % 100;
             rand_dstStride = rand() % 100 + 64;
@@ -255,7 +255,7 @@ bool IPFilterHarness::check_IPFilterLuma_primitive(filter_pp_t ref, filter_pp_t 
     {
         int index = i % TEST_CASES;
 
-        for (int coeffIdx = 1; coeffIdx < 4; coeffIdx++)
+        for (int coeffIdx = 0; coeffIdx < 4; coeffIdx++)
         {
             rand_srcStride = rand() % 100;
             rand_dstStride = rand() % 100 + 64;
@@ -290,7 +290,7 @@ bool IPFilterHarness::check_IPFilterLuma_ps_primitive(filter_ps_t ref, filter_ps
     {
         int index = i % TEST_CASES;
 
-        for (int coeffIdx = 1; coeffIdx < 4; coeffIdx++)
+        for (int coeffIdx = 0; coeffIdx < 4; coeffIdx++)
         {
             rand_srcStride = rand() % 100;
             rand_dstStride = rand() % 100 + 64;
@@ -325,7 +325,7 @@ bool IPFilterHarness::check_IPFilterLuma_hps_primitive(filter_hps_t ref, filter_
     {
         int index = i % TEST_CASES;
 
-        for (int coeffIdx = 1; coeffIdx < 4; coeffIdx++)
+        for (int coeffIdx = 0; coeffIdx < 4; coeffIdx++)
         {
             // 0 : Interpolate W x H, 1 : Interpolate W x (H + 7)
             for (int isRowExt = 0; isRowExt < 2; isRowExt++)
@@ -366,7 +366,7 @@ bool IPFilterHarness::check_IPFilterLuma_sp_primitive(filter_sp_t ref, filter_sp
     {
         int index = i % TEST_CASES;
 
-        for (int coeffIdx = 1; coeffIdx < 4; coeffIdx++)
+        for (int coeffIdx = 0; coeffIdx < 4; coeffIdx++)
         {
             rand_srcStride = rand() % 100;
             rand_dstStride = rand() % 100 + 64;
@@ -401,7 +401,7 @@ bool IPFilterHarness::check_IPFilterLuma_ss_primitive(filter_ss_t ref, filter_ss
     {
         int index = i % TEST_CASES;
 
-        for (int coeffIdx = 1; coeffIdx < 4; coeffIdx++)
+        for (int coeffIdx = 0; coeffIdx < 4; coeffIdx++)
         {
             rand_srcStride = rand() % 100;
             rand_dstStride = rand() % 100 + 64;
@@ -436,9 +436,9 @@ bool IPFilterHarness::check_IPFilterLumaHV_primitive(filter_hv_pp_t ref, filter_
     {
         int index = i % TEST_CASES;
 
-        for (int coeffIdxX = 1; coeffIdxX < 4; coeffIdxX++)
+        for (int coeffIdxX = 0; coeffIdxX < 4; coeffIdxX++)
         {
-            for (int coeffIdxY = 1; coeffIdxY < 4; coeffIdxY++)
+            for (int coeffIdxY = 0; coeffIdxY < 4; coeffIdxY++)
             {
                 rand_srcStride = rand() % 100;
                 rand_dstStride = rand() % 100 + 64;

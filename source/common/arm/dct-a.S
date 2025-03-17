@@ -422,7 +422,7 @@ function x265_dct_16x16_neon
     mov lr, #4*16*2
 
     // DCT-1D
-.Loop1:
+.loop1:
     // Row[0-3]
     vld1.16 {q8-q9}, [r0, :64], r2      // q8  = [07 06 05 04 03 02 01 00], q9  = [0F 0E 0D 0C 0B 0A 09 08]
     vld1.16 {q10-q11}, [r0, :64], r2    // q10 = [17 16 15 14 13 12 11 10], q11 = [1F 1E 1D 1C 1B 1A 19 18]
@@ -628,7 +628,7 @@ function x265_dct_16x16_neon
     // loop into next process group
     sub r3, #3*4*16*2
     subs r12, #1
-    bgt .Loop1
+    bgt .loop1
 
 
     // DCT-2D
@@ -637,7 +637,7 @@ function x265_dct_16x16_neon
     mov r3, #16*2*2
     mov r12, #16/4                      // Process 4 rows every loop
 
-.Loop2:
+.loop2:
     vldm r2, {q8-q15}
 
     // d16 = [30 20 10 00]
@@ -887,7 +887,7 @@ function x265_dct_16x16_neon
 
     sub r1, #(17*16-4)*2
     subs r12, #1
-    bgt .Loop2
+    bgt .loop2
 
     add sp, #16*16*2
     vpop {q4-q7}

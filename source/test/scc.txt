@@ -1,4 +1,0 @@
-#Screen Content Coding tests
-SlideEditing_1280x720_30.yuv, --scc 1 --rd 6 --preset superfast --crf 22 --temporal-layers 4
-SlideShow_1280x720_20.yuv, --scc 1 --rd 6 --preset medium --ctu 16 --ref 1
-SlideEditing_1280x720_30.yuv, --scc 1 --rd 6 --preset slow --bitrate 9000 --vbv-maxrate 9000 --vbv-bufsize 7500

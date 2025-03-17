@@ -77,7 +77,7 @@ public:
     void init(int csp);
 
     /* Methods called at slice setup */
-    void setSourcePU(pixel *fencY, intptr_t stride, intptr_t offset, int pwidth, int pheight, const int searchMethod, const int subpelRefine);
+
     void setSourcePU(pixel *fencY, intptr_t stride, intptr_t offset, int pwidth, int pheight, const int searchMethod, const int searchL0, const int searchL1, const int subpelRefine);
     void setSourcePU(const Yuv& srcFencYuv, int ctuAddr, int cuPartIdx, int puPartIdx, int pwidth, int pheight, const int searchMethod, const int subpelRefine, bool bChroma);
 
@@ -95,7 +95,7 @@ public:
     }
 
     void refineMV(ReferencePlanes* ref, const MV& mvmin, const MV& mvmax, const MV& qmvp, MV& outQMv);
-    int motionEstimate(ReferencePlanes* ref, const MV & mvmin, const MV & mvmax, const MV & qmvp, int numCandidates, const MV * mvc, int merange, MV & outQMv, uint32_t maxSlices, bool m_vertRestriction, pixel *srcReferencePlane = 0);
+    int motionEstimate(ReferencePlanes* ref, const MV & mvmin, const MV & mvmax, const MV & qmvp, int numCandidates, const MV * mvc, int merange, MV & outQMv, uint32_t maxSlices, pixel *srcReferencePlane = 0);
 
     int subpelCompare(ReferencePlanes* ref, const MV &qmv, pixelcmp_t);
 

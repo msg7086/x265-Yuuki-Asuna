@@ -121,7 +121,7 @@ function x265_pixel_sse_pp_32x32_neon
     veor.u8     q0, q0
     veor.u8     q1, q1
 
-.Loop_sse_pp_32:
+.loop_sse_pp_32:
     subs        r12, #1
 .rept 4
     vld1.64     {q8-q9}, [r0], r1
@@ -139,7 +139,7 @@ function x265_pixel_sse_pp_32x32_neon
     vmlal.s16   q0, d26, d26
     vmlal.s16   q1, d27, d27
 .endr
-    bne         .Loop_sse_pp_32
+    bne         .loop_sse_pp_32
     vadd.s32    q0, q1
     vadd.s32    d0, d0, d1
     vpadd.s32   d0, d0, d0
@@ -154,7 +154,7 @@ function x265_pixel_sse_pp_64x64_neon
     veor.u8     q0, q0
     veor.u8     q1, q1
 
-.Loop_sse_pp_64:
+.loop_sse_pp_64:
     subs        r12, #1
 .rept 4
     vld1.64     {q8-q9}, [r0]!
@@ -187,7 +187,7 @@ function x265_pixel_sse_pp_64x64_neon
     vmlal.s16   q0, d26, d26
     vmlal.s16   q1, d27, d27
 .endr
-    bne         .Loop_sse_pp_64
+    bne         .loop_sse_pp_64
     vadd.s32    q0, q1
     vadd.s32    d0, d0, d1
     vpadd.s32   d0, d0, d0
@@ -257,7 +257,7 @@ function x265_pixel_sse_ss_16x16_neon
     veor.u8     q0, q0
     veor.u8     q1, q1
 
-.Loop_sse_ss_16:
+.loop_sse_ss_16:
     subs        r12, #1
 .rept 4
     vld1.s16    {q8-q9}, [r0], r1
@@ -269,7 +269,7 @@ function x265_pixel_sse_ss_16x16_neon
     vmlal.s16   q0, d18, d18
     vmlal.s16   q1, d19, d19
 .endr
-    bne         .Loop_sse_ss_16
+    bne         .loop_sse_ss_16
     vadd.s32    q0, q1
     vadd.s32    d0, d0, d1
     vpadd.s32   d0, d0, d0
@@ -286,7 +286,7 @@ function x265_pixel_sse_ss_32x32_neon
     veor.u8     q0, q0
     veor.u8     q1, q1
 
-.Loop_sse_ss_32:
+.loop_sse_ss_32:
     subs        r12, #1
 .rept 4
     vld1.s16    {q8-q9}, [r0]!
@@ -307,7 +307,7 @@ function x265_pixel_sse_ss_32x32_neon
     vmlal.s16   q0, d18, d18
     vmlal.s16   q1, d19, d19
 .endr
-    bne         .Loop_sse_ss_32
+    bne         .loop_sse_ss_32
     vadd.s32    q0, q1
     vadd.s32    d0, d0, d1
     vpadd.s32   d0, d0, d0
@@ -324,7 +324,7 @@ function x265_pixel_sse_ss_64x64_neon
     veor.u8     q0, q0
     veor.u8     q1, q1
 
-.Loop_sse_ss_64:
+.loop_sse_ss_64:
     subs        r12, #1
 .rept 2
     vld1.s16    {q8-q9}, [r0]!
@@ -363,7 +363,7 @@ function x265_pixel_sse_ss_64x64_neon
     vmlal.s16   q0, d18, d18
     vmlal.s16   q1, d19, d19
 .endr
-    bne         .Loop_sse_ss_64
+    bne         .loop_sse_ss_64
     vadd.s32    q0, q1
     vadd.s32    d0, d0, d1
     vpadd.s32   d0, d0, d0
@@ -417,7 +417,7 @@ function x265_pixel_ssd_s_16x16_neon
     veor.u8     q0, q0
     veor.u8     q1, q1
 
-.Loop_ssd_s_16:
+.loop_ssd_s_16:
     subs        r12, #1
 .rept 2
     vld1.s16    {q8-q9}, [r0], r1
@@ -431,7 +431,7 @@ function x265_pixel_ssd_s_16x16_neon
     vmlal.s16   q0, d22, d22
     vmlal.s16   q1, d23, d23
 .endr
-    bne         .Loop_ssd_s_16
+    bne         .loop_ssd_s_16
     vadd.s32    q0, q1
     vadd.s32    d0, d0, d1
     vpadd.s32   d0, d0, d0
@@ -446,7 +446,7 @@ function x265_pixel_ssd_s_32x32_neon
     veor.u8     q0, q0
     veor.u8     q1, q1
 
-.Loop_ssd_s_32:
+.loop_ssd_s_32:
     subs        r12, #1
 .rept 4
     vld1.s16    {q8-q9}, [r0]!
@@ -460,7 +460,7 @@ function x265_pixel_ssd_s_32x32_neon
     vmlal.s16   q0, d22, d22
     vmlal.s16   q1, d23, d23
 .endr
-    bne         .Loop_ssd_s_32
+    bne         .loop_ssd_s_32
     vadd.s32    q0, q1
     vadd.s32    d0, d0, d1
     vpadd.s32   d0, d0, d0

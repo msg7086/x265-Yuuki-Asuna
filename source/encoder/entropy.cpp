@@ -230,16 +230,11 @@ Entropy::Entropy()
     X265_CHECK(sizeof(m_contextState) >= sizeof(m_contextState[0]) * MAX_OFF_CTX_MOD, "context state table is too small\n");
 }
 
-#if ENABLE_ALPHA || ENABLE_MULTIVIEW
-void Entropy::codeVPS(const VPS& vps, const SPS& sps)
-#else
 void Entropy::codeVPS(const VPS& vps)
-#endif
 {
-    int maxLayers = (vps.m_numLayers > 1 || vps.m_numViews > 1) + 1;
     WRITE_CODE(0,       4, "vps_video_parameter_set_id");
     WRITE_CODE(3,       2, "vps_reserved_three_2bits");
-    WRITE_CODE(maxLayers - 1, 6, "vps_reserved_zero_6bits");
+    WRITE_CODE(0,       6, "vps_reserved_zero_6bits");
     WRITE_CODE(vps.maxTempSubLayers - 1, 3, "vps_max_sub_layers_minus1");
     WRITE_FLAG(vps.maxTempSubLayers == 1,   "vps_temporal_id_nesting_flag");
     WRITE_CODE(0xffff, 16, "vps_reserved_ffff_16bits");
@@ -250,325 +245,55 @@ void Entropy::codeVPS(const VPS& vps)
 
     for (uint32_t i = 0; i < vps.maxTempSubLayers; i++)
     {
-        WRITE_UVLC(vps.maxDecPicBuffering[i] - 1, "vps_max_dec_pic_buffering_minus1[i]");
-        WRITE_UVLC(vps.numReorderPics[i],         "vps_num_reorder_pics[i]");
-        WRITE_UVLC(vps.maxLatencyIncrease[i] + 1, "vps_max_latency_increase_plus1[i]");
+        WRITE_UVLC(vps.maxDecPicBuffering - 1, "vps_max_dec_pic_buffering_minus1[i]");
+        WRITE_UVLC(vps.numReorderPics,         "vps_num_reorder_pics[i]");
+        WRITE_UVLC(vps.maxLatencyIncrease + 1, "vps_max_latency_increase_plus1[i]");
     }
 
-#if ENABLE_ALPHA || ENABLE_MULTIVIEW
-    if (vps.m_numLayers > 1 || vps.m_numViews > 1)
-    {
-        WRITE_CODE(maxLayers - 1, 6, "vps_max_nuh_reserved_zero_layer_id");
-        WRITE_UVLC(vps.m_vpsNumLayerSetsMinus1, "vps_num_layer_sets_minus1");
-        for (int i = 1; i <= vps.m_vpsNumLayerSetsMinus1; i++)
-        {
-#if ENABLE_MULTIVIEW
-            if (vps.m_numViews > 1)
-            {
-                for (int j = 0; j < vps.m_numViews; j++)
-                {
-                    WRITE_FLAG(1, "layer_id_included_flag[opsIdx][i]");
-                }
-            }
-#endif
-#if ENABLE_ALPHA
-            if (vps.m_numLayers > 1)
-            {
-                for (int j = 0; j < vps.m_numLayers; j++)
-                {
-                    WRITE_FLAG(1, "layer_id_included_flag[opsIdx][i]");
-                }
-            }
-#endif
-        }
-    }
-    else
-    {
-        WRITE_CODE(0, 6, "vps_max_nuh_reserved_zero_layer_id");
-        WRITE_UVLC(0, "vps_max_op_sets_minus1");
-    }
-#else
     WRITE_CODE(0, 6, "vps_max_nuh_reserved_zero_layer_id");
-    WRITE_UVLC(0, "vps_max_op_sets_minus1");
-#endif
-
+    WRITE_UVLC(0,    "vps_max_op_sets_minus1");
     WRITE_FLAG(0,    "vps_timing_info_present_flag"); /* we signal timing info in SPS-VUI */
-
-#if ENABLE_ALPHA || ENABLE_MULTIVIEW
-    if (vps.m_numLayers > 1 || vps.m_numViews > 1)
-    {
-        WRITE_FLAG(vps.vps_extension_flag, "vps_extension_flag");
-
-        if (vps.vps_extension_flag)
-        {
-            while (m_bitIf->getNumberOfWrittenBits() % X265_BYTE != 0)
-            {
-                WRITE_FLAG(1, "vps_extension_alignment_bit_equal_to_one");
-            }
-
-            WRITE_CODE(vps.ptl.levelIdc, 8, "general_level_idc");
-            if (vps.maxTempSubLayers > 1)
-            {
-                for (uint32_t i = 0; i < vps.maxTempSubLayers - 1; i++)
-                {
-                    WRITE_FLAG(0, "sub_layer_profile_present_flag[i]");
-                    WRITE_FLAG(0, "sub_layer_level_present_flag[i]");
-                }
-                for (int i = vps.maxTempSubLayers - 1; i < 8; i++)
-                    WRITE_CODE(0, 2, "reserved_zero_2bits");
-            }
-
-            WRITE_FLAG(vps.splitting_flag, "splitting flag");
-            for (int i = 0; i < MAX_VPS_NUM_SCALABILITY_TYPES; i++)
-            {
-                WRITE_FLAG(vps.m_scalabilityMask[i], "scalability_mask[i]");
-            }
-            for (int i = 0; i < vps.scalabilityTypes - vps.splitting_flag; i++)
-            {
-                WRITE_CODE(vps.m_dimensionIdLen[i] - 1, 3, "dimension_id_len_minus1[i]");
-            }
-            WRITE_FLAG(vps.m_nuhLayerIdPresentFlag, "vps_nuh_layer_id_present_flag");
-            for (int i = 1; i < maxLayers; i++)
-            {
-                if (vps.m_nuhLayerIdPresentFlag)
-                    WRITE_CODE(vps.m_layerIdInNuh[i], 6, "layer_id_in_nuh[i]");
-
-                if (!vps.splitting_flag)
-                {
-                    for (int j = 0; j < vps.scalabilityTypes; j++)
-                    {
-                        uint8_t bits = vps.m_dimensionIdLen[j];
-                        WRITE_CODE(vps.m_dimensionId[i][j], bits, "dimension_id[i][j]");
-                    }
-                }
-            }
-            WRITE_CODE(vps.m_viewIdLen, 4, "view_id_len");
-
-#if ENABLE_ALPHA
-            if (vps.m_numLayers > 1)
-            {
-                WRITE_FLAG(0, "direct_dependency_flag[1][0]");
-                WRITE_UVLC(0, "num_add_layer_sets");
-                WRITE_FLAG(0, "vps_sub_layers_max_minus1_present_flag");
-                WRITE_FLAG(0, "max_tid_ref_present_flag");
-                WRITE_FLAG(0, "default_ref_layers_active_flag");
-                WRITE_UVLC(2, "vps_num_profile_tier_level_minus1");
-                WRITE_FLAG(1, "vps_profile_present_flag");
-                codeProfileTier(vps.ptl, vps.maxTempSubLayers, 1);
-
-                WRITE_UVLC(0, "num_add_olss");
-                WRITE_CODE(0, 2, "default_output_layer_idc");
-                WRITE_CODE(1, 2, "profile_tier_level_idx[ i ][ j ]");
-                WRITE_CODE(2, 2, "profile_tier_level_idx[ i ][ j ]");
-
-                WRITE_UVLC(0, "vps_num_rep_formats_minus1");
-
-                WRITE_CODE(sps.picWidthInLumaSamples, 16, "pic_width_vps_in_luma_samples");
-                WRITE_CODE(sps.picHeightInLumaSamples, 16, "pic_height_vps_in_luma_samples");
-                WRITE_FLAG(1, "chroma_and_bit_depth_vps_present_flag");
-
-                WRITE_CODE(sps.chromaFormatIdc, 2, "chroma_format_vps_idc");
-
-                if (sps.chromaFormatIdc == X265_CSP_I444)
-                    WRITE_FLAG(0, "separate_colour_plane_vps_flag");
-
-                WRITE_CODE(X265_DEPTH - 8, 4, "bit_depth_vps_luma_minus8");
-                WRITE_CODE(X265_DEPTH - 8, 4, "bit_depth_vps_chroma_minus8");
-
-                const Window& conf = sps.conformanceWindow;
-                WRITE_FLAG(conf.bEnabled, "conformance_window_vps_flag");
-                if (conf.bEnabled)
-                {
-                    int hShift = CHROMA_H_SHIFT(sps.chromaFormatIdc), vShift = CHROMA_V_SHIFT(sps.chromaFormatIdc);
-                    WRITE_UVLC(conf.leftOffset >> hShift, "conf_win_vps_left_offset");
-                    WRITE_UVLC(conf.rightOffset >> hShift, "conf_win_vps_right_offset");
-                    WRITE_UVLC(conf.topOffset >> vShift, "conf_win_vps_top_offset");
-                    WRITE_UVLC(conf.bottomOffset >> vShift, "conf_win_vps_bottom_offset");
-                }
-
-                WRITE_FLAG(1, "max_one_active_ref_layer_flag");
-                WRITE_FLAG(0, "vps_poc_lsb_aligned_flag");
-                WRITE_FLAG(1, "poc_lsb_not_present_flag[");
-
-                for (int i = 1; i < vps.m_vpsNumLayerSetsMinus1 + 1; i++)
-                {
-                    WRITE_FLAG(vps.maxTempSubLayers > 1, "sub_layer_flag_info_present_flag");
-                    for (uint32_t j = 0; j < vps.maxTempSubLayers ; j++)
-                    {
-                        if(j > 0)
-                        WRITE_FLAG(vps.maxTempSubLayers > 1, "sub_layer_dpb_info_present_flag");
-
-                        for(int k = 0; k < vps.m_numLayersInIdList[i]; k++)
-                            WRITE_UVLC(vps.maxDecPicBuffering[j] - 1, "vps_max_dec_pic_buffering_minus1[i]");
-
-                        WRITE_UVLC(vps.numReorderPics[0], "vps_num_reorder_pics[i]");
-                        WRITE_UVLC(vps.maxLatencyIncrease[0] + 1, "vps_max_latency_increase_plus1[i]");
-                    }
-                }
-
-                WRITE_UVLC(0, "direct_dep_type_len_minus2");
-
-                WRITE_FLAG(0, "default_direct_dependency_flag");
-                WRITE_UVLC(0, "vps_non_vui_extension_length");
-                WRITE_FLAG(0, "vps_vui_present_flag");
-                WRITE_FLAG(0, "vps_extension2_flag");
-        }
-#endif
-
-#if ENABLE_MULTIVIEW
-            if (vps.m_numViews > 1)
-            {
-                for (uint8_t i = 0; i < vps.m_numViews; i++)
-                    WRITE_CODE(i, vps.m_viewIdLen, "view_id_val[i]");
-
-                for (int i = 1; i < vps.m_numViews; i++)
-                {
-                    for (int j = 0; j < i; j++)
-                    {
-                        if (j == 0)
-                            WRITE_FLAG(1, "direct_dependency_flag[1][0]");
-                        else
-                            WRITE_FLAG(0, "direct_dependency_flag[1][0]");
-                    }
-                }
-                WRITE_FLAG(0, "vps_sub_layers_max_minus1_present_flag");
-                WRITE_FLAG(0, "max_tid_ref_present_flag");
-                WRITE_FLAG(1, "default_ref_layers_active_flag");
-                WRITE_UVLC(2, "vps_num_profile_tier_level_minus1");
-                WRITE_FLAG(1, "vps_profile_present_flag[i]");
-                codeProfileTier(vps.ptl, vps.maxTempSubLayers, 1);
-                WRITE_UVLC(0, "num_add_olss");
-                WRITE_CODE(0, 2, "default_output_layer_idc");
-
-                for (int i = 1; i <= vps.m_vpsNumLayerSetsMinus1; i++)
-                {
-                    for (int j = 0; j < vps.m_numViews; j++)
-                    {
-                        WRITE_CODE((j == 0) ? 1 : 2, 2, "profile_tier_level_idx[ i ][ j ]");
-                    }
-                }
-                WRITE_UVLC(0, "vps_num_rep_formats_minus1");
-
-                WRITE_CODE(sps.picWidthInLumaSamples, 16, "pic_width_vps_in_luma_samples");
-                WRITE_CODE(sps.picHeightInLumaSamples, 16, "pic_height_vps_in_luma_samples");
-                WRITE_FLAG(1, "chroma_and_bit_depth_vps_present_flag");
-
-                WRITE_CODE(sps.chromaFormatIdc, 2, "chroma_format_vps_idc");
-
-                if (sps.chromaFormatIdc == X265_CSP_I444)
-                    WRITE_FLAG(0, "separate_colour_plane_vps_flag");
-
-                WRITE_CODE(X265_DEPTH - 8, 4, "bit_depth_vps_luma_minus8");
-                WRITE_CODE(X265_DEPTH - 8, 4, "bit_depth_vps_chroma_minus8");
-
-                const Window& conf = sps.conformanceWindow;
-                WRITE_FLAG(conf.bEnabled, "conformance_window_vps_flag");
-                if (conf.bEnabled)
-                {
-                    int hShift = CHROMA_H_SHIFT(sps.chromaFormatIdc), vShift = CHROMA_V_SHIFT(sps.chromaFormatIdc);
-                    WRITE_UVLC(conf.leftOffset >> hShift, "conf_win_vps_left_offset");
-                    WRITE_UVLC(conf.rightOffset >> hShift, "conf_win_vps_right_offset");
-                    WRITE_UVLC(conf.topOffset >> vShift, "conf_win_vps_top_offset");
-                    WRITE_UVLC(conf.bottomOffset >> vShift, "conf_win_vps_bottom_offset");
-                }
-
-                WRITE_FLAG(1, "max_one_active_ref_layer_flag");
-                WRITE_FLAG(0, "vps_poc_lsb_aligned_flag");
-
-                for (int i = 1; i < vps.m_vpsNumLayerSetsMinus1 + 1; i++)
-                {
-                    WRITE_FLAG(vps.maxTempSubLayers > 1, "sub_layer_flag_info_present_flag");
-                    for (uint32_t j = 0; j < vps.maxTempSubLayers; j++)
-                    {
-                        if (j > 0)
-                            WRITE_FLAG(vps.maxTempSubLayers > 1, "sub_layer_dpb_info_present_flag");
-
-                        for (int k = 0; k < vps.m_numLayersInIdList[i]; k++)
-                            WRITE_UVLC(vps.maxDecPicBuffering[j] - 1, "vps_max_dec_pic_buffering_minus1[i]");
-
-                        WRITE_UVLC(vps.numReorderPics[0], "vps_num_reorder_pics[i]");
-                        WRITE_UVLC(vps.maxLatencyIncrease[0] + 1, "vps_max_latency_increase_plus1[i]");
-                    }
-                }
-
-                WRITE_UVLC(0, "direct_dep_type_len_minus2");
-
-                WRITE_FLAG(1, "default_direct_dependency_flag");
-                WRITE_CODE(2, 2, "default_direct_dependency_type");
-                WRITE_UVLC(0, "vps_non_vui_extension_length");
-                WRITE_FLAG(0, "vps_vui_present_flag");
-                WRITE_FLAG(0, "vps_extension2_flag");
-            }
-#endif
-        }
-    }
-    else
-        WRITE_FLAG(0, "vps_extension_flag");
-#else
-    WRITE_FLAG(0, "vps_extension_flag");
-#endif
+    WRITE_FLAG(0,    "vps_extension_flag");
 }
 
-void Entropy::codeSPS(const SPS& sps, const ScalingList& scalingList, const ProfileTierLevel& ptl, int layer)
+void Entropy::codeSPS(const SPS& sps, const ScalingList& scalingList, const ProfileTierLevel& ptl)
 {
     WRITE_CODE(0, 4, "sps_video_parameter_set_id");
-#if ENABLE_MULTIVIEW
-    if(layer != 0)
-        WRITE_CODE(sps.setSpsExtOrMaxSubLayersMinus1, 3, "sps_ext_or_max_sub_layers_minus1");
-    else
-        WRITE_CODE(sps.maxTempSubLayers - 1, 3, "sps_max_sub_layers_minus1");
-    if (!(layer != 0 && sps.setSpsExtOrMaxSubLayersMinus1 == 7))
-#else
     WRITE_CODE(sps.maxTempSubLayers - 1, 3, "sps_max_sub_layers_minus1");
-#endif
+    WRITE_FLAG(sps.maxTempSubLayers == 1,   "sps_temporal_id_nesting_flag");
+
+    codeProfileTier(ptl, sps.maxTempSubLayers);
+
+    WRITE_UVLC(0, "sps_seq_parameter_set_id");
+    WRITE_UVLC(sps.chromaFormatIdc, "chroma_format_idc");
+
+    if (sps.chromaFormatIdc == X265_CSP_I444)
+        WRITE_FLAG(0,                       "separate_colour_plane_flag");
+
+    WRITE_UVLC(sps.picWidthInLumaSamples,   "pic_width_in_luma_samples");
+    WRITE_UVLC(sps.picHeightInLumaSamples,  "pic_height_in_luma_samples");
+
+    const Window& conf = sps.conformanceWindow;
+    WRITE_FLAG(conf.bEnabled, "conformance_window_flag");
+    if (conf.bEnabled)
     {
-        WRITE_FLAG(sps.maxTempSubLayers == 1, "sps_temporal_id_nesting_flag");
-        codeProfileTier(ptl, sps.maxTempSubLayers);
+        int hShift = CHROMA_H_SHIFT(sps.chromaFormatIdc), vShift = CHROMA_V_SHIFT(sps.chromaFormatIdc);
+        WRITE_UVLC(conf.leftOffset   >> hShift, "conf_win_left_offset");
+        WRITE_UVLC(conf.rightOffset  >> hShift, "conf_win_right_offset");
+        WRITE_UVLC(conf.topOffset    >> vShift, "conf_win_top_offset");
+        WRITE_UVLC(conf.bottomOffset >> vShift, "conf_win_bottom_offset");
     }
 
-    WRITE_UVLC(layer, "sps_seq_parameter_set_id");
-#if ENABLE_MULTIVIEW
-    if (layer != 0 && sps.setSpsExtOrMaxSubLayersMinus1 == 7)
-        WRITE_FLAG(0, "update_rep_format_flag");
-    else
-#endif
-    {
-        WRITE_UVLC(sps.chromaFormatIdc, "chroma_format_idc");
-
-        if (sps.chromaFormatIdc == X265_CSP_I444)
-            WRITE_FLAG(0,                       "separate_colour_plane_flag");
-
-        WRITE_UVLC(sps.picWidthInLumaSamples,   "pic_width_in_luma_samples");
-        WRITE_UVLC(sps.picHeightInLumaSamples,  "pic_height_in_luma_samples");
-
-        const Window& conf = sps.conformanceWindow;
-        WRITE_FLAG(conf.bEnabled, "conformance_window_flag");
-        if (conf.bEnabled)
-        {
-            int hShift = CHROMA_H_SHIFT(sps.chromaFormatIdc), vShift = CHROMA_V_SHIFT(sps.chromaFormatIdc);
-            WRITE_UVLC(conf.leftOffset   >> hShift, "conf_win_left_offset");
-            WRITE_UVLC(conf.rightOffset  >> hShift, "conf_win_right_offset");
-            WRITE_UVLC(conf.topOffset    >> vShift, "conf_win_top_offset");
-            WRITE_UVLC(conf.bottomOffset >> vShift, "conf_win_bottom_offset");
-        }
-
-        WRITE_UVLC(X265_DEPTH - 8,   "bit_depth_luma_minus8");
-        WRITE_UVLC(X265_DEPTH - 8,   "bit_depth_chroma_minus8");
-    }
-
+    WRITE_UVLC(X265_DEPTH - 8,   "bit_depth_luma_minus8");
+    WRITE_UVLC(X265_DEPTH - 8,   "bit_depth_chroma_minus8");
     WRITE_UVLC(sps.log2MaxPocLsb - 4, "log2_max_pic_order_cnt_lsb_minus4");
-#if ENABLE_MULTIVIEW
-    if (!(layer != 0 && sps.setSpsExtOrMaxSubLayersMinus1 == 7))
-#endif
-    {
-        WRITE_FLAG(true,             "sps_sub_layer_ordering_info_present_flag");
+    WRITE_FLAG(true,             "sps_sub_layer_ordering_info_present_flag");
 
-        for (uint32_t i = 0; i < sps.maxTempSubLayers; i++)
-        {
-            WRITE_UVLC(sps.maxDecPicBuffering[i] - 1, "sps_max_dec_pic_buffering_minus1[i]");
-            WRITE_UVLC(sps.numReorderPics[i],         "sps_num_reorder_pics[i]");
-            WRITE_UVLC(sps.maxLatencyIncrease[i] + 1, "sps_max_latency_increase_plus1[i]");
-        }
+    for (uint32_t i = 0; i < sps.maxTempSubLayers; i++)
+    {
+        WRITE_UVLC(sps.maxDecPicBuffering - 1, "sps_max_dec_pic_buffering_minus1[i]");
+        WRITE_UVLC(sps.numReorderPics,         "sps_num_reorder_pics[i]");
+        WRITE_UVLC(sps.maxLatencyIncrease + 1, "sps_max_latency_increase_plus1[i]");
     }
 
     WRITE_UVLC(sps.log2MinCodingBlockSize - 3,    "log2_min_coding_block_size_minus3");
@@ -580,18 +305,9 @@ void Entropy::codeSPS(const SPS& sps, const ScalingList& scalingList, const Prof
     WRITE_FLAG(scalingList.m_bEnabled,            "scaling_list_enabled_flag");
     if (scalingList.m_bEnabled)
     {
-#if ENABLE_MULTIVIEW
-        if ((layer != 0 && sps.setSpsExtOrMaxSubLayersMinus1 == 7))
-            WRITE_FLAG(sps.spsInferScalingListFlag, "sps_infer_scaling_list_flag");
-        if(sps.spsInferScalingListFlag)
-            WRITE_CODE(0, 6, "sps_scaling_list_ref_layer_id");
-        else
-#endif
-        {
-            WRITE_FLAG(scalingList.m_bDataPresent, "sps_scaling_list_data_present_flag");
-            if (scalingList.m_bDataPresent)
-                codeScalingList(scalingList);
-        }
+        WRITE_FLAG(scalingList.m_bDataPresent,    "sps_scaling_list_data_present_flag");
+        if (scalingList.m_bDataPresent)
+            codeScalingList(scalingList);
     }
     WRITE_FLAG(sps.bUseAMP, "amp_enabled_flag");
     WRITE_FLAG(sps.bUseSAO, "sample_adaptive_offset_enabled_flag");
@@ -606,47 +322,18 @@ void Entropy::codeSPS(const SPS& sps, const ScalingList& scalingList, const Prof
     WRITE_FLAG(sps.bUseStrongIntraSmoothing, "sps_strong_intra_smoothing_enable_flag");
 
     WRITE_FLAG(1, "vui_parameters_present_flag");
-    codeVUI(sps.vuiParameters, sps.maxTempSubLayers, sps.bEmitVUITimingInfo, sps.bEmitVUIHRDInfo, layer);
+    codeVUI(sps.vuiParameters, sps.maxTempSubLayers, sps.bEmitVUITimingInfo, sps.bEmitVUIHRDInfo);
 
-    WRITE_FLAG(sps.sps_extension_flag, "sps_extension_flag");
-
-#if ENABLE_MULTIVIEW
-    if (sps.sps_extension_flag && sps.maxViews > 1)
-    {
-        WRITE_FLAG(0, "sps_range_extensions_flag");
-        WRITE_FLAG(sps.maxViews > 1, "sps_multilayer_extension_flag");
-        WRITE_FLAG(0, "sps_3d_extension_flag");
-        WRITE_CODE(0, 5, "sps_extension_5bits");
-
-        if (layer == 0)
-            WRITE_FLAG(0, "inter_view_mv_vert_constraint_flag");
-        else
-            WRITE_FLAG(1, "inter_view_mv_vert_constraint_flag");
-    }
-#endif
-
-#if ENABLE_SCC_EXT
-    if (ptl.profileIdc[0] == Profile::MAINSCC)
-    {
-        bool sps_extension_flags[NUM_EXTENSION_FLAGS] = { false };
-        sps_extension_flags[SCC_EXT_IDX] = true;
-        for (int i = 0; i < NUM_EXTENSION_FLAGS; i++)
-            WRITE_FLAG(sps_extension_flags[i], "sps_extension_flag");
-        WRITE_FLAG(1, "intra_block_copy_enabled_flag");
-        WRITE_FLAG(0, "palette_mode_enabled_flag");
-        WRITE_CODE(0, 2, "motion_vector_resolution_control_idc");
-        WRITE_FLAG(0, "intra_boundary_filter_disabled_flag");
-    }
-#endif
+    WRITE_FLAG(0, "sps_extension_flag");
 }
 
-void Entropy::codePPS( const PPS& pps, bool filerAcross, int iPPSInitQpMinus26, int layer)
+void Entropy::codePPS( const PPS& pps, bool filerAcross, int iPPSInitQpMinus26 )
 {
-    WRITE_UVLC(layer,                          "pps_pic_parameter_set_id");
-    WRITE_UVLC(layer,                          "pps_seq_parameter_set_id");
+    WRITE_UVLC(0,                          "pps_pic_parameter_set_id");
+    WRITE_UVLC(0,                          "pps_seq_parameter_set_id");
     WRITE_FLAG(0,                          "dependent_slice_segments_enabled_flag");
     WRITE_FLAG(0,                          "output_flag_present_flag");
-    WRITE_CODE(pps.maxViews > 1 ? 2 : 0, 3,"num_extra_slice_header_bits");
+    WRITE_CODE(0, 3,                       "num_extra_slice_header_bits");
     WRITE_FLAG(pps.bSignHideEnabled,       "sign_data_hiding_flag");
     WRITE_FLAG(0,                          "cabac_init_present_flag");
     WRITE_UVLC(pps.numRefIdxDefault[0] - 1, "num_ref_idx_l0_default_active_minus1");
@@ -664,8 +351,8 @@ void Entropy::codePPS( const PPS& pps, bool filerAcross, int iPPSInitQpMinus26, 
     WRITE_SVLC(pps.chromaQpOffset[1],      "pps_cr_qp_offset");
     WRITE_FLAG(pps.pps_slice_chroma_qp_offsets_present_flag, "pps_slice_chroma_qp_offsets_present_flag");
 
-    WRITE_FLAG(layer ? 0 : pps.bUseWeightPred,            "weighted_pred_flag");
-    WRITE_FLAG(layer ? 0 : pps.bUseWeightedBiPred,        "weighted_bipred_flag");
+    WRITE_FLAG(pps.bUseWeightPred,            "weighted_pred_flag");
+    WRITE_FLAG(pps.bUseWeightedBiPred,        "weighted_bipred_flag");
     WRITE_FLAG(pps.bTransquantBypassEnabled,  "transquant_bypass_enable_flag");
     WRITE_FLAG(0,                             "tiles_enabled_flag");
     WRITE_FLAG(pps.bEntropyCodingSyncEnabled, "entropy_coding_sync_enabled_flag");
@@ -687,60 +374,23 @@ void Entropy::codePPS( const PPS& pps, bool filerAcross, int iPPSInitQpMinus26, 
     WRITE_FLAG(0, "lists_modification_present_flag");
     WRITE_UVLC(0, "log2_parallel_merge_level_minus2");
     WRITE_FLAG(0, "slice_segment_header_extension_present_flag");
-    WRITE_FLAG(pps.pps_extension_flag, "pps_extension_flag");
-
-#if ENABLE_MULTIVIEW
-    if (pps.pps_extension_flag && pps.maxViews > 1)
-    {
-        WRITE_FLAG(0, "pps_range_extensions_flag");
-        WRITE_FLAG(pps.maxViews > 1, "pps_multilayer_extension_flag");
-        WRITE_FLAG(0, "pps_3d_extension_flag");
-        WRITE_CODE(0, 5, "pps_extension_5bits");
-
-        if (pps.maxViews > 1)
-        {
-            WRITE_FLAG(0, "poc_reset_info_present_flag");
-            WRITE_FLAG(0, "pps_infer_scaling_list_flag");
-            WRITE_UVLC(0, "num_ref_loc_offsets");
-            WRITE_FLAG(0, "colour_mapping_enabled_flag");
-        }
-    }
-#endif
-
-
-#if ENABLE_SCC_EXT
-    if (pps.profileIdc == Profile::MAINSCC)
-    {
-        bool pps_extension_flags[NUM_EXTENSION_FLAGS] = { false };
-        pps_extension_flags[SCC_EXT_IDX] = true;
-        for (int i = 0; i < NUM_EXTENSION_FLAGS; i++)
-            WRITE_FLAG(pps_extension_flags[i], "pps_extension_flag");
-        WRITE_FLAG(1, "curr_pic_as_ref_enabled_pps_flag");
-        WRITE_FLAG(0, "adaptive_colour_trans_flag");
-        WRITE_FLAG(0, "palette_predictor_initializer_flag");
-    }
-#endif
+    WRITE_FLAG(0, "pps_extension_flag");
 }
 
-void Entropy::codeProfileTier(const ProfileTierLevel& ptl, int maxTempSubLayers, int layer)
+void Entropy::codeProfileTier(const ProfileTierLevel& ptl, int maxTempSubLayers)
 {
     WRITE_CODE(0, 2,                "XXX_profile_space[]");
     WRITE_FLAG(ptl.tierFlag,        "XXX_tier_flag[]");
-    WRITE_CODE(ptl.profileIdc[layer], 5,   "XXX_profile_idc[]");
+    WRITE_CODE(ptl.profileIdc, 5,   "XXX_profile_idc[]");
     for (int j = 0; j < 32; j++)
-    {
-        if (layer)
-            WRITE_FLAG(j == ptl.profileIdc[layer] ? 1 : 0, "XXX_profile_compatibility_flag[][j]");
-        else
-            WRITE_FLAG(ptl.profileCompatibilityFlag[j], "XXX_profile_compatibility_flag[][j]");
-    }
+        WRITE_FLAG(ptl.profileCompatibilityFlag[j], "XXX_profile_compatibility_flag[][j]");
 
     WRITE_FLAG(ptl.progressiveSourceFlag,   "general_progressive_source_flag");
     WRITE_FLAG(ptl.interlacedSourceFlag,    "general_interlaced_source_flag");
     WRITE_FLAG(ptl.nonPackedConstraintFlag, "general_non_packed_constraint_flag");
     WRITE_FLAG(ptl.frameOnlyConstraintFlag, "general_frame_only_constraint_flag");
 
-    if (ptl.profileIdc[layer] == Profile::MAINREXT || ptl.profileIdc[layer] == Profile::HIGHTHROUGHPUTREXT || ptl.profileIdc[layer] == Profile::SCALABLEMAIN || ptl.profileIdc[layer] == Profile::SCALABLEMAIN10 || ptl.profileIdc[layer] == Profile::MULTIVIEWMAIN || ptl.profileIdc[layer] == Profile::MAINSCC)
+    if (ptl.profileIdc == Profile::MAINREXT || ptl.profileIdc == Profile::HIGHTHROUGHPUTREXT)
     {
         uint32_t bitDepthConstraint = ptl.bitDepthConstraint;
         int csp = ptl.chromaFormatConstraint;
@@ -753,19 +403,9 @@ void Entropy::codeProfileTier(const ProfileTierLevel& ptl, int maxTempSubLayers,
         WRITE_FLAG(ptl.intraConstraintFlag,        "general_intra_constraint_flag");
         WRITE_FLAG(ptl.onePictureOnlyConstraintFlag,"general_one_picture_only_constraint_flag");
         WRITE_FLAG(ptl.lowerBitRateConstraintFlag, "general_lower_bit_rate_constraint_flag");
-        if (ptl.profileIdc[layer] == Profile::MAINSCC)
-        {
-            WRITE_FLAG(bitDepthConstraint <= 14, "max_14bit_constraint_flag");
-            WRITE_CODE(0, 16, "reserved_zero_33bits[0..15]");
-            WRITE_CODE(0, 16, "reserved_zero_33bits[16..31]");
-            WRITE_FLAG(0, "reserved_zero_33bits[32]");
-        }
-        else
-        {
-            WRITE_CODE(0, 16, "XXX_reserved_zero_35bits[0..15]");
-            WRITE_CODE(0, 16, "XXX_reserved_zero_35bits[16..31]");
-            WRITE_CODE(0, 3, "XXX_reserved_zero_35bits[32..34]");
-        }
+        WRITE_CODE(0 , 16, "XXX_reserved_zero_35bits[0..15]");
+        WRITE_CODE(0 , 16, "XXX_reserved_zero_35bits[16..31]");
+        WRITE_CODE(0 ,  3, "XXX_reserved_zero_35bits[32..34]");
     }
     else
     {
@@ -773,24 +413,19 @@ void Entropy::codeProfileTier(const ProfileTierLevel& ptl, int maxTempSubLayers,
         WRITE_CODE(0, 16, "XXX_reserved_zero_44bits[16..31]");
         WRITE_CODE(0, 12, "XXX_reserved_zero_44bits[32..43]");
     }
-    if (ptl.profileIdc[layer] == Profile::MAINSCC)
-        WRITE_FLAG(false, "inbld_flag");
 
     WRITE_CODE(ptl.levelIdc, 8, "general_level_idc");
 
     if (maxTempSubLayers > 1)
     {
-        for(int i = 0; i < maxTempSubLayers - 1; i++)
-        {
-            WRITE_FLAG(0, "sub_layer_profile_present_flag[i]");
-            WRITE_FLAG(0, "sub_layer_level_present_flag[i]");
-        }
+         WRITE_FLAG(0, "sub_layer_profile_present_flag[i]");
+         WRITE_FLAG(0, "sub_layer_level_present_flag[i]");
          for (int i = maxTempSubLayers - 1; i < 8 ; i++)
              WRITE_CODE(0, 2, "reserved_zero_2bits");
     }
 }
 
-void Entropy::codeVUI(const VUI& vui, int maxSubTLayers, bool bEmitVUITimingInfo, bool bEmitVUIHRDInfo, int layer)
+void Entropy::codeVUI(const VUI& vui, int maxSubTLayers, bool bEmitVUITimingInfo, bool bEmitVUIHRDInfo)
 {
     WRITE_FLAG(vui.aspectRatioInfoPresentFlag, "aspect_ratio_info_present_flag");
     if (vui.aspectRatioInfoPresentFlag)
@@ -841,28 +476,23 @@ void Entropy::codeVUI(const VUI& vui, int maxSubTLayers, bool bEmitVUITimingInfo
         WRITE_UVLC(vui.defaultDisplayWindow.bottomOffset, "def_disp_win_bottom_offset");
     }
 
-    if(layer)
+    if (!bEmitVUITimingInfo)
         WRITE_FLAG(0, "vui_timing_info_present_flag");
     else
     {
-        if (!bEmitVUITimingInfo)
-            WRITE_FLAG(0, "vui_timing_info_present_flag");
-        else
-        {
-            WRITE_FLAG(1, "vui_timing_info_present_flag");
-            WRITE_CODE(vui.timingInfo.numUnitsInTick, 32, "vui_num_units_in_tick");
-            WRITE_CODE(vui.timingInfo.timeScale, 32, "vui_time_scale");
-            WRITE_FLAG(0, "vui_poc_proportional_to_timing_flag");
-        }
+        WRITE_FLAG(1, "vui_timing_info_present_flag");
+        WRITE_CODE(vui.timingInfo.numUnitsInTick, 32, "vui_num_units_in_tick");
+        WRITE_CODE(vui.timingInfo.timeScale, 32, "vui_time_scale");
+        WRITE_FLAG(0, "vui_poc_proportional_to_timing_flag");
+    }
 
-        if (!bEmitVUIHRDInfo)
-            WRITE_FLAG(0, "vui_hrd_parameters_present_flag");
-        else
-        {
-            WRITE_FLAG(vui.hrdParametersPresentFlag, "vui_hrd_parameters_present_flag");
-            if (vui.hrdParametersPresentFlag)
-                codeHrdParameters(vui.hrdParameters, maxSubTLayers);
-        }
+    if (!bEmitVUIHRDInfo)
+        WRITE_FLAG(0, "vui_hrd_parameters_present_flag");
+    else
+    {
+        WRITE_FLAG(vui.hrdParametersPresentFlag, "vui_hrd_parameters_present_flag");
+        if (vui.hrdParametersPresentFlag)
+            codeHrdParameters(vui.hrdParameters, maxSubTLayers);
     }
 
     WRITE_FLAG(0, "bitstream_restriction_flag");
@@ -957,13 +587,13 @@ void Entropy::codeAUD(const Slice& slice)
     WRITE_CODE(picType, 3, "pic_type");
 }
 
-void Entropy::codeSliceHeader(const Slice& slice, FrameData& encData, uint32_t slice_addr, uint32_t slice_addr_bits, int sliceQp, int layer)
+void Entropy::codeSliceHeader(const Slice& slice, FrameData& encData, uint32_t slice_addr, uint32_t slice_addr_bits, int sliceQp)
 {
     WRITE_FLAG((slice_addr == 0 ? 1 : 0), "first_slice_segment_in_pic_flag");
     if (slice.getRapPicFlag())
         WRITE_FLAG(0, "no_output_of_prior_pics_flag");
 
-    WRITE_UVLC(layer, "slice_pic_parameter_set_id");
+    WRITE_UVLC(0, "slice_pic_parameter_set_id");
 
     /* x265 does not use dependent slices, so always write all this data */
     if (slice_addr)
@@ -973,32 +603,13 @@ void Entropy::codeSliceHeader(const Slice& slice, FrameData& encData, uint32_t s
         WRITE_CODE(slice_addr, slice_addr_bits, "slice_segment_address");
     }
 
-#if ENABLE_MULTIVIEW
-    if (encData.m_param->numViews > 1)
-    {
-        int esb = 0;
-        if (2 > esb)
-        {
-            esb++;
-            WRITE_FLAG(0, "discardable_flag");
-        }
-        if (2 > esb)
-        {
-            esb++;
-            WRITE_FLAG(0, "cross_layer_bla_flag");
-        }
-    }
-#endif
-
     WRITE_UVLC(slice.m_sliceType, "slice_type");
 
-    if ((slice.m_param->numViews > 1 && layer > 0) || !slice.getIdrPicFlag())
+    if (!slice.getIdrPicFlag())
     {
         int picOrderCntLSB = (slice.m_poc - slice.m_lastIDR + (1 << slice.m_sps->log2MaxPocLsb)) % (1 << slice.m_sps->log2MaxPocLsb);
         WRITE_CODE(picOrderCntLSB, slice.m_sps->log2MaxPocLsb, "pic_order_cnt_lsb");
-    }
-    if (!slice.getIdrPicFlag())
-    {
+
 #if _DEBUG || CHECKED_BUILD
         // check for bitstream restriction stating that:
         // If the current picture is a BLA or CRA picture, the value of NumPocTotalCurr shall be equal to 0.
@@ -1027,11 +638,7 @@ void Entropy::codeSliceHeader(const Slice& slice, FrameData& encData, uint32_t s
         }
 
         if (slice.m_sps->bTemporalMVPEnabled)
-#if ENABLE_SCC_EXT
-            WRITE_FLAG(slice.m_bTemporalMvp, "slice_temporal_mvp_enable_flag");
-#else
             WRITE_FLAG(1, "slice_temporal_mvp_enable_flag");
-#endif
     }
     const SAOParam *saoParam = encData.m_saoParam;
     if (slice.m_bUseSao)
@@ -1073,11 +680,7 @@ void Entropy::codeSliceHeader(const Slice& slice, FrameData& encData, uint32_t s
     if (slice.isInterB())
         WRITE_FLAG(0, "mvd_l1_zero_flag");
 
-#if ENABLE_SCC_EXT
-    if (slice.m_bTemporalMvp)
-#else
     if (slice.m_sps->bTemporalMVPEnabled)
-#endif
     {
         if (slice.m_sliceType == B_SLICE)
             WRITE_FLAG(slice.m_colFromL0Flag, "collocated_from_l0_flag");
@@ -1089,7 +692,7 @@ void Entropy::codeSliceHeader(const Slice& slice, FrameData& encData, uint32_t s
             WRITE_UVLC(slice.m_colRefIdx, "collocated_ref_idx");
         }
     }
-    if (((slice.m_pps->bUseWeightPred && slice.m_sliceType == P_SLICE) || (slice.m_pps->bUseWeightedBiPred && slice.m_sliceType == B_SLICE)) && !layer)
+    if ((slice.m_pps->bUseWeightPred && slice.m_sliceType == P_SLICE) || (slice.m_pps->bUseWeightedBiPred && slice.m_sliceType == B_SLICE))
         codePredWeightTable(slice);
 
     X265_CHECK(slice.m_maxNumMergeCand <= MRG_MAX_NUM_CANDS, "too many merge candidates\n");
@@ -1776,12 +1379,7 @@ void Entropy::codePredWeightTable(const Slice& slice)
                     }
                     bDenomCoded = true;
                 }
-#if ENABLE_SCC_EXT
-                if (slice.m_poc == slice.m_refPOCList[list][ref])
-                    assert(!wp[0].wtPresent);
-                else
-#endif
-                    WRITE_FLAG(!!wp[0].wtPresent, "luma_weight_lX_flag");
+                WRITE_FLAG(!!wp[0].wtPresent, "luma_weight_lX_flag");
                 totalSignalledWeightFlags += wp[0].wtPresent;
             }
 
@@ -1790,12 +1388,7 @@ void Entropy::codePredWeightTable(const Slice& slice)
                 for (int ref = 0; ref < slice.m_numRefIdx[list]; ref++)
                 {
                     wp = slice.m_weightPredTable[list][ref];
-#if ENABLE_SCC_EXT
-                    if (slice.m_poc == slice.m_refPOCList[list][ref])
-                        assert(!wp[1].wtPresent);
-                    else
-#endif
-                        WRITE_FLAG(!!wp[1].wtPresent, "chroma_weight_lX_flag");
+                    WRITE_FLAG(!!wp[1].wtPresent, "chroma_weight_lX_flag");
                     totalSignalledWeightFlags += 2 * wp[1].wtPresent;
                 }
             }

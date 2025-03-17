@@ -316,7 +316,7 @@ static inline void pelFilterLuma(pixel* src, intptr_t srcStep, intptr_t offset, 
 
 void Deblock::edgeFilterLuma(const CUData* cuQ, uint32_t absPartIdx, uint32_t depth, int32_t dir, int32_t edge, const uint8_t blockStrength[])
 {
-    PicYuv* reconPic = cuQ->m_encData->m_reconPic[0];
+    PicYuv* reconPic = cuQ->m_encData->m_reconPic;
     pixel* src = reconPic->getLumaAddr(cuQ->m_cuAddr, absPartIdx);
     intptr_t stride = reconPic->m_stride;
     const PPS* pps = cuQ->m_slice->m_pps;
@@ -429,7 +429,7 @@ void Deblock::edgeFilterChroma(const CUData* cuQ, uint32_t absPartIdx, uint32_t 
                 : ((g_zscanToPelY[absPartIdx] + edge * UNIT_SIZE) >> cuQ->m_vChromaShift)) % DEBLOCK_SMALLEST_BLOCK == 0,
                "invalid edge\n");
 
-    PicYuv* reconPic = cuQ->m_encData->m_reconPic[0];
+    PicYuv* reconPic = cuQ->m_encData->m_reconPic;
     intptr_t stride = reconPic->m_strideC;
     intptr_t srcOffset = reconPic->getChromaAddrOffset(cuQ->m_cuAddr, absPartIdx);
     bool bCheckNoFilter = pps->bTransquantBypassEnabled;

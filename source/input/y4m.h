@@ -57,8 +57,6 @@ protected:
 
     int frameCount;
 
-    bool alphaAvailable;
-
     bool threadActive;
 
     ThreadSafeInteger readCount;
@@ -73,7 +71,7 @@ protected:
 
 public:
 
-    Y4MInput(InputFileInfo& info, bool alpha, int format);
+    Y4MInput(InputFileInfo& info);
 
     virtual ~Y4MInput();
     void release();

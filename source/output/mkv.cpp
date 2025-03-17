@@ -132,7 +132,7 @@ int MKVOutput::writeHeaders(const x265_nal* p_nal, uint32_t nalcount)
     // general_tier_flag                   1     Specifies the context for the interpretation of general_level_idc
     // general_profile_idc                 5     Defines the profile of the bitstream
     *(phc++) = (m_ptl.tierFlag & 1) << 5
-        | (m_ptl.profileIdc[0] & 0x1f);
+        | (m_ptl.profileIdc & 0x1f);
     // general_profile_compatibility_flag  32    Defines profile compatibility, see [2] for interpretation
     for (int j = 0; j < 4; j++)
     {

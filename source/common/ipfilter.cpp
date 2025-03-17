@@ -34,8 +34,8 @@ using namespace X265_NS;
 #pragma warning(disable: 4127) // conditional expression is constant, typical for templated functions
 #endif
 
-namespace X265_NS {
-// x265 private namespace
+namespace {
+// file local namespace
 
 template<int width, int height>
 void filterPixelToShort_c(const pixel* src, intptr_t srcStride, int16_t* dst, intptr_t dstStride)
@@ -367,6 +367,10 @@ void interp_hv_pp_c(const pixel* src, intptr_t srcStride, pixel* dst, intptr_t d
     interp_horiz_ps_c<N, width, height>(src, srcStride, immed, width, idxX, 1);
     filterVertical_sp_c<N>(immed + (N / 2 - 1) * width, width, dst, dstStride, width, height, idxY);
 }
+}
+
+namespace X265_NS {
+// x265 private namespace
 
 #define CHROMA_420(W, H) \
     p.chroma[X265_CSP_I420].pu[CHROMA_420_ ## W ## x ## H].filter_hpp = interp_horiz_pp_c<4, W, H>; \

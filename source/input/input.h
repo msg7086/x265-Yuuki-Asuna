@@ -25,9 +25,9 @@
 #define X265_INPUT_H
 
 #define MIN_FRAME_WIDTH 64
-#define MAX_FRAME_WIDTH 16384
+#define MAX_FRAME_WIDTH 8192
 #define MIN_FRAME_HEIGHT 64
-#define MAX_FRAME_HEIGHT 8704
+#define MAX_FRAME_HEIGHT 4320
 #define MIN_FRAME_RATE 1
 #define MAX_FRAME_RATE 300
 
@@ -67,7 +67,7 @@ public:
 
     InputFile()           {}
 
-    static InputFile* open(InputFileInfo& info, bool bForceY4m, bool alpha, int format);
+    static InputFile* open(InputFileInfo& info, bool bForceY4m);
 
     virtual void startReader() = 0;
 

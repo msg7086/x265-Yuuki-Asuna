@@ -42,14 +42,13 @@ using namespace std;
 static const char header[] = {'F','R','A','M','E'};
 static const char magic_xlength[] = {'L','E','N','G','T','H','='};
 
-Y4MInput::Y4MInput(InputFileInfo& info, bool alpha, int format)
+Y4MInput::Y4MInput(InputFileInfo& info)
 {
     for (int i = 0; i < QUEUE_SIZE; i++)
         buf[i] = NULL;
 
     threadActive = false;
     colorSpace = info.csp;
-    alphaAvailable = alpha;
     sarWidth = info.sarWidth;
     sarHeight = info.sarHeight;
     width = info.width;
@@ -72,13 +71,11 @@ Y4MInput::Y4MInput(InputFileInfo& info, bool alpha, int format)
         ifs = x265_fopen(info.filename, "rb");
     if (ifs && !ferror(ifs) && parseHeader())
     {
-        if (format == 1) width /= 2;
-        if (format == 2) height /= 2;
         int pixelbytes = depth > 8 ? 2 : 1;
-        for (int i = 0; i < x265_cli_csps[colorSpace].planes + alphaAvailable; i++)
+        for (int i = 0; i < x265_cli_csps[colorSpace].planes; i++)
         {
-            int stride = ((width * (format == 1 ? 2 : 1)) >> x265_cli_csps[colorSpace].width[i]) * pixelbytes;
-            framesize += (stride * ((height * (format == 2 ? 2 : 1)) >> x265_cli_csps[colorSpace].height[i]));
+            int stride = (width >> x265_cli_csps[colorSpace].width[i]) * pixelbytes;
+            framesize += (stride * (height >> x265_cli_csps[colorSpace].height[i]));
         }
 
         threadActive = true;
@@ -399,19 +396,12 @@ bool Y4MInput::readPicture(x265_picture& pic)
         pic.height = height;
         pic.width = width;
         pic.colorSpace = colorSpace;
-        pic.stride[0] = width * pixelbytes * (pic.format == 1 ? 2 : 1);
+        pic.stride[0] = width * pixelbytes;
         pic.stride[1] = pic.stride[0] >> x265_cli_csps[colorSpace].width[1];
         pic.stride[2] = pic.stride[0] >> x265_cli_csps[colorSpace].width[2];
         pic.planes[0] = buf[read % QUEUE_SIZE];
-        pic.planes[1] = (char*)pic.planes[0] + pic.stride[0] * (height * (pic.format == 2 ? 2 : 1));
-        pic.planes[2] = (char*)pic.planes[1] + pic.stride[1] * ((height * (pic.format == 2 ? 2 : 1)) >> x265_cli_csps[colorSpace].height[1]);
-#if ENABLE_ALPHA
-        if (alphaAvailable)
-        {
-            pic.stride[3] = pic.stride[0] >> x265_cli_csps[colorSpace].width[3];
-            pic.planes[3] = (char*)pic.planes[2] + pic.stride[2] * (height >> x265_cli_csps[colorSpace].height[2]);
-        }
-#endif
+        pic.planes[1] = (char*)pic.planes[0] + pic.stride[0] * height;
+        pic.planes[2] = (char*)pic.planes[1] + pic.stride[1] * (height >> x265_cli_csps[colorSpace].height[1]);
         readCount.incr();
         return true;
     }

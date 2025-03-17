@@ -255,9 +255,9 @@ uint32_t Quant::signBitHidingHDQ(int16_t* coeff, int32_t* deltaU, uint32_t numSi
 
 #if CHECKED_BUILD || _DEBUG
     // clean output buffer, the asm version of scanPosLast Never output anything after latest non-zero coeff group
-    memset(coeffNum, 0, sizeof(coeffNum) * sizeof(uint8_t));
-    memset(coeffSign, 0, sizeof(coeffNum) * sizeof(uint16_t));
-    memset(coeffFlag, 0, sizeof(coeffNum) * sizeof(uint16_t));
+    memset(coeffNum, 0, sizeof(coeffNum));
+    memset(coeffSign, 0, sizeof(coeffNum));
+    memset(coeffFlag, 0, sizeof(coeffNum));
 #endif
     const int lastScanPos = primitives.scanPosLast(codeParams.scan, coeff, coeffSign, coeffFlag, coeffNum, numSig, g_scan4x4[codeParams.scanType], trSize);
     const int cgLastScanPos = (lastScanPos >> LOG2_SCAN_SET_SIZE);
@@ -676,9 +676,9 @@ uint32_t Quant::rdoQuant(const CUData& cu, int16_t* dstCoeff, TextType ttype, ui
 
 #if CHECKED_BUILD || _DEBUG
     // clean output buffer, the asm version of scanPosLast Never output anything after latest non-zero coeff group
-    memset(coeffNum, 0, sizeof(coeffNum) * sizeof(uint8_t));
-    memset(coeffSign, 0, sizeof(coeffNum) * sizeof(uint16_t));
-    memset(coeffFlag, 0, sizeof(coeffNum) * sizeof(uint16_t));
+    memset(coeffNum, 0, sizeof(coeffNum));
+    memset(coeffSign, 0, sizeof(coeffNum));
+    memset(coeffFlag, 0, sizeof(coeffNum));
 #endif
     const int lastScanPos = primitives.scanPosLast(codeParams.scan, dstCoeff, coeffSign, coeffFlag, coeffNum, numSig, g_scan4x4[codeParams.scanType], trSize);
     const int cgLastScanPos = (lastScanPos >> LOG2_SCAN_SET_SIZE);

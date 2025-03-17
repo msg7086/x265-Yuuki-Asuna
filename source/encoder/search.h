@@ -286,16 +286,6 @@ public:
     int32_t         m_sliceMaxY;
     int32_t         m_sliceMinY;
 
-    bool            m_vertRestriction;
-
-#if ENABLE_SCC_EXT
-    int             m_ibcEnabled;
-    int             m_numBVs;
-    int             m_numBV16s;
-    MV              m_BVs[64];
-    uint32_t        m_lastCandCost;
-#endif
-
 #if DETAILED_CU_STATS
     /* Accumulate CU statistics separately for each frame encoder */
     CUStats         m_stats[X265_MAX_FRAME_THREADS];
@@ -319,9 +309,7 @@ public:
     void     encodeIntraInInter(Mode& intraMode, const CUGeom& cuGeom);
 
     // estimation inter prediction (non-skip)
-#if !ENABLE_SCC_EXT
-    void      predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChromaMC, uint32_t masks[2]);
-#endif
+    void     predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChromaMC, uint32_t masks[2]);
     void     searchMV(Mode& interMode, int list, int ref, MV& outmv, MV mvp[3], int numMvc, MV* mvc);
     // encode residual and compute rd-cost for inter mode
     void     encodeResAndCalcRdInterCU(Mode& interMode, const CUGeom& cuGeom);
@@ -340,26 +328,6 @@ public:
     void checkDQPForSplitPred(Mode& mode, const CUGeom& cuGeom);
 
     MV getLowresMV(const CUData& cu, const PredictionUnit& pu, int list, int ref);
-
-#if ENABLE_SCC_EXT
-    void      predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChromaMC, uint32_t masks[2], MV* iMVCandList = NULL);
-    bool      predIntraBCSearch(Mode& intraBCMode, const CUGeom& cuGeom, bool bChromaMC, PartSize ePartSize, bool testOnlyPred, bool bUse1DSearchFor8x8, IBC& ibc);
-    void      intraBlockCopyEstimate(Mode& intraBCMode, const CUGeom& cuGeom, int puIdx, MV* pred, MV& mv, uint32_t& cost, bool testOnlyPred, bool bUse1DSearchFor8x8, IBC& ibc);
-    void      setIntraSearchRange(Mode& intraBCMode, MV& pred, int puIdx, int roiWidth, int roiHeight, MV& searchRangeLT, MV& searchRangeRB);
-    void      intraPatternSearch(Mode& intraBCMode, const CUGeom& cuGeom, int puIdx, uint32_t partAddr, pixel* refY, int refStride, MV* searchRangeLT, MV* searchRangeRB,
-        MV& mv, uint32_t& cost, int roiwidth, int roiheight, bool testOnlyPred, bool bUse1DSearchFor8x8, IBC& ibc);
-    bool      isValidIntraBCSearchArea(CUData* cu, int predX, int predY, int roiWidth, int roiHeight, int partOffset);
-    bool      isBlockVectorValid(int xPos, int yPos, int width, int height, CUData* pcCU,
-        int xStartInCU, int yStartInCU, int xBv, int yBv, int ctuSize);
-    void      intraBCSearchMVCandUpdate(uint32_t sad, int x, int y, uint32_t* sadBestCand, MV* cMVCand);
-    void      updateBVMergeCandLists(int roiWidth, int roiHeight, MV* mvCand, IBC& ibc);
-    int       intraBCSearchMVChromaRefine(Mode& intraBCMode, const CUGeom& cuGeom, int roiWidth, int roiHeight, int cuPelX, int cuPelY, uint32_t* sadBestCand, MV* cMVCand,
-        uint32_t partOffset, int puIdx);
-    static    uint32_t mergeCandLists(MV* dst, uint32_t dn, MV* src, uint32_t sn, bool isSrcQuarPel);
-    uint32_t  getSAD(pixel* ref, int refStride, const pixel* curr, int currStride, int width, int height);
-    bool      predMixedIntraBCInterSearch(Mode& intraBCMode, const CUGeom& cuGeom, bool bChromaMC, PartSize ePartSize, MV* iMVCandList);
-    void      restrictBipredMergeCand(CUData* cu, uint32_t puIdx, MVField(*mvFieldNeighbours)[2], uint8_t* interDirNeighbours, uint32_t numValidMergeCand);
-#endif
 
     class PME : public BondedTaskGroup
     {

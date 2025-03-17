@@ -3,7 +3,7 @@ SVT-HEVC
 
 .. _SvtHevc:
 
-x265 has support for open source HEVC encoder `SVT-HEVC <https://www.intel.com/content/www/us/en/developer/articles/technical/scalable-video-technology.html>`_
+x265 has support for open source HEVC encoder `SVT-HEVC <https://01.org/svt>`_ 
 and can generate SVT-HEVC compliant bitstreams. SVT-HEVC encoder can be enabled at run time 
 using :option:`--svt`. Since SVT-HEVC params/CLI are not exposed outside, it has to be 
 configured only via x265 CLI options. The API's of SVT-HEVC are accessed through x265's API 
@@ -22,7 +22,7 @@ This section describes the build steps to be followed to link SVT-HEVC with x265
 
 **SVT-HEVC**
 
-1. Clone `SVT-HEVC-repo <https://github.com/intel/SVT-HEVC>`_ (say at path "/home/app/") and build it (follow the build steps in its README file)
+1. Clone `SVT-HEVC <https://github.com/intel/SVT-HEVC>`_ (say at path "/home/app/") and build it (follow the build steps in its README file)
 2. Once build is successful, binaries can be found inside the *Bin* folder at its root directory ("/home/app/SVT-HEVC/Bin/Release/")
 
 **x265**

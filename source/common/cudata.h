@@ -37,9 +37,6 @@ class FrameData;
 class Slice;
 struct TUEntropyCodingParameters;
 struct CUDataMemPool;
-#if ENABLE_SCC_EXT
-struct IBC;
-#endif
 
 enum PartSize
 {
@@ -51,7 +48,7 @@ enum PartSize
     SIZE_2NxnD, // asymmetric motion partition, 2Nx(3N/2) + 2Nx( N/2)
     SIZE_nLx2N, // asymmetric motion partition, ( N/2)x2N + (3N/2)x2N
     SIZE_nRx2N, // asymmetric motion partition, (3N/2)x2N + ( N/2)x2N
-    NUM_PART_SIZES
+    NUM_SIZES
 };
 
 enum PredMode
@@ -110,8 +107,6 @@ struct InterNeighbourMV
     // Collocated right bottom CU addr.
     uint32_t cuAddr[2];
 
-    bool isAvailable;
-
     // For spatial prediction, this field contains the reference index
     // in each list (-1 if not available).
     //
@@ -121,14 +116,6 @@ struct InterNeighbourMV
     // associated to the PMV, and the fifth bit is the list associated to the PMV.
     // if both reference indices are -1, then unifiedRef is also -1
     union { int16_t refIdx[2]; int32_t unifiedRef; };
-};
-
-struct IBC
-{
-    int             m_numBVs;
-    int             m_numBV16s;
-    MV              m_BVs[64];
-    MV              m_lastIntraBCMv[2];
 };
 
 typedef void(*cucopy_t)(uint8_t* dst, uint8_t* src); // dst and src are aligned to MIN(size, 32)
@@ -243,19 +230,13 @@ public:
     uint32_t*       m_collectCUVariance;
     uint32_t*       m_collectCUCount;
 
-#if ENABLE_SCC_EXT
-    MV              m_lastIntraBCMv[2];
-#endif
-
     CUData();
 
     void     initialize(const CUDataMemPool& dataPool, uint32_t depth, const x265_param& param, int instance);
     static void calcCTUGeoms(uint32_t ctuWidth, uint32_t ctuHeight, uint32_t maxCUSize, uint32_t minCUSize, CUGeom cuDataArray[CUGeom::MAX_GEOMS]);
 
     void     initCTU(const Frame& frame, uint32_t cuAddr, int qp, uint32_t firstRowInSlice, uint32_t lastRowInSlice, uint32_t lastCUInSlice);
-#if !ENABLE_SCC_EXT
     void     initSubCU(const CUData& ctu, const CUGeom& cuGeom, int qp);
-#endif
     void     initLosslessCU(const CUData& cu, const CUGeom& cuGeom);
 
     void     copyPartFrom(const CUData& cu, const CUGeom& childGeom, uint32_t subPartIdx);
@@ -291,11 +272,7 @@ public:
     int8_t   getRefQP(uint32_t currAbsIdxInCTU) const;
     uint32_t getInterMergeCandidates(uint32_t absPartIdx, uint32_t puIdx, MVField (*candMvField)[2], uint8_t* candDir) const;
     void     clipMv(MV& outMV) const;
-#if (ENABLE_MULTIVIEW || ENABLE_SCC_EXT)
-    int      getPMV(InterNeighbourMV* neighbours, uint32_t reference_list, uint32_t refIdx, MV* amvpCand, MV* pmv, uint32_t puIdx = 0, uint32_t absPartIdx = 0) const;
-#else
-    int      getPMV(InterNeighbourMV* neighbours, uint32_t reference_list, uint32_t refIdx, MV* amvpCand, MV* pmv) const;
-#endif
+    int      getPMV(InterNeighbourMV *neighbours, uint32_t reference_list, uint32_t refIdx, MV* amvpCand, MV* pmv) const;
     void     getNeighbourMV(uint32_t puIdx, uint32_t absPartIdx, InterNeighbourMV* neighbours) const;
     void     getIntraTUQtDepthRange(uint32_t tuDepthRange[2], uint32_t absPartIdx) const;
     void     getInterTUQtDepthRange(uint32_t tuDepthRange[2], uint32_t absPartIdx) const;
@@ -331,17 +308,6 @@ public:
 
     const CUData* getPUAboveRightAdi(uint32_t& arPartUnitIdx, uint32_t curPartUnitIdx, uint32_t partUnitOffset) const;
     const CUData* getPUBelowLeftAdi(uint32_t& blPartUnitIdx, uint32_t curPartUnitIdx, uint32_t partUnitOffset) const;
-
-#if ENABLE_SCC_EXT
-    void     initSubCU(const CUData& ctu, const CUGeom& cuGeom, int qp, MV lastIntraBCMv[2] = 0);
-
-    void getIntraBCMVPsEncOnly(uint32_t absPartIdx, MV* MvPred, int& nbPred, int puIdx);
-    bool getDerivedBV(uint32_t absPartIdx, const MV& currentMv, MV& derivedMv, uint32_t width, uint32_t height);
-    bool isIntraBC(const CUData* cu, uint32_t absPartIdx) const;
-    bool getColMVPIBC(int ctuRsAddr, int partUnitIdx, MV& rcMv);
-    void roundMergeCandidates(MVField(*candMvField)[2], int iCount) const;
-    bool is8x8BipredRestriction(MV mvL0, MV mvL1, int iRefIdxL0, int iRefIdxL1) const;
-#endif
 
 protected:
 

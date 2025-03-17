@@ -7,8 +7,6 @@
  *          Steve Borho <steve@borho.org>
  *          Hongbin Liu <liuhongbin1@huawei.com>
  *          Yimeng Su <yimeng.su@huawei.com>
- *          Josh Dekker <josh@itanimul.li>
- *          Jean-Baptiste Kempf <jb@videolan.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -107,20 +105,6 @@ const cpu_name_t cpu_names[] =
     { "NEON",            X265_CPU_NEON },
     { "FastNeonMRC",     X265_CPU_FAST_NEON_MRC },
 
-#elif X265_ARCH_ARM64
-    { "NEON",            X265_CPU_NEON },
-#if defined(HAVE_SVE)
-    { "SVE",            X265_CPU_SVE },
-#endif
-#if defined(HAVE_SVE2)
-    { "SVE2",            X265_CPU_SVE2 },
-#endif
-#if defined(HAVE_NEON_DOTPROD)
-    { "Neon_DotProd",    X265_CPU_NEON_DOTPROD },
-#endif
-#if defined(HAVE_NEON_I8MM)
-    { "Neon_I8MM",       X265_CPU_NEON_I8MM },
-#endif
 #elif X265_ARCH_POWER8
     { "Altivec",         X265_CPU_ALTIVEC },
 
@@ -352,7 +336,7 @@ uint32_t cpu_detect(bool benableavx512)
 {
     int flags = 0;
 
-#if HAVE_ARMV6 && ENABLE_ASSEMBLY
+#if HAVE_ARMV6
     flags |= X265_CPU_ARMV6;
 
     // don't do this hack if compiled with -mfpu=neon
@@ -385,22 +369,9 @@ uint32_t cpu_detect(bool benableavx512)
     flags |= PFX(cpu_fast_neon_mrc_test)() ? X265_CPU_FAST_NEON_MRC : 0;
 #endif
     // TODO: write dual issue test? currently it's A8 (dual issue) vs. A9 (fast mrc)
-#endif // if HAVE_ARMV6
-    return flags;
-}
-
 #elif X265_ARCH_ARM64
-#include "aarch64/cpu.h"
-
-uint32_t cpu_detect(bool benableavx512)
-{
-    (void)benableavx512;
-    int flags = 0;
-
-#ifdef ENABLE_ASSEMBLY
-    flags = aarch64_cpu_detect();
-#endif
-
+    flags |= X265_CPU_NEON;
+#endif // if HAVE_ARMV6
     return flags;
 }
 

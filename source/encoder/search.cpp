@@ -76,9 +76,6 @@ bool Search::initSearch(const x265_param& param, ScalingList& scalingList)
     m_param = &param;
     m_bFrameParallel = param.frameNumThreads > 1;
     m_numLayers = g_log2Size[param.maxCUSize] - 2;
-#if ENABLE_SCC_EXT
-    m_ibcEnabled = param.bEnableSCC;
-#endif
 
     m_rdCost.setPsyRdScale(param.psyRd);
     m_rdCost.setSsimRd(param.bSsimRd);
@@ -173,11 +170,6 @@ bool Search::initSearch(const x265_param& param, ScalingList& scalingList)
     CHECKED_MALLOC(m_tsCoeff,    coeff_t, MAX_TS_SIZE * MAX_TS_SIZE);
     CHECKED_MALLOC(m_tsResidual, int16_t, MAX_TS_SIZE * MAX_TS_SIZE);
     CHECKED_MALLOC(m_tsRecon,    pixel,   MAX_TS_SIZE * MAX_TS_SIZE);
-
-#if ENABLE_SCC_EXT
-    m_numBVs = 0;
-    m_numBV16s = 0;
-#endif
 
     return ok;
 
@@ -504,7 +496,7 @@ void Search::codeIntraLumaQT(Mode& mode, const CUGeom& cuGeom, uint32_t tuDepth,
     }
 
     // set reconstruction for next intra prediction blocks if full TU prediction won
-    PicYuv*  reconPic = m_frame->m_reconPic[0];
+    PicYuv*  reconPic = m_frame->m_reconPic;
     pixel*   picReconY = reconPic->getLumaAddr(cu.m_cuAddr, cuGeom.absPartIdx + absPartIdx);
     intptr_t picStride = reconPic->m_stride;
     primitives.cu[sizeIdx].copy_pp(picReconY, picStride, reconQt, reconQtStride);
@@ -680,7 +672,7 @@ void Search::codeIntraLumaTSkip(Mode& mode, const CUGeom& cuGeom, uint32_t tuDep
     }
 
     // set reconstruction for next intra prediction blocks
-    PicYuv*  reconPic = m_frame->m_reconPic[0];
+    PicYuv*  reconPic = m_frame->m_reconPic;
     pixel*   picReconY = reconPic->getLumaAddr(cu.m_cuAddr, cuGeom.absPartIdx + absPartIdx);
     intptr_t picStride = reconPic->m_stride;
     primitives.cu[sizeIdx].copy_pp(picReconY, picStride, reconQt, reconQtStride);
@@ -731,7 +723,7 @@ void Search::residualTransformQuantIntra(Mode& mode, const CUGeom& cuGeom, uint3
         uint32_t sizeIdx   = log2TrSize - 2;
         primitives.cu[sizeIdx].calcresidual[stride % 64 == 0](fenc, pred, residual, stride);
 
-        PicYuv*  reconPic = m_frame->m_reconPic[0];
+        PicYuv*  reconPic = m_frame->m_reconPic;
         pixel*   picReconY = reconPic->getLumaAddr(cu.m_cuAddr, cuGeom.absPartIdx + absPartIdx);
         intptr_t picStride = reconPic->m_stride;
 
@@ -895,7 +887,7 @@ void Search::codeIntraChromaQt(Mode& mode, const CUGeom& cuGeom, uint32_t tuDept
             coeff_t* coeffC        = m_rqt[qtLayer].coeffRQT[chromaId] + coeffOffsetC;
             pixel*   reconQt       = m_rqt[qtLayer].reconQtYuv.getChromaAddr(chromaId, absPartIdxC);
             uint32_t reconQtStride = m_rqt[qtLayer].reconQtYuv.m_csize;
-            PicYuv*  reconPic = m_frame->m_reconPic[0];
+            PicYuv*  reconPic = m_frame->m_reconPic;
             pixel*   picReconC = reconPic->getChromaAddr(chromaId, cu.m_cuAddr, cuGeom.absPartIdx + absPartIdxC);
             intptr_t picStride = reconPic->m_strideC;
 
@@ -1086,7 +1078,7 @@ void Search::codeIntraChromaTSkip(Mode& mode, const CUGeom& cuGeom, uint32_t tuD
             cu.setCbfPartRange(bCbf << tuDepth, ttype, absPartIdxC, tuIterator.absPartIdxStep);
             cu.setTransformSkipPartRange(bTSkip, ttype, absPartIdxC, tuIterator.absPartIdxStep);
 
-            PicYuv*  reconPic = m_frame->m_reconPic[0];
+            PicYuv*  reconPic = m_frame->m_reconPic;
             pixel*   reconPicC = reconPic->getChromaAddr(chromaId, cu.m_cuAddr, cuGeom.absPartIdx + absPartIdxC);
             intptr_t picStride = reconPic->m_strideC;
             primitives.cu[sizeIdxC].copy_pp(reconPicC, picStride, reconQt, reconQtStride);
@@ -1193,7 +1185,7 @@ void Search::residualQTIntraChroma(Mode& mode, const CUGeom& cuGeom, uint32_t ab
             int16_t* residual = resiYuv.getChromaAddr(chromaId, absPartIdxC);
             uint32_t coeffOffsetC  = absPartIdxC << (LOG2_UNIT_SIZE * 2 - (m_hChromaShift + m_vChromaShift));
             coeff_t* coeffC        = cu.m_trCoeff[ttype] + coeffOffsetC;
-            PicYuv*  reconPic = m_frame->m_reconPic[0];
+            PicYuv*  reconPic = m_frame->m_reconPic;
             pixel*   picReconC = reconPic->getChromaAddr(chromaId, cu.m_cuAddr, cuGeom.absPartIdx + absPartIdxC);
             intptr_t picStride = reconPic->m_strideC;
 
@@ -1292,11 +1284,6 @@ void Search::checkIntra(Mode& intraMode, const CUGeom& cuGeom, PartSize partSize
 
     updateModeCost(intraMode);
     checkDQP(intraMode, cuGeom);
-
-#if ENABLE_SCC_EXT
-    if (m_param->bEnableSCC)
-        intraMode.reconYuv.copyToPicYuv(*m_frame->m_reconPic[1], cu.m_cuAddr, cuGeom.absPartIdx);
-#endif
 }
 
 /* Note that this function does not save the best intra prediction, it must
@@ -1684,7 +1671,7 @@ sse_t Search::estIntraPredQT(Mode &intraMode, const CUGeom& cuGeom, const uint32
              * output recon picture, so it cannot proceed in parallel with anything else when doing INTRA_NXN. Also
              * it is not updating m_rdContexts[depth].cur for the later PUs which I suspect is slightly wrong. I think
              * that the contexts should be tracked through each PU */
-            PicYuv*  reconPic = m_frame->m_reconPic[0];
+            PicYuv*  reconPic = m_frame->m_reconPic;
             pixel*   dst       = reconPic->getLumaAddr(cu.m_cuAddr, cuGeom.absPartIdx + absPartIdx);
             uint32_t dststride = reconPic->m_stride;
             const pixel*   src = reconYuv->getLumaAddr(absPartIdx);
@@ -1857,7 +1844,7 @@ sse_t Search::estIntraPredChromaQT(Mode &intraMode, const CUGeom& cuGeom)
         if (!tuIterator.isLastSection())
         {
             uint32_t zorder    = cuGeom.absPartIdx + absPartIdxC;
-            PicYuv*  reconPic  = m_frame->m_reconPic[0];
+            PicYuv*  reconPic  = m_frame->m_reconPic;
             uint32_t dststride = reconPic->m_strideC;
             const pixel* src;
             pixel* dst;
@@ -1908,9 +1895,7 @@ uint32_t Search::mergeEstimation(CUData& cu, const CUGeom& cuGeom, const Predict
     MVField  candMvField[MRG_MAX_NUM_CANDS][2];
     uint8_t  candDir[MRG_MAX_NUM_CANDS];
     uint32_t numMergeCand = cu.getInterMergeCandidates(pu.puAbsPartIdx, puIdx, candMvField, candDir);
-#if ENABLE_SCC_EXT
-    restrictBipredMergeCand(&cu, 0, candMvField, candDir, numMergeCand);
-#else
+
     if (cu.isBipredRestriction())
     {
         /* do not allow bidir merge candidates if PU is smaller than 8x8, drop L1 reference */
@@ -1923,7 +1908,6 @@ uint32_t Search::mergeEstimation(CUData& cu, const CUGeom& cuGeom, const Predict
             }
         }
     }
-#endif
 
     Yuv& tempYuv = m_rqt[cuGeom.depth].tmpPredYuv;
 
@@ -1952,12 +1936,6 @@ uint32_t Search::mergeEstimation(CUData& cu, const CUGeom& cuGeom, const Predict
                 continue;
         }
 
-#if ENABLE_SCC_EXT
-        if ((candDir[mergeCand] == 1 || candDir[mergeCand] == 3) && (m_slice->m_refPOCList[0][candMvField[mergeCand][0].refIdx] == m_slice->m_poc))
-        {
-            continue;
-        }
-#endif
         cu.m_mv[0][pu.puAbsPartIdx] = candMvField[mergeCand][0].mv;
         cu.m_refIdx[0][pu.puAbsPartIdx] = (int8_t)candMvField[mergeCand][0].refIdx;
         cu.m_mv[1][pu.puAbsPartIdx] = candMvField[mergeCand][1].mv;
@@ -2037,12 +2015,7 @@ int Search::selectMVP(const CUData& cu, const PredictionUnit& pu, const MV amvp[
                 continue;
         }
         cu.clipMv(mvCand);
-#if ENABLE_SCC_EXT
-        if (m_slice->m_param->bEnableSCC && !list && ref == m_slice->m_numRefIdx[0] - 1)
-            predInterLumaPixel(pu, tmpPredYuv, *m_slice->m_refFrameList[list][ref]->m_reconPic[1], mvCand);
-        else
-#endif
-            predInterLumaPixel(pu, tmpPredYuv, *m_slice->m_refReconPicList[list][ref], mvCand);
+        predInterLumaPixel(pu, tmpPredYuv, *m_slice->m_refReconPicList[list][ref], mvCand);
         costs[i] = m_me.bufSAD(tmpPredYuv.getLumaAddr(pu.puAbsPartIdx), tmpPredYuv.m_size);
     }
 
@@ -2113,49 +2086,38 @@ void Search::processPME(PME& pme, Search& slave)
 void Search::singleMotionEstimation(Search& master, Mode& interMode, const PredictionUnit& pu, int part, int list, int ref)
 {
     uint32_t bits = master.m_listSelBits[list] + MVP_IDX_BITS;
-    int numIdx = m_slice->m_numRefIdx[list];
-#if ENABLE_SCC_EXT
-    if (!list && m_ibcEnabled)
-        numIdx--;
-#endif
-    bits += getTUBits(ref, numIdx);
+    bits += getTUBits(ref, m_slice->m_numRefIdx[list]);
 
     MotionData* bestME = interMode.bestME[part];
 
     // 12 mv candidates including lowresMV
     MV  mvc[(MD_ABOVE_LEFT + 1) * 2 + 2];
-#if (ENABLE_MULTIVIEW || ENABLE_SCC_EXT)
-    int numMvc = interMode.cu.getPMV(interMode.interNeighbours, list, ref, interMode.amvpCand[list][ref], mvc, 0, pu.puAbsPartIdx);
-#else
     int numMvc = interMode.cu.getPMV(interMode.interNeighbours, list, ref, interMode.amvpCand[list][ref], mvc);
-#endif
 
     const MV* amvp = interMode.amvpCand[list][ref];
     int mvpIdx = selectMVP(interMode.cu, pu, amvp, list, ref);
     bool bLowresMVP = false;
     MV mvmin, mvmax, outmv, mvp = amvp[mvpIdx], mvp_lowres;
 
-    if (!strlen(m_param->analysisSave) && !strlen(m_param->analysisLoad)) /* Prevents load/save outputs from diverging if lowresMV is not available */
+    if (!m_param->analysisSave && !m_param->analysisLoad) /* Prevents load/save outputs from diverging if lowresMV is not available */
     {
         MV lmv = getLowresMV(interMode.cu, pu, list, ref);
-        int layer = m_param->numViews > 1 ? m_frame->m_viewId : (m_param->numScalableLayers > 1) ? m_frame->m_sLayerId : 0;
-        if (lmv.notZero() && !layer)
+        if (lmv.notZero())
             mvc[numMvc++] = lmv;
         if (m_param->bEnableHME)
             mvp_lowres = lmv;
     }
 
-    m_vertRestriction = interMode.cu.m_slice->m_refPOCList[list][ref] == interMode.cu.m_slice->m_poc;
     setSearchRange(interMode.cu, mvp, m_param->searchRange, mvmin, mvmax);
 
-    int satdCost = m_me.motionEstimate(&m_slice->m_mref[list][ref], mvmin, mvmax, mvp, numMvc, mvc, m_param->searchRange, outmv, m_param->maxSlices, m_vertRestriction,
+    int satdCost = m_me.motionEstimate(&m_slice->m_mref[list][ref], mvmin, mvmax, mvp, numMvc, mvc, m_param->searchRange, outmv, m_param->maxSlices, 
       m_param->bSourceReferenceEstimation ? m_slice->m_refFrameList[list][ref]->m_fencPic->getLumaAddr(0) : 0);
 
     if (m_param->bEnableHME && mvp_lowres.notZero() && mvp_lowres != mvp)
     {
         MV outmv_lowres;
         setSearchRange(interMode.cu, mvp_lowres, m_param->searchRange, mvmin, mvmax);
-        int lowresMvCost = m_me.motionEstimate(&m_slice->m_mref[list][ref], mvmin, mvmax, mvp_lowres, numMvc, mvc, m_param->searchRange, outmv_lowres, m_param->maxSlices, m_vertRestriction,
+        int lowresMvCost = m_me.motionEstimate(&m_slice->m_mref[list][ref], mvmin, mvmax, mvp_lowres, numMvc, mvc, m_param->searchRange, outmv_lowres, m_param->maxSlices,
             m_param->bSourceReferenceEstimation ? m_slice->m_refFrameList[list][ref]->m_fencPic->getLumaAddr(0) : 0);
         if (lowresMvCost < satdCost)
         {
@@ -2205,9 +2167,8 @@ void Search::searchMV(Mode& interMode, int list, int ref, MV& outmv, MV mvp[3], 
         MV bestMV;
         mv = mvp[cand++];
         cu.clipMv(mv);
-        m_vertRestriction = cu.m_slice->m_refPOCList[list][ref] == cu.m_slice->m_poc;
         setSearchRange(cu, mv, m_param->searchRange, mvmin, mvmax);
-        int cost = m_me.motionEstimate(&m_slice->m_mref[list][ref], mvmin, mvmax, mv, numMvc, mvc, m_param->searchRange, bestMV, m_param->maxSlices, m_vertRestriction,
+        int cost = m_me.motionEstimate(&m_slice->m_mref[list][ref], mvmin, mvmax, mv, numMvc, mvc, m_param->searchRange, bestMV, m_param->maxSlices,
         m_param->bSourceReferenceEstimation ? m_slice->m_refFrameList[list][ref]->m_fencPic->getLumaAddr(0) : 0);
         if (bestcost > cost)
         {
@@ -2217,11 +2178,7 @@ void Search::searchMV(Mode& interMode, int list, int ref, MV& outmv, MV mvp[3], 
     }
 }
 /* find the best inter prediction for each PU of specified mode */
-#if ENABLE_SCC_EXT
-void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChromaMC, uint32_t refMasks[2], MV* iMVCandList)
-#else
 void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChromaMC, uint32_t refMasks[2])
-#endif
 {
     ProfileCUScope(interMode.cu, motionEstimationElapsedTime, countMotionEstimate);
 
@@ -2286,18 +2243,9 @@ void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChroma
                     continue;
                 }
                 uint32_t bits = m_listSelBits[list] + MVP_IDX_BITS;
-                int numIdx = m_slice->m_numRefIdx[list];
-#if ENABLE_SCC_EXT
-                if (!list && m_ibcEnabled)
-                    numIdx--;
-#endif
-                bits += getTUBits(ref, numIdx);
+                bits += getTUBits(ref, numRefIdx[list]);
 
-#if (ENABLE_MULTIVIEW || ENABLE_SCC_EXT)
-                int numMvc = cu.getPMV(interMode.interNeighbours, list, ref, interMode.amvpCand[list][ref], mvc, puIdx, pu.puAbsPartIdx);
-#else
                 int numMvc = cu.getPMV(interMode.interNeighbours, list, ref, interMode.amvpCand[list][ref], mvc);
-#endif
                 const MV* amvp = interMode.amvpCand[list][ref];
                 int mvpIdx = selectMVP(cu, pu, amvp, list, ref);
                 MV mvmin, mvmax, outmv, mvp;
@@ -2313,7 +2261,7 @@ void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChroma
                     int puX = puIdx & 1;
                     int puY = puIdx >> 1;
                     for (int planes = 0; planes < INTEGRAL_PLANE_NUM; planes++)
-                        m_me.integral[planes] = interMode.fencYuv->m_integral[list][ref][planes] + puX * pu.width + puY * pu.height * m_slice->m_refFrameList[list][ref]->m_reconPic[0]->m_stride;
+                        m_me.integral[planes] = interMode.fencYuv->m_integral[list][ref][planes] + puX * pu.width + puY * pu.height * m_slice->m_refFrameList[list][ref]->m_reconPic->m_stride;
                 }
                 setSearchRange(cu, mvp, m_param->searchRange, mvmin, mvmax);
                 MV mvpIn = mvp;
@@ -2340,7 +2288,7 @@ void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChroma
                         if (cand && (mvpSel[cand] == mvpSel[cand - 1] || (cand == 2 && mvpSel[cand] == mvpSel[cand - 2])))
                             continue;
                         setSearchRange(cu, mvpSel[cand], m_param->searchRange, mvmin, mvmax);
-                        int bcost = m_me.motionEstimate(&m_slice->m_mref[list][ref], mvmin, mvmax, mvpSel[cand], numMvc, mvc, m_param->searchRange, bestmv, m_param->maxSlices, m_vertRestriction,
+                        int bcost = m_me.motionEstimate(&m_slice->m_mref[list][ref], mvmin, mvmax, mvpSel[cand], numMvc, mvc, m_param->searchRange, bestmv, m_param->maxSlices,
                             m_param->bSourceReferenceEstimation ? m_slice->m_refFrameList[list][ref]->m_fencPic->getLumaAddr(0) : 0);
                         if (satdCost > bcost)
                         {
@@ -2354,7 +2302,7 @@ void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChroma
                 }
                 else
                 {
-                    satdCost = m_me.motionEstimate(&slice->m_mref[list][ref], mvmin, mvmax, mvpIn, numMvc, mvc, m_param->searchRange, outmv, m_param->maxSlices, m_vertRestriction,
+                    satdCost = m_me.motionEstimate(&slice->m_mref[list][ref], mvmin, mvmax, mvpIn, numMvc, mvc, m_param->searchRange, outmv, m_param->maxSlices,
                         m_param->bSourceReferenceEstimation ? m_slice->m_refFrameList[list][ref]->m_fencPic->getLumaAddr(0) : 0);
                 }
 
@@ -2403,12 +2351,7 @@ void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChroma
             for (int list = 0; list < numPredDir; list++)
             {
                 int idx = 0;
-                int numIdx = numRefIdx[list];
-#if ENABLE_SCC_EXT
-                if (!list && m_ibcEnabled)
-                    numIdx--;
-#endif
-                for (int ref = 0; ref < numIdx; ref++)
+                for (int ref = 0; ref < numRefIdx[list]; ref++)
                 {
                     if (!(refMask & (1 << ref)))
                         continue;
@@ -2447,12 +2390,7 @@ void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChroma
 
             for (int list = 0; list < numPredDir; list++)
             {
-                int numIdx = numRefIdx[list];
-#if ENABLE_SCC_EXT
-                if (!list && m_ibcEnabled)
-                    numIdx--;
-#endif
-                for (int ref = 0; ref < numIdx; ref++)
+                for (int ref = 0; ref < numRefIdx[list]; ref++)
                 {
                     ProfileCounter(interMode.cu, totalMotionReferences[cuGeom.depth]);
 
@@ -2463,24 +2401,19 @@ void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChroma
                     }
 
                     uint32_t bits = m_listSelBits[list] + MVP_IDX_BITS;
-                    bits += getTUBits(ref, numIdx);
+                    bits += getTUBits(ref, numRefIdx[list]);
 
-#if (ENABLE_MULTIVIEW || ENABLE_SCC_EXT)
-                    int numMvc = cu.getPMV(interMode.interNeighbours, list, ref, interMode.amvpCand[list][ref], mvc, puIdx, pu.puAbsPartIdx);
-#else
                     int numMvc = cu.getPMV(interMode.interNeighbours, list, ref, interMode.amvpCand[list][ref], mvc);
-#endif
 
                     const MV* amvp = interMode.amvpCand[list][ref];
                     int mvpIdx = selectMVP(cu, pu, amvp, list, ref);
                     MV mvmin, mvmax, outmv, mvp = amvp[mvpIdx], mvp_lowres;
                     bool bLowresMVP = false;
 
-                    if (!strlen(m_param->analysisSave) && !strlen(m_param->analysisLoad)) /* Prevents load/save outputs from diverging when lowresMV is not available */
+                    if (!m_param->analysisSave && !m_param->analysisLoad) /* Prevents load/save outputs from diverging when lowresMV is not available */
                     {
                         MV lmv = getLowresMV(cu, pu, list, ref);
-                        int layer = m_param->numViews > 1 ? m_frame->m_viewId : (m_param->numScalableLayers > 1) ? m_frame->m_sLayerId : 0;
-                        if (lmv.notZero() && !layer)
+                        if (lmv.notZero())
                             mvc[numMvc++] = lmv;
                         if (m_param->bEnableHME)
                             mvp_lowres = lmv;
@@ -2490,18 +2423,17 @@ void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChroma
                         int puX = puIdx & 1;
                         int puY = puIdx >> 1;
                         for (int planes = 0; planes < INTEGRAL_PLANE_NUM; planes++)
-                            m_me.integral[planes] = interMode.fencYuv->m_integral[list][ref][planes] + puX * pu.width + puY * pu.height * m_slice->m_refFrameList[list][ref]->m_reconPic[0]->m_stride;
+                            m_me.integral[planes] = interMode.fencYuv->m_integral[list][ref][planes] + puX * pu.width + puY * pu.height * m_slice->m_refFrameList[list][ref]->m_reconPic->m_stride;
                     }
-                    m_vertRestriction = cu.m_slice->m_refPOCList[list][ref] == cu.m_slice->m_poc;
                     setSearchRange(cu, mvp, m_param->searchRange, mvmin, mvmax);
-                    int satdCost = m_me.motionEstimate(&slice->m_mref[list][ref], mvmin, mvmax, mvp, numMvc, mvc, m_param->searchRange, outmv, m_param->maxSlices, m_vertRestriction,
+                    int satdCost = m_me.motionEstimate(&slice->m_mref[list][ref], mvmin, mvmax, mvp, numMvc, mvc, m_param->searchRange, outmv, m_param->maxSlices, 
                       m_param->bSourceReferenceEstimation ? m_slice->m_refFrameList[list][ref]->m_fencPic->getLumaAddr(0) : 0);
 
                     if (m_param->bEnableHME && mvp_lowres.notZero() && mvp_lowres != mvp)
                     {
                         MV outmv_lowres;
                         setSearchRange(cu, mvp_lowres, m_param->searchRange, mvmin, mvmax);
-                        int lowresMvCost = m_me.motionEstimate(&slice->m_mref[list][ref], mvmin, mvmax, mvp_lowres, numMvc, mvc, m_param->searchRange, outmv_lowres, m_param->maxSlices, m_vertRestriction,
+                        int lowresMvCost = m_me.motionEstimate(&slice->m_mref[list][ref], mvmin, mvmax, mvp_lowres, numMvc, mvc, m_param->searchRange, outmv_lowres, m_param->maxSlices,
                             m_param->bSourceReferenceEstimation ? m_slice->m_refFrameList[list][ref]->m_fencPic->getLumaAddr(0) : 0);
                         if (lowresMvCost < satdCost)
                         {
@@ -2521,13 +2453,6 @@ void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChroma
 
                     /* Refine MVP selection, updates: mvpIdx, bits, cost */
                     mvp = checkBestMVP(amvp, outmv, mvpIdx, bits, cost);
-
-#if ENABLE_SCC_EXT
-                    if (m_param->bEnableSCC && (list <= 1 && ref <= 1 && (cu.m_partSize[0] == SIZE_2NxN || cu.m_partSize[0] == SIZE_Nx2N) && (1 << cu.m_log2CUSize[0]) <= 16))
-                    {
-                        iMVCandList[4 * list + 2 * ref + puIdx] = outmv;
-                    }
-#endif
 
                     if (cost < bestME[list].cost)
                     {
@@ -2721,1732 +2646,6 @@ void Search::predInterSearch(Mode& interMode, const CUGeom& cuGeom, bool bChroma
     interMode.sa8dBits += totalmebits;
 }
 
-#if ENABLE_SCC_EXT
-uint32_t Search::getSAD(pixel* ref, int refStride, const pixel* curr, int currStride, int width, int height)
-{
-    uint32_t dist = 0;
-
-    for (int i = 0; i < height; i++)
-    {
-        for (int j = 0; j < width; j++)
-        {
-            dist += abs(ref[j] - curr[j]);
-        }
-        ref += refStride;
-        curr += currStride;
-    }
-    return dist;
-}
-
-int Search::intraBCSearchMVChromaRefine(Mode& intraBCMode,
-    const CUGeom& cuGeom,
-    int         roiWidth,
-    int         roiHeight,
-    int         cuPelX,
-    int         cuPelY,
-    uint32_t* sadBestCand,
-    MV* MVCand,
-    uint32_t    partOffset,
-    int         puIdx
-)
-{
-    int bestCandIdx = 0;
-    uint32_t  sadBest = UINT_MAX;
-    uint32_t  tempSad;
-
-    pixel* ref;
-    const pixel* picOrg;
-    int refStride, orgStride;
-    int width, height;
-
-    int picWidth = m_slice->m_sps->picWidthInLumaSamples;
-    int picHeight = m_slice->m_sps->picHeightInLumaSamples;
-
-    CUData& cu = intraBCMode.cu;
-    Yuv& tmpPredYuv = intraBCMode.predYuv;
-    PredictionUnit pu(cu, cuGeom, puIdx);
-
-    for (int cand = 0; cand < CHROMA_REFINEMENT_CANDIDATES; cand++)
-    {
-        if ((!MVCand[cand].x) && (!MVCand[cand].y))
-        {
-            continue;
-        }
-
-        if (((int)(cuPelY + MVCand[cand].y + roiHeight) >= picHeight) || ((cuPelY + MVCand[cand].y) < 0))
-        {
-            continue;
-        }
-
-        if (((int)(cuPelX + MVCand[cand].x + roiWidth) >= picWidth) || ((cuPelX + MVCand[cand].x) < 0))
-        {
-            continue;
-        }
-
-        tempSad = sadBestCand[cand];
-        int bitDepths = m_param->sourceBitDepth;
-        MV mvQuaterPixl = MVCand[cand];
-        mvQuaterPixl <<= 2;
-        cu.setPUMv(0, mvQuaterPixl, pu.puAbsPartIdx, puIdx);
-        cu.setPURefIdx(0, m_slice->m_numRefIdx[0] - 1, pu.puAbsPartIdx, puIdx);
-        cu.setPUMv(1, MV(), pu.puAbsPartIdx, puIdx);
-        cu.setPURefIdx(1, -1, pu.puAbsPartIdx, puIdx);
-        cu.setPUInterDir(1, pu.puAbsPartIdx, puIdx);
-
-        motionCompensation(cu, pu, tmpPredYuv, 1, 1);
-
-        for (uint32_t ch = TEXT_CHROMA_U; ch < MAX_NUM_COMPONENT; ch++)
-        {
-            ref = m_slice->m_refFrameList[0][m_slice->m_numRefIdx[0] - 1]->m_reconPic[1]->getChromaAddr(ch, cu.m_cuAddr, cu.m_absIdxInCTU + partOffset);
-
-            picOrg = intraBCMode.fencYuv->getChromaAddr(ch, partOffset);
-            orgStride = intraBCMode.fencYuv->m_csize;
-
-            refStride = m_frame->m_reconPic[1]->m_strideC;
-
-            width = roiWidth >> m_hChromaShift;
-            height = roiHeight >> m_vChromaShift;
-
-            ref = tmpPredYuv.getChromaAddr(ch, partOffset);
-            refStride = tmpPredYuv.m_csize;
-
-            for (int row = 0; row < height; row++)
-            {
-                for (int col = 0; col < width; col++)
-                {
-                    tempSad += ((abs(ref[col] - picOrg[col])) >> (bitDepths - 8));
-                }
-                ref += refStride;
-                picOrg += orgStride;
-            }
-        }
-
-        if (tempSad < sadBest)
-        {
-            sadBest = tempSad;
-            bestCandIdx = cand;
-        }
-    }
-
-    return bestCandIdx;
-}
-
-void Search::updateBVMergeCandLists(int roiWidth, int roiHeight, MV* mvCand, IBC& ibc)
-{
-    if (roiWidth + roiHeight > 8)
-    {
-        ibc.m_numBVs = mergeCandLists(ibc.m_BVs, ibc.m_numBVs, mvCand, CHROMA_REFINEMENT_CANDIDATES, false);
-
-        if (roiWidth + roiHeight == 32)
-        {
-            ibc.m_numBV16s = ibc.m_numBVs;
-        }
-    }
-}
-
-void Search::intraBCSearchMVCandUpdate(uint32_t sad, int x, int y, uint32_t* sadBestCand, MV* MVCand)
-{
-    int j = CHROMA_REFINEMENT_CANDIDATES - 1;
-
-    if (sad < sadBestCand[CHROMA_REFINEMENT_CANDIDATES - 1])
-    {
-        for (int t = CHROMA_REFINEMENT_CANDIDATES - 1; t >= 0; t--)
-        {
-            if (sad < sadBestCand[t])
-            {
-                j = t;
-            }
-        }
-
-        for (int k = CHROMA_REFINEMENT_CANDIDATES - 1; k > j; k--)
-        {
-            sadBestCand[k] = sadBestCand[k - 1];
-
-            MVCand[k].set(MVCand[k - 1].x, MVCand[k - 1].y);
-        }
-        sadBestCand[j] = sad;
-        MVCand[j].set(x, y);
-    }
-}
-
-uint32_t Search::mergeCandLists(MV* dst, uint32_t dn, MV* src, uint32_t sn, bool isSrcQuarPel)
-{
-    for (uint32_t cand = 0; cand < sn && dn < SCM_S0067_NUM_CANDIDATES; cand++)
-    {
-        bool found = false;
-        MV TempMv = src[cand];
-        if (!isSrcQuarPel)
-        {
-            TempMv <<= 2;
-        }
-        for (uint32_t j = 0; j < dn; j++)
-        {
-            if (TempMv == dst[j])
-            {
-                found = true;
-                break;
-            }
-        }
-
-        if (!found)
-        {
-            dst[dn] = TempMv;
-            dn++;
-        }
-    }
-    return dn;
-}
-
-void Search::restrictBipredMergeCand(CUData* cu, uint32_t puIdx, MVField(*mvFieldNeighbours)[2], uint8_t* interDirNeighbours, uint32_t numValidMergeCand)
-{
-    {
-        for (uint32_t mergeCand = 0; mergeCand < numValidMergeCand; ++mergeCand)
-        {
-            if (interDirNeighbours[mergeCand] == 3)
-            {
-                bool b8x8BiPredRestricted = cu->is8x8BipredRestriction(
-                    mvFieldNeighbours[mergeCand][0].mv,
-                    mvFieldNeighbours[mergeCand][1].mv,
-                    mvFieldNeighbours[mergeCand][0].refIdx,
-                    mvFieldNeighbours[mergeCand][1].refIdx);
-
-                int width = 0;
-                int height = 0;
-                uint32_t partAddr;
-
-                cu->getPartIndexAndSize(puIdx, partAddr, width, height);
-                if (b8x8BiPredRestricted)
-                {
-                    if (width <= 8 && height <= 8)
-                    {
-                        interDirNeighbours[mergeCand] = 1;
-                        mvFieldNeighbours[mergeCand][1].refIdx = REF_NOT_VALID;
-                    }
-                }
-                else if (cu->isBipredRestriction())
-                {
-                    interDirNeighbours[mergeCand] = 1;
-                    mvFieldNeighbours[mergeCand][1].refIdx = REF_NOT_VALID;
-                }
-            }
-        }
-    }
-}
-
-bool Search::isBlockVectorValid(int xPos, int yPos, int width, int height, CUData* cu,
-    int xStartInCU, int yStartInCU, int xBv, int yBv, int ctuSize)
-{
-    static const int s_floorLog2[65] =
-    {
-      -1, 0, 1, 1, 2, 2, 2, 2, 3, 3,
-       3, 3, 3, 3, 3, 3, 4, 4, 4, 4,
-       4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-       4, 4, 5, 5, 5, 5, 5, 5, 5, 5,
-       5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-       5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
-       5, 5, 5, 5, 6
-    };
-
-    int ctuSizeLog2 = s_floorLog2[ctuSize];
-    int interpolationSamplesX = (cu->m_chromaFormat == X265_CSP_I422 || cu->m_chromaFormat == X265_CSP_I420) ? ((xBv & 0x1) << 1) : 0;
-    int interpolationSamplesY = (cu->m_chromaFormat == X265_CSP_I420) ? ((yBv & 0x1) << 1) : 0;
-    int refRightX = xPos + xBv + width - 1 + interpolationSamplesX;
-    int refBottomY = yPos + yBv + height - 1 + interpolationSamplesY;
-    int picWidth = m_slice->m_sps->picWidthInLumaSamples;
-    int picHeight = m_slice->m_sps->picHeightInLumaSamples;
-
-    if ((xPos + xBv - interpolationSamplesX) < 0)
-        return false;
-    if (refRightX >= picWidth)
-        return false;
-    if ((yPos + yBv - interpolationSamplesY) < 0)
-        return false;
-    if (refBottomY >= picHeight)
-        return false;
-
-    if ((xBv + width + interpolationSamplesX) > 0 && (yBv + height + interpolationSamplesY) > 0)
-        return false;
-
-    if (refBottomY >> ctuSizeLog2 < yPos >> ctuSizeLog2)
-    {
-        int refCuX = refRightX / ctuSize;
-        int refCuY = refBottomY / ctuSize;
-        int cuPelX = xPos / ctuSize;
-        int cuPelY = yPos / ctuSize;
-
-        if (((int)(refCuX - cuPelX) > (int)((cuPelY - refCuY))))
-            return false;
-        else
-            return true;
-    }
-
-    if (refBottomY >> ctuSizeLog2 > yPos >> ctuSizeLog2)
-    {
-        return false;
-    }
-
-    // in the same CTU line
-    if (refRightX >> ctuSizeLog2 < xPos >> ctuSizeLog2)
-        return true;
-    if (refRightX >> ctuSizeLog2 > xPos >> ctuSizeLog2)
-        return false;
-
-    // same CTU
-    int mask = 1 << ctuSizeLog2;
-    mask -= 1;
-    int rasterCurr = ((((yPos & mask) - yStartInCU) >> 2) << (ctuSizeLog2 - 2)) + (((xPos & mask) - xStartInCU) >> 2);
-    int rasterRef = (((refBottomY & mask) >> 2) << (ctuSizeLog2 - 2)) + ((refRightX & mask) >> 2);
-
-    if (g_rasterToZscan[rasterRef] >= g_rasterToZscan[rasterCurr])
-        return false;
-    return true;
-}
-
-bool Search::isValidIntraBCSearchArea(CUData* cu, int predX, int predY, int roiWidth, int roiHeight, int partOffset)
-{
-    const int  cuPelX = cu->m_cuPelX + g_zscanToPelX[partOffset];
-    const int  cuPelY = cu->m_cuPelY + g_zscanToPelY[partOffset];
-
-    if (!isBlockVectorValid(cuPelX, cuPelY, roiWidth, roiHeight, cu, g_zscanToPelX[partOffset], g_zscanToPelY[partOffset], predX, predY, m_param->maxCUSize))
-    {
-        return false;
-    }
-    return true;
-}
-
-void Search::intraPatternSearch(Mode& intraBCMode, const CUGeom& cuGeom, int puIdx, uint32_t partAddr, pixel* refY, int refStride, MV* searchRangeLT, MV* searchRangeRB,
-    MV& mv, uint32_t& cost, int roiWidth, int roiHeight, bool testOnlyPred, bool bUse1DSearchFor8x8, IBC& ibc)
-{
-    const int   srchRngHorLeft = searchRangeLT->x;
-    const int   srchRngHorRight = searchRangeRB->x;
-    const int   srchRngVerTop = searchRangeLT->y;
-    const int   srchRngVerBottom = searchRangeRB->y;
-
-    CUData& cu = intraBCMode.cu;
-    const uint32_t  lcuWidth = m_param->maxCUSize;
-    const uint32_t  lcuHeight = m_param->maxCUSize;
-    const int       puPelOffsetX = g_zscanToPelX[partAddr];
-    const int       puPelOffsetY = g_zscanToPelY[partAddr];
-    const int       cuPelX = cu.m_cuPelX + puPelOffsetX;  // Point to the location of PU
-    const int       cuPelY = cu.m_cuPelY + puPelOffsetY;
-
-    uint32_t  sad = 0;
-    uint32_t  sadBest = UINT_MAX;
-    int         bestX = 0;
-    int         bestY = 0;
-    pixel* refSrch;
-
-    int         bestCandIdx = 0;
-    uint32_t    partOffset = 0;
-    MV          MVCand[CHROMA_REFINEMENT_CANDIDATES];
-    uint32_t    sadBestCand[CHROMA_REFINEMENT_CANDIDATES];
-
-    partOffset = partAddr;
-    PredictionUnit pu(cu, cuGeom, puIdx);
-    for (int cand = 0; cand < CHROMA_REFINEMENT_CANDIDATES; cand++)
-    {
-        sadBestCand[cand] = UINT_MAX;
-        MVCand[cand].set(0, 0);
-    }
-
-    const int         relCUPelX = cuPelX % lcuWidth;
-    const int         relCUPelY = cuPelY % lcuHeight;
-    const int chromaROIWidthInPixels = roiWidth;
-    const int chromaROIHeightInPixels = roiHeight;
-    bool fastsearch = (m_param->bEnableSCC == 1) ? true : false;
-    bool  isFullFrameSearchrangeEnabled = false; // disabled by default
-
-    if (fastsearch)
-    {
-        uint32_t tempSadBest = 0;
-        int srLeft = srchRngHorLeft, srRight = srchRngHorRight, srTop = srchRngVerTop, srBottom = srchRngVerBottom;
-        const uint32_t picWidth = m_slice->m_sps->picWidthInLumaSamples;
-        const uint32_t picHeight = m_slice->m_sps->picHeightInLumaSamples;
-
-        if (isFullFrameSearchrangeEnabled)//full frame search
-        {
-            srLeft = -1 * cuPelX;
-            srTop = -1 * cuPelY;
-
-            srRight = picWidth - cuPelX - roiWidth;
-            srBottom = lcuHeight - cuPelY % lcuHeight - roiHeight;
-
-            if (cuPelX + srRight + roiWidth > (int)picWidth)
-            {
-                srRight = picWidth % lcuWidth - cuPelX % lcuWidth - roiWidth;
-            }
-            if (cuPelY + srBottom + roiHeight > (int)picHeight)
-            {
-                srBottom = picHeight % lcuHeight - cuPelY % lcuHeight - roiHeight;
-            }
-        }
-
-        if (roiWidth > 8 || roiHeight > 8)
-            ibc.m_numBVs = 0;
-        else if (roiWidth + roiHeight == 16)
-            ibc.m_numBVs = ibc.m_numBV16s;
-        if (testOnlyPred)
-            ibc.m_numBVs = 0;
-
-        MV  mvPredEncOnly[16];
-        int nbPreds = 0;
-        cu.getIntraBCMVPsEncOnly(partAddr, mvPredEncOnly, nbPreds, puIdx);
-        ibc.m_numBVs = mergeCandLists(ibc.m_BVs, ibc.m_numBVs, mvPredEncOnly, nbPreds, true);
-
-        for (int cand = 0; cand < ibc.m_numBVs; cand++)
-        {
-            int xPred = ibc.m_BVs[cand].x >> 2;
-            int yPred = ibc.m_BVs[cand].y >> 2;
-            if (!(xPred == 0 && yPred == 0) && !((yPred < srTop) || (yPred > srBottom)) && !((xPred < srLeft) || (xPred > srRight)))
-            {
-                int tempY = yPred + relCUPelY + roiHeight - 1;
-                int tempX = xPred + relCUPelX + roiWidth - 1;
-                bool validCand = isValidIntraBCSearchArea(&cu, xPred, yPred, chromaROIWidthInPixels, chromaROIHeightInPixels, partOffset);
-
-                if ((tempX >= (int)lcuWidth) && (tempY >= 0) && isFullFrameSearchrangeEnabled)
-                    validCand = false;
-
-                if ((tempX >= 0) && (tempY >= 0))
-                {
-                    int tempRasterIdx = (tempY / 4) * cu.s_numPartInCUSize + (tempX / 4);
-                    uint32_t tempZscanIdx = g_rasterToZscan[tempRasterIdx];
-                    if (tempZscanIdx >= cu.m_absIdxInCTU)
-                    {
-                        validCand = false;
-                    }
-                }
-
-                if (validCand)
-                {
-                    sad = m_me.mvcost(ibc.m_BVs[cand]);
-
-                    refSrch = refY + yPred * refStride + xPred;
-
-                    sad += m_me.bufSAD(refSrch, refStride);
-                    if (sad > sadBestCand[CHROMA_REFINEMENT_CANDIDATES - 1])
-                    {
-                        continue;
-                    }
-
-                    intraBCSearchMVCandUpdate(sad, xPred, yPred, sadBestCand, MVCand);
-                }
-            }
-        }
-        bestX = MVCand[0].x;
-        bestY = MVCand[0].y;
-        mv.set(bestX, bestY);
-        sadBest = sadBestCand[0];
-
-        if (testOnlyPred)
-        {
-            cost = sadBest;
-            return;
-        }
-
-        const int boundY = (0 - roiHeight - puPelOffsetY);
-        int lowY = ((cu.m_partSize[partAddr] == SCM_S0067_IBC_FULL_1D_SEARCH_FOR_PU) && isFullFrameSearchrangeEnabled)
-            ? -cuPelY : X265_MAX(srchRngVerTop, 0 - cuPelY);
-        for (int y = boundY; y >= lowY; y--)
-        {
-            if (!isValidIntraBCSearchArea(&cu, 0, y, chromaROIWidthInPixels, chromaROIHeightInPixels, partOffset))
-            {
-                continue;
-            }
-
-            sad = m_me.mvcost(MV(0, y));
-
-            refSrch = refY + y * refStride;
-
-            sad += m_me.bufSAD(refSrch, refStride);
-            if (sad > sadBestCand[CHROMA_REFINEMENT_CANDIDATES - 1])
-            {
-                continue;
-            }
-
-            intraBCSearchMVCandUpdate(sad, 0, y, sadBestCand, MVCand);
-            tempSadBest = sadBestCand[0];
-            if (sadBestCand[0] <= 3)
-            {
-                bestX = MVCand[0].x;
-                bestY = MVCand[0].y;
-                sadBest = sadBestCand[0];
-                mv.set(bestX, bestY);
-                cost = sadBest;
-
-                updateBVMergeCandLists(roiWidth, roiHeight, MVCand, ibc);
-                return;
-            }
-        }
-
-        const int boundX = ((cu.m_partSize[partAddr] == SCM_S0067_IBC_FULL_1D_SEARCH_FOR_PU) && isFullFrameSearchrangeEnabled)
-            ? -cuPelX : X265_MAX(srchRngHorLeft, -cuPelX);
-        for (int x = 0 - roiWidth - puPelOffsetX; x >= boundX; --x)
-        {
-            if (!isValidIntraBCSearchArea(&cu, x, 0, chromaROIWidthInPixels, chromaROIHeightInPixels, partOffset))
-            {
-                continue;
-            }
-
-            sad = m_me.mvcost(MV(x, 0));
-
-            refSrch = refY + x;
-            sad += m_me.bufSAD(refSrch, refStride);
-
-            if (sad > sadBestCand[CHROMA_REFINEMENT_CANDIDATES - 1])
-            {
-                continue;
-            }
-
-            intraBCSearchMVCandUpdate(sad, x, 0, sadBestCand, MVCand);
-            tempSadBest = sadBestCand[0];
-            if (sadBestCand[0] <= 3)
-            {
-                bestX = MVCand[0].x;
-                bestY = MVCand[0].y;
-                sadBest = sadBestCand[0];
-                mv.set(bestX, bestY);
-                cost = sadBest;
-
-                updateBVMergeCandLists(roiWidth, roiHeight, MVCand, ibc);
-                return;
-            }
-        }
-
-        bestX = MVCand[0].x;
-        bestY = MVCand[0].y;
-        sadBest = sadBestCand[0];
-
-        if ((!bestX && !bestY) || (sadBest - m_me.mvcost(MV(bestX, bestY)) <= 32))
-        {
-            //chroma refine
-            bestCandIdx = intraBCSearchMVChromaRefine(intraBCMode, cuGeom, roiWidth, roiHeight, cuPelX, cuPelY, sadBestCand, MVCand, partOffset, puIdx);
-            bestX = MVCand[bestCandIdx].x;
-            bestY = MVCand[bestCandIdx].y;
-            sadBest = sadBestCand[bestCandIdx];
-            mv.set(bestX, bestY);
-            cost = sadBest;
-
-            updateBVMergeCandLists(roiWidth, roiHeight, MVCand, ibc);
-            return;
-        }
-
-        if (cuGeom.depth > 2 && !bUse1DSearchFor8x8)
-        {
-            for (int y = X265_MAX(srchRngVerTop, -cuPelY); y <= srchRngVerBottom; y += 2)
-            {
-                if ((y == 0) || ((int)(cuPelY + y + roiHeight) >= (int)picHeight))
-                {
-                    continue;
-                }
-
-                int tempY = y + relCUPelY + roiHeight - 1;
-
-                for (int x = X265_MAX(srchRngHorLeft, -cuPelX); x <= srchRngHorRight; x++)
-                {
-                    if ((x == 0) || ((int)(cuPelX + x + roiWidth) >= (int)picWidth))
-                    {
-                        continue;
-                    }
-
-                    int tempX = x + relCUPelX + roiWidth - 1;
-
-                    if ((tempX >= 0) && (tempY >= 0))
-                    {
-                        int iTempRasterIdx = (tempY / 4) * cu.s_numPartInCUSize + (tempX / 4);
-                        uint32_t iTempZscanIdx = g_rasterToZscan[iTempRasterIdx];
-                        if (iTempZscanIdx >= cu.m_absIdxInCTU)
-                        {
-                            continue;
-                        }
-                    }
-
-                    if (!isValidIntraBCSearchArea(&cu, x, y, chromaROIWidthInPixels, chromaROIHeightInPixels, partOffset))
-                    {
-                        continue;
-                    }
-
-                    sad = m_me.mvcost(MV(x, y));
-
-                    refSrch = refY + y * refStride + x;
-                    sad += m_me.bufSAD(refSrch, refStride);
-
-                    intraBCSearchMVCandUpdate(sad, x, y, sadBestCand, MVCand);
-                }
-            }
-
-            bestX = MVCand[0].x;
-            bestY = MVCand[0].y;
-            sadBest = sadBestCand[0];
-            if (sadBest - m_me.mvcost(MV(bestX, bestY)) <= 16)
-            {
-                //chroma refine
-                bestCandIdx = intraBCSearchMVChromaRefine(intraBCMode, cuGeom, roiWidth, roiHeight, cuPelX, cuPelY, sadBestCand, MVCand, partOffset, puIdx);
-                bestX = MVCand[bestCandIdx].x;
-                bestY = MVCand[bestCandIdx].y;
-                sadBest = sadBestCand[bestCandIdx];
-                mv.set(bestX, bestY);
-                cost = sadBest;
-
-                updateBVMergeCandLists(roiWidth, roiHeight, MVCand, ibc);
-                return;
-            }
-
-            for (int y = (X265_MAX(srchRngVerTop, -cuPelY) + 1); y <= srchRngVerBottom; y += 2)
-            {
-                if ((y == 0) || ((int)(cuPelY + y + roiHeight) >= (int)picHeight))
-                {
-                    continue;
-                }
-
-                int tempY = y + relCUPelY + roiHeight - 1;
-
-                for (int x = X265_MAX(srchRngHorLeft, -cuPelX); x <= srchRngHorRight; x += 2)
-                {
-                    if ((x == 0) || ((int)(cuPelX + x + roiWidth) >= (int)picWidth))
-                    {
-                        continue;
-                    }
-
-                    int tempX = x + relCUPelX + roiWidth - 1;
-
-                    if ((tempX >= 0) && (tempY >= 0))
-                    {
-                        int tempRasterIdx = (tempY / 4) * cu.s_numPartInCUSize + (tempX / 4);
-                        uint32_t tempZscanIdx = g_rasterToZscan[tempRasterIdx];
-                        if (tempZscanIdx >= cu.m_absIdxInCTU)
-                        {
-                            continue;
-                        }
-                    }
-
-                    if (!isValidIntraBCSearchArea(&cu, x, y, chromaROIWidthInPixels, chromaROIHeightInPixels, partOffset))
-                    {
-                        continue;
-                    }
-
-                    sad = m_me.mvcost(MV(x, y));
-
-                    refSrch = refY + y * refStride + x;
-                    sad += m_me.bufSAD(refSrch, refStride);
-
-                    if (sad > sadBestCand[CHROMA_REFINEMENT_CANDIDATES - 1])
-                    {
-                        continue;
-                    }
-
-                    intraBCSearchMVCandUpdate(sad, x, y, sadBestCand, MVCand);
-                    if (sadBestCand[0] <= 5)
-                    {
-                        //chroma refine & return
-                        bestCandIdx = intraBCSearchMVChromaRefine(intraBCMode, cuGeom, roiWidth, roiHeight, cuPelX, cuPelY, sadBestCand, MVCand, partOffset, puIdx);
-                        bestX = MVCand[bestCandIdx].x;
-                        bestY = MVCand[bestCandIdx].y;
-                        sadBest = sadBestCand[bestCandIdx];
-                        mv.set(bestX, bestY);
-                        cost = sadBest;
-
-                        updateBVMergeCandLists(roiWidth, roiHeight, MVCand, ibc);
-                        return;
-                    }
-                }
-            }
-
-            bestX = MVCand[0].x;
-            bestY = MVCand[0].y;
-            sadBest = sadBestCand[0];
-
-            if ((sadBest >= tempSadBest) || ((sadBest - m_me.mvcost(MV(bestX, bestY))) <= 32))
-            {
-                //chroma refine
-                bestCandIdx = intraBCSearchMVChromaRefine(intraBCMode, cuGeom, roiWidth, roiHeight, cuPelX, cuPelY, sadBestCand, MVCand, partOffset, puIdx);
-                bestX = MVCand[bestCandIdx].x;
-                bestY = MVCand[bestCandIdx].y;
-                sadBest = sadBestCand[bestCandIdx];
-                mv.set(bestX, bestY);
-                cost = sadBest;
-
-                updateBVMergeCandLists(roiWidth, roiHeight, MVCand, ibc);
-                return;
-            }
-
-            tempSadBest = sadBestCand[0];
-
-
-            for (int y = (X265_MAX(srchRngVerTop, -cuPelY) + 1); y <= srchRngVerBottom; y += 2)
-            {
-                if ((y == 0) || ((int)(cuPelY + y + roiHeight) >= (int)picHeight))
-                {
-                    continue;
-                }
-
-                int tempY = y + relCUPelY + roiHeight - 1;
-
-                for (int x = (X265_MAX(srchRngHorLeft, -cuPelX) + 1); x <= srchRngHorRight; x += 2)
-                {
-
-                    if ((x == 0) || ((int)(cuPelX + x + roiWidth) >= (int)picWidth))
-                    {
-                        continue;
-                    }
-
-                    int tempX = x + relCUPelX + roiWidth - 1;
-
-                    if ((tempX >= 0) && (tempY >= 0))
-                    {
-                        int tempRasterIdx = (tempY / 4) * cu.s_numPartInCUSize + (tempX / 4);
-                        uint32_t tempZscanIdx = g_rasterToZscan[tempRasterIdx];
-                        if (tempZscanIdx >= cu.m_absIdxInCTU)
-                        {
-                            continue;
-                        }
-                    }
-
-                    if (!isValidIntraBCSearchArea(&cu, x, y, chromaROIWidthInPixels, chromaROIHeightInPixels, partOffset))
-                    {
-                        continue;
-                    }
-
-                    sad = m_me.mvcost(MV(x, y));
-
-                    refSrch = refY + y * refStride + x;
-                    sad += m_me.bufSAD(refSrch, refStride);
-                    if (sad > sadBestCand[CHROMA_REFINEMENT_CANDIDATES - 1])
-                    {
-                        continue;
-                    }
-
-                    intraBCSearchMVCandUpdate(sad, x, y, sadBestCand, MVCand);
-                    if (sadBestCand[0] <= 5)
-                    {
-                        //chroma refine & return
-                        bestCandIdx = intraBCSearchMVChromaRefine(intraBCMode, cuGeom, roiWidth, roiHeight, cuPelX, cuPelY, sadBestCand, MVCand, partOffset, puIdx);
-                        bestX = MVCand[bestCandIdx].x;
-                        bestY = MVCand[bestCandIdx].y;
-                        sadBest = sadBestCand[bestCandIdx];
-                        mv.set(bestX, bestY);
-                        cost = sadBest;
-
-                        updateBVMergeCandLists(roiWidth, roiHeight, MVCand, ibc);
-                        return;
-                    }
-                }
-            }
-        }
-    }
-    else //full search
-    {
-        refY += (srchRngVerBottom * refStride);
-        int picWidth = m_slice->m_sps->picWidthInLumaSamples;
-        int picHeight = m_slice->m_sps->picHeightInLumaSamples;
-
-        for (int y = srchRngVerBottom; y >= srchRngVerTop; y--)
-        {
-            if (((int)(cuPelY + y) < 0) || ((int)(cuPelY + y + roiHeight) >= (int)picHeight))
-            {
-                refY -= refStride;
-                continue;
-            }
-
-            for (int x = srchRngHorLeft; x <= srchRngHorRight; x++)
-            {
-
-                if (((int)(cuPelX + x) < 0) || ((int)(cuPelX + x + roiWidth) >= (int)picWidth))
-                {
-                    continue;
-                }
-
-                int tempX = x + relCUPelX + roiWidth - 1;
-                int tempY = y + relCUPelY + roiHeight - 1;
-                if ((tempX >= 0) && (tempY >= 0))
-                {
-                    int iTempRasterIdx = (tempY / 4) * cu.s_numPartInCUSize + (tempX / 4);
-                    uint32_t iTempZscanIdx = g_rasterToZscan[iTempRasterIdx];
-                    if (iTempZscanIdx >= cu.m_absIdxInCTU)
-                    {
-                        continue;
-                    }
-                }
-
-                if (!isValidIntraBCSearchArea(&cu, x, y, chromaROIWidthInPixels, chromaROIHeightInPixels, partOffset))
-                {
-                    continue;
-                }
-
-                refSrch = refY + x;
-
-                sad = m_me.bufSAD(refSrch, refStride);
-                sad += m_me.mvcost(MV(x, y));
-                if (sad < sadBest)
-                {
-                    sadBest = sad;
-                    bestX = x;
-                    bestY = y;
-                }
-                intraBCSearchMVCandUpdate(sad, x, y, sadBestCand, MVCand);
-            }
-
-            refY -= refStride;
-        }
-    }
-
-    bestCandIdx = intraBCSearchMVChromaRefine(intraBCMode, cuGeom, roiWidth, roiHeight, cuPelX, cuPelY, sadBestCand, MVCand, partOffset, puIdx);
-    bestX = MVCand[bestCandIdx].x;
-    bestY = MVCand[bestCandIdx].y;
-    sadBest = sadBestCand[bestCandIdx];
-    mv.set(bestX, bestY);
-    cost = sadBest;
-
-    updateBVMergeCandLists(roiWidth, roiHeight, MVCand, ibc);
-
-}
-
-void Search::setIntraSearchRange(Mode& intraBCMode, MV& pred, int puIdx, int roiWidth, int roiHeight, MV& searchRangeLT, MV& searchRangeRB)
-{
-    MV mvPred = pred;
-    CUData& cu = intraBCMode.cu;
-    cu.clipMv(mvPred);
-    int srLeft, srRight, srTop, srBottom;
-    int puWidth, puHeight;
-    uint32_t partAddr;
-
-    cu.getPartIndexAndSize(puIdx, partAddr, puWidth, puHeight);
-
-    const uint32_t lcuWidth = m_param->maxCUSize;
-    const uint32_t lcuHeight = m_param->maxCUSize;
-    const uint32_t cuPelX = cu.m_cuPelX + g_zscanToPelX[partAddr];
-    const uint32_t cuPelY = cu.m_cuPelY + g_zscanToPelY[partAddr];
-
-    const uint32_t picWidth = m_slice->m_sps->picWidthInLumaSamples;
-    const uint32_t picHeight = m_slice->m_sps->picHeightInLumaSamples;
-    bool  isFullFrameSearchrangeEnabled = false; // disabled by default
-    if (1 << cu.m_log2CUSize[0] == 16 && cu.m_partSize[0] == SIZE_2Nx2N && isFullFrameSearchrangeEnabled)// full frame search
-    {
-        srLeft = -1 * cuPelX;
-        srTop = -1 * cuPelY;
-
-        srRight = picWidth - cuPelX - roiWidth;
-        srBottom = lcuHeight - cuPelY % lcuHeight - roiHeight;
-    }
-    else
-    {
-        const uint32_t searchWidthInCTUs = 1 << cu.m_log2CUSize[0] == 8 ? 1 : (isFullFrameSearchrangeEnabled) ? -1 : 1;
-        uint32_t width = 0, maxWidth = searchWidthInCTUs * lcuWidth;
-        for (const CUData* pTestCU = cu.m_cuLeft;
-            width < maxWidth && pTestCU != NULL && pTestCU->m_slice != NULL;
-            pTestCU = pTestCU->m_cuLeft, width += lcuWidth)
-        {
-        }
-        int maxXsr = (cuPelX % lcuWidth) + X265_MIN(maxWidth, width);
-        int maxYsr = cuPelY % lcuHeight;
-
-        if (cu.m_chromaFormat == X265_CSP_I420 || cu.m_chromaFormat == X265_CSP_I422) maxXsr &= ~0x4;
-        if (cu.m_chromaFormat == X265_CSP_I420)                                       maxYsr &= ~0x4;
-
-        srLeft = -maxXsr;
-        srTop = -maxYsr;
-
-        srRight = lcuWidth - cuPelX % lcuWidth - roiWidth;
-        srBottom = lcuHeight - cuPelY % lcuHeight - roiHeight;
-    }
-
-    if (cuPelX + srRight + roiWidth > picWidth)
-    {
-        srRight = picWidth % lcuWidth - cuPelX % lcuWidth - roiWidth;
-    }
-    if (cuPelY + srBottom + roiHeight > picHeight)
-    {
-        srBottom = picHeight % lcuHeight - cuPelY % lcuHeight - roiHeight;
-    }
-
-    searchRangeLT.x = srLeft;
-    searchRangeLT.y = srTop;
-    searchRangeRB.x = srRight;
-    searchRangeRB.y = srBottom;
-
-    cu.clipMv(searchRangeLT);
-    cu.clipMv(searchRangeRB);
-
-}
-
-void Search::intraBlockCopyEstimate(Mode& intraBCMode, const CUGeom& cuGeom, int puIdx, MV* pred, MV& mv, uint32_t& cost, bool testOnlyPred, bool bUse1DSearchFor8x8, IBC& ibc)
-{
-    uint32_t         partAddr;
-    int              roiWidth;
-    int              roiHeight;
-
-    MV   searchRangeLT;
-    MV   searchRangeRB;
-    MV   mvPred = *pred;
-    const MV predictors = *pred;
-
-    CUData& cu = intraBCMode.cu;
-    cu.getPartIndexAndSize(puIdx, partAddr, roiWidth, roiHeight);
-
-    int ref = m_slice->m_numRefIdx[0] - 1;
-    pixel* refY = m_slice->m_refFrameList[0][ref]->m_reconPic[1]->getLumaAddr(cu.m_cuAddr, cu.m_absIdxInCTU + partAddr);
-    int  strideY = m_slice->m_refFrameList[0][ref]->m_reconPic[1]->m_stride;
-
-    setIntraSearchRange(intraBCMode, mvPred, puIdx, roiWidth, roiHeight, searchRangeLT, searchRangeRB);
-
-    m_me.setMVP(predictors);
-
-    intraPatternSearch(intraBCMode, cuGeom, puIdx, partAddr, refY, strideY, &searchRangeLT, &searchRangeRB, mv, cost, roiWidth, roiHeight, testOnlyPred, bUse1DSearchFor8x8, ibc);
-}
-
-bool Search::predIntraBCSearch(Mode& intraBCMode, const CUGeom& cuGeom, bool bChromaMC, PartSize ePartSize, bool testOnlyPred, bool bUse1DSearchFor8x8, IBC& ibc)
-{
-    MV zeroMv(0, 0);
-    CUData& cu = intraBCMode.cu;
-    Yuv* predYuv = &intraBCMode.predYuv;
-    Yuv& tmpPredYuv = m_rqt[cuGeom.depth].tmpPredYuv;
-    int  numPart = cu.getNumPartInter(0);
-    int log2ParallelMergeLevelMinus2 = 0;
-
-    // 12 mv candidates including lowresMV
-    MV mvc[(MD_ABOVE_LEFT + 1) * 2 + 2];
-
-    if (m_param->bEnableSCC == 1 && (1 << cu.m_log2CUSize[0]) > SCM_S0067_MAX_CAND_SIZE) // fast search
-        return false;
-
-    uint32_t totalCost = 0;
-    for (int puIdx = 0; puIdx < numPart; puIdx++)
-    {
-        int width, height;
-        uint32_t partAddr = 0;
-        MotionData* bestME = intraBCMode.bestME[puIdx];
-        PredictionUnit pu(cu, cuGeom, puIdx);
-        MV  mv, mvPred[2];
-        cu.getPartIndexAndSize(puIdx, pu.puAbsPartIdx, width, height);
-        partAddr = pu.puAbsPartIdx;
-        m_me.setSourcePU(*intraBCMode.fencYuv, pu.ctuAddr, pu.cuAbsPartIdx, pu.puAbsPartIdx, pu.width, pu.height, m_param->searchMethod, m_param->subpelRefine, bChromaMC);
-
-        cu.getNeighbourMV(puIdx, pu.puAbsPartIdx, intraBCMode.interNeighbours);
-        cu.getPMV(intraBCMode.interNeighbours, 0, m_slice->m_numRefIdx[0] - 1, intraBCMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1], mvc, puIdx, pu.puAbsPartIdx);
-
-        mvPred[0].set(intraBCMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][0].x >> 2, intraBCMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][0].y >> 2);
-        mvPred[1].set(intraBCMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][1].x >> 2, intraBCMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][1].y >> 2);
-
-        uint32_t cost;
-        mv.set(0, 0);
-        intraBlockCopyEstimate(intraBCMode, cuGeom, puIdx, mvPred, mv, cost, testOnlyPred, bUse1DSearchFor8x8, ibc);
-
-        bestME->mv.set(mv.x << 2, mv.y << 2);
-        bestME->cost = cost;
-        totalCost += cost;
-        if (mv.x == 0 && mv.y == 0)
-        {
-            if (testOnlyPred)
-            {
-                m_lastCandCost = MAX_UINT;
-            }
-            return false;
-        }
-
-        int bitsAMVPBest, bitsAMVPTemp, bitsMergeTemp;
-        int distAMVPBest, distMergeTemp;
-        int costAMVPBest, costMergeBest, costMergeTemp;
-        bitsAMVPBest = MAX_INT;
-        costAMVPBest = MAX_INT;
-        costMergeBest = MAX_INT;
-        int mvpIdxBest = 0;
-        int mvpIdxTemp;
-        int mrgIdxBest = -1;
-        int mrgIdxTemp = -1;
-        int xCUStart = cu.m_cuPelX;
-        int yCUStart = cu.m_cuPelY;
-        int xStartInCU = 0, yStartInCU = 0;
-        if (ePartSize == SIZE_2Nx2N)
-            xStartInCU = yStartInCU = 0;
-        else if (ePartSize == SIZE_2NxN)
-        {
-            xStartInCU = 0;
-            yStartInCU = (1 << cu.m_log2CUSize[0]) / 2 * puIdx;
-        }
-        else if (ePartSize == SIZE_Nx2N)
-        {
-            xStartInCU = (1 << cu.m_log2CUSize[0]) / 2 * puIdx;
-            yStartInCU = 0;
-        }
-        const pixel* currStart;
-        pixel* ref;
-        int currStride, refStride;
-        distAMVPBest = 0;
-
-        MV cMvQuaterPixl = mv;
-        cMvQuaterPixl <<= 2;
-        cu.setPUMv(0, cMvQuaterPixl, pu.puAbsPartIdx, puIdx);
-        cu.setPURefIdx(0, (int8_t)m_slice->m_numRefIdx[0] - 1, pu.puAbsPartIdx, puIdx);
-        cu.setPUMv(1, MV(0, 0), pu.puAbsPartIdx, puIdx);
-        cu.setPURefIdx(1, REF_NOT_VALID, pu.puAbsPartIdx, puIdx);
-        cu.setPUInterDir(1, pu.puAbsPartIdx, puIdx);
-        motionCompensation(cu, pu, tmpPredYuv, 1, 1);
-        for (uint32_t ch = TEXT_LUMA; ch < MAX_NUM_COMPONENT; ch++)
-        {
-            int tempHeight, tempWidth;
-            if (ch == 0)
-            {
-                tempHeight = height;
-                tempWidth = width;
-                ref = tmpPredYuv.getLumaAddr(partAddr);
-                refStride = tmpPredYuv.m_size;
-                distAMVPBest += m_me.bufSAD(ref, refStride);
-            }
-            else
-            {
-                tempHeight = height >> m_vChromaShift;
-                tempWidth = width >> m_hChromaShift;
-
-                currStart = intraBCMode.fencYuv->getChromaAddr(ch, partAddr);
-                currStride = intraBCMode.fencYuv->m_csize;
-                ref = tmpPredYuv.getChromaAddr(ch, partAddr);
-                refStride = tmpPredYuv.m_csize;
-                distAMVPBest += getSAD(ref, refStride, currStart, currStride, tempWidth, tempHeight);
-            }
-        }
-
-        mvPred[0].set(intraBCMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][0].x >> 2, intraBCMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][0].y >> 2);
-        mvPred[1].set(intraBCMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][1].x >> 2, intraBCMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][1].y >> 2);
-
-        for (mvpIdxTemp = 0; mvpIdxTemp < AMVP_NUM_CANDS; mvpIdxTemp++)
-        {
-            m_me.setMVP(mvPred[mvpIdxTemp]);
-            bitsAMVPTemp = m_me.bitcost(mv, mvPred[mvpIdxTemp]);
-            if (bitsAMVPTemp < bitsAMVPBest)
-            {
-                bitsAMVPBest = bitsAMVPTemp;
-                mvpIdxBest = mvpIdxTemp;
-            }
-        }
-
-        bitsAMVPBest++; // for MVP Index bits
-        costAMVPBest = distAMVPBest + m_rdCost.getCost(bitsAMVPBest);
-
-        MVField cMvFieldNeighbours[MRG_MAX_NUM_CANDS][2]; // double length for mv of both lists
-        uint8_t uhInterDirNeighbours[MRG_MAX_NUM_CANDS];
-        int numValidMergeCand = 0;
-
-        for (int i = 0; i < MRG_MAX_NUM_CANDS; i++)
-        {
-            cMvFieldNeighbours[i][0].mv.set(0, 0);
-            cMvFieldNeighbours[i][0].refIdx = REF_NOT_VALID;
-        }
-
-        if (ePartSize != SIZE_2Nx2N)
-        {
-            if (log2ParallelMergeLevelMinus2 && ePartSize != SIZE_2Nx2N && 1 << cu.m_log2CUSize[0] >= 8)
-            {
-                cu.setPartSizeSubParts(SIZE_2Nx2N);
-                if (puIdx == 0)
-                {
-                    numValidMergeCand = cu.getInterMergeCandidates(0, 0, cMvFieldNeighbours, uhInterDirNeighbours);
-                }
-                cu.setPartSizeSubParts(ePartSize);
-            }
-            else
-            {
-                numValidMergeCand = cu.getInterMergeCandidates(pu.puAbsPartIdx, puIdx, cMvFieldNeighbours, uhInterDirNeighbours);
-            }
-
-            cu.roundMergeCandidates(cMvFieldNeighbours, numValidMergeCand);
-            restrictBipredMergeCand(&cu, puIdx, cMvFieldNeighbours, uhInterDirNeighbours, numValidMergeCand);
-
-            for (mrgIdxTemp = 0; mrgIdxTemp < numValidMergeCand; mrgIdxTemp++)
-            {
-                if (uhInterDirNeighbours[mrgIdxTemp] != 1)
-                {
-                    continue;
-                }
-                if (m_slice->m_refPOCList[0][cMvFieldNeighbours[mrgIdxTemp][0].refIdx] != m_slice->m_poc)
-                {
-                    continue;
-                }
-
-                if (!isBlockVectorValid(xCUStart + xStartInCU, yCUStart + yStartInCU, width, height, &cu,
-                    xStartInCU, yStartInCU, (cMvFieldNeighbours[mrgIdxTemp][0].mv.x >> 2), (cMvFieldNeighbours[mrgIdxTemp][0].mv.y >> 2), m_param->maxCUSize))
-                {
-                    continue;
-                }
-                bitsMergeTemp = mrgIdxTemp == (int)m_param->maxNumMergeCand ? mrgIdxTemp : mrgIdxTemp + 1;
-
-                distMergeTemp = 0;
-
-                cu.setPUMv(0, cMvFieldNeighbours[mrgIdxTemp][0].mv, pu.puAbsPartIdx, puIdx);
-                cu.setPURefIdx(0, (int8_t)(m_slice->m_numRefIdx[0] - 1), pu.puAbsPartIdx, puIdx);
-                cu.setPUMv(1, MV(0, 0), pu.puAbsPartIdx, puIdx);
-                cu.setPURefIdx(1, REF_NOT_VALID, pu.puAbsPartIdx, puIdx);
-                cu.setPUInterDir(1, pu.puAbsPartIdx, puIdx);
-                motionCompensation(cu, pu, tmpPredYuv, 1, 1);
-
-                for (int ch = TEXT_LUMA; ch < MAX_NUM_COMPONENT; ch++)
-                {
-                    int tempHeight, tempWidth;
-                    if (ch == 0)
-                    {
-                        tempHeight = height;
-                        tempWidth = width;
-                        ref = tmpPredYuv.getLumaAddr(partAddr);
-                        refStride = tmpPredYuv.m_size;
-                        distMergeTemp += m_me.bufSAD(ref, refStride);
-                    }
-                    else
-                    {
-                        tempHeight = height >> m_vChromaShift;
-                        tempWidth = width >> m_hChromaShift;
-
-                        currStart = intraBCMode.fencYuv->getChromaAddr(ch, partAddr);
-                        currStride = intraBCMode.fencYuv->m_csize;
-                        ref = tmpPredYuv.getChromaAddr(ch, partAddr);
-                        refStride = tmpPredYuv.m_csize;
-                        distMergeTemp += getSAD(ref, refStride, currStart, currStride, tempWidth, tempHeight);
-                    }
-                }
-                costMergeTemp = distMergeTemp + m_rdCost.getCost(bitsMergeTemp);
-
-                if (costMergeTemp < costMergeBest)
-                {
-                    costMergeBest = costMergeTemp;
-                    mrgIdxBest = mrgIdxTemp;
-                }
-            }
-        }
-        if (costAMVPBest < costMergeBest)
-        {
-            MV tempmv((mv.x << 2), (mv.y << 2));
-            MVField mvField[2];
-            mvField[0].mv = tempmv;
-            mvField[0].refIdx = m_slice->m_numRefIdx[0] - 1;   // the current picture is at the last position of list0
-            mvField[1].mv = zeroMv;
-            mvField[1].refIdx = REF_NOT_VALID;
-
-            cu.m_mergeFlag[pu.puAbsPartIdx] = false;
-            cu.setPUInterDir(1, pu.puAbsPartIdx, puIdx);  // list 0 prediction
-
-            cu.setPUMv(0, mvField[0].mv, pu.puAbsPartIdx, puIdx);
-            cu.setPURefIdx(0, (int8_t)mvField[0].refIdx, pu.puAbsPartIdx, puIdx);
-            cu.setPUMv(1, mvField[1].mv, pu.puAbsPartIdx, puIdx);
-            cu.setPURefIdx(1, (int8_t)mvField[1].refIdx, pu.puAbsPartIdx, puIdx);
-
-            MV mvd;
-            mvd.set(mv.x - (intraBCMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][mvpIdxBest].x >> 2), mv.y - (intraBCMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][mvpIdxBest].y >> 2));
-
-            cu.m_mvd[0][pu.puAbsPartIdx] = mvd;
-            cu.m_mvpIdx[0][pu.puAbsPartIdx] = (uint8_t)mvpIdxBest;
-        }
-        else
-        {
-            MV MV(cMvFieldNeighbours[mrgIdxBest][0].mv.x, cMvFieldNeighbours[mrgIdxBest][0].mv.y);
-            MVField mvField[2];
-            mvField[0].mv = MV;
-            mvField[0].refIdx = cu.m_slice->m_numRefIdx[0] - 1;   // the current picture is at the last position of list0
-            mvField[1].mv = zeroMv;
-            mvField[1].refIdx = REF_NOT_VALID;
-
-            cu.m_mergeFlag[pu.puAbsPartIdx] = true;
-            cu.m_mvpIdx[0][pu.puAbsPartIdx] = (uint8_t)mrgIdxBest; /* merge candidate ID is stored in L0 MVP idx */
-            cu.setPUInterDir(1, pu.puAbsPartIdx, puIdx);  // list 0 prediction
-
-            cu.setPUMv(0, mvField[0].mv, pu.puAbsPartIdx, puIdx);
-            cu.setPURefIdx(0, (int8_t)mvField[0].refIdx, pu.puAbsPartIdx, puIdx);
-            cu.setPUMv(1, mvField[1].mv, pu.puAbsPartIdx, puIdx);
-            cu.setPURefIdx(1, (int8_t)mvField[1].refIdx, pu.puAbsPartIdx, puIdx);
-
-            cu.m_mvd[0][pu.puAbsPartIdx] = zeroMv;
-            cu.m_mvd[1][pu.puAbsPartIdx] = zeroMv;
-        }
-        motionCompensation(cu, pu, *predYuv, 1, 1);
-    }
-
-    PredictionUnit pu(cu, cuGeom, 0);
-    uint32_t abortThreshold = (1 << cu.m_log2CUSize[0]) * (1 << cu.m_log2CUSize[0]) * 2;
-    if (testOnlyPred)
-    {
-        if (numPart == 1 && totalCost > abortThreshold)
-        {
-            m_lastCandCost = MAX_UINT;
-            return false;
-        }
-        m_lastCandCost = totalCost;
-    }
-    else if (totalCost < abortThreshold && 3 * totalCost >> 2 >= m_lastCandCost)
-    {
-        return false;
-    }
-    return true;
-}
-
-bool Search::predMixedIntraBCInterSearch(Mode& intraBCMixedMode, const CUGeom& cuGeom, bool bChromaMC, PartSize ePartSize, MV* iMvCandList)
-{
-    intraBCMixedMode.initCosts();
-    intraBCMixedMode.cu.setPartSizeSubParts(ePartSize);
-    intraBCMixedMode.cu.setPredModeSubParts(MODE_INTER);
-    CUData& cu = intraBCMixedMode.cu;
-    int numComb = 2;
-    int numPart = 2;
-    uint32_t cost[2] = { 0,0 };
-    uint32_t maxCost = UINT32_MAX;
-
-    int      numPredDir = m_slice->isInterP() ? 1 : 2;
-    MV       cMvZero(0, 0);
-
-    MV  cMvPredCand[2][2];
-    int IBCValidFlag = 0;
-    int bestIBCMvpIdx[2] = { 0, 0 };
-    int bestInterMvpIdx[2] = { 0, 0 };
-    int bestInterDir[2] = { 0, 0 };
-    int bestRefIdx[2] = { 0, 0 };
-    bool isMergeMode[2] = { false, false };
-    bool isIBCMergeMode[2] = { false, false };
-    MVField cMRGMvField[2][2];
-    MVField cMRGMvFieldIBC[2][2];
-    int log2ParallelMergeLevelMinus2 = 0;
-    // 12 mv candidates including lowresMV
-    MV mvc[(MD_ABOVE_LEFT + 1) * 2 + 2];
-
-    Yuv* predYuv = &intraBCMixedMode.predYuv;
-    Yuv& tmpPredYuv = m_rqt[cuGeom.depth].tmpPredYuv;
-
-    for (int combo = 0; combo < numComb; combo++) // number of combination
-    {
-        for (int partIdx = 0; partIdx < numPart; ++partIdx)
-        {
-            int dummyWidth, dummyHeight;
-            uint32_t partAddr = 0;
-            PredictionUnit pu(cu, cuGeom, partIdx);
-            cu.getPartIndexAndSize(partIdx, partAddr, dummyWidth, dummyHeight);
-            m_me.setSourcePU(*intraBCMixedMode.fencYuv, pu.ctuAddr, pu.cuAbsPartIdx, pu.puAbsPartIdx, pu.width, pu.height, m_param->searchMethod, m_param->subpelRefine, bChromaMC);
-
-            MV mvPred[2];
-            MV bvPred[2];
-            if ((combo == 0 && partIdx == 0) || (combo == 1 && partIdx == 1)) // intraBC
-            {
-                MV cMv = iMvCandList[8 + partIdx];
-                if (cMv.x == 0 && cMv.y == 0)
-                {
-                    cost[combo] = maxCost;
-                    IBCValidFlag++;
-                    break;
-                }
-
-                cu.getNeighbourMV(partIdx, pu.puAbsPartIdx, intraBCMixedMode.interNeighbours);
-                cu.getPMV(intraBCMixedMode.interNeighbours, 0, m_slice->m_numRefIdx[0] - 1, intraBCMixedMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1], mvc, partIdx, pu.puAbsPartIdx);
-
-                bvPred[0] = intraBCMixedMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][0];
-                bvPred[1] = intraBCMixedMode.amvpCand[0][m_slice->m_numRefIdx[0] - 1][1];
-                bvPred[0] >>= 2;
-                bvPred[1] >>= 2;
-
-                /////////////////////////////////////////////////////////////
-                // ibc merge
-                // choose one MVP and compare with merge mode
-
-                int bitsAMVPBest, bitsAMVPTemp, bitsMergeTemp;
-                int distAMVPBest, distMergeTemp;
-                int costAMVPBest, costMergeBest, costMergeTemp;
-                bitsAMVPBest = MAX_INT;
-                costAMVPBest = MAX_INT;
-                costMergeBest = MAX_INT;
-                int mvpIdxBest = 0;
-                int mvpIdxTemp;
-                int mrgIdxBest = -1;
-                int mrgIdxTemp = -1;
-                int xCUStart = cu.m_cuPelX;
-                int yCUStart = cu.m_cuPelY;
-                int xStartInCU = 0, yStartInCU = 0;
-                if (ePartSize == SIZE_2Nx2N)
-                    xStartInCU = yStartInCU = 0;
-                else if (ePartSize == SIZE_2NxN)
-                {
-                    xStartInCU = 0;
-                    yStartInCU = (1 << cu.m_log2CUSize[0]) / 2 * partIdx;
-                }
-                else if (ePartSize == SIZE_Nx2N)
-                {
-                    xStartInCU = (1 << cu.m_log2CUSize[0]) / 2 * partIdx;
-                    yStartInCU = 0;
-                }
-                const pixel* currStart;
-                int currStride;
-                int refStride;
-                distAMVPBest = 0;
-                pixel* ref;
-
-                cu.setPUMv(0, cMv, pu.puAbsPartIdx, partIdx);
-                cu.setPURefIdx(0, (int8_t)m_slice->m_numRefIdx[0] - 1, pu.puAbsPartIdx, partIdx);
-                cu.setPUMv(1, MV(0, 0), pu.puAbsPartIdx, partIdx);
-                cu.setPURefIdx(1, REF_NOT_VALID, pu.puAbsPartIdx, partIdx);
-                cu.setPUInterDir(1, pu.puAbsPartIdx, partIdx);
-                motionCompensation(cu, pu, tmpPredYuv, 1, 1);
-
-                for (uint32_t ch = TEXT_LUMA; ch < MAX_NUM_COMPONENT; ch++)
-                {
-                    int tempHeight, tempWidth;
-                    if (ch == 0)
-                    {
-                        tempHeight = dummyHeight;
-                        tempWidth = dummyWidth;
-                        ref = tmpPredYuv.getLumaAddr(partAddr);
-                        refStride = tmpPredYuv.m_size;
-                        distAMVPBest += m_me.bufSAD(ref, refStride);
-                    }
-                    else
-                    {
-                        tempHeight = dummyHeight >> m_vChromaShift;
-                        tempWidth = dummyWidth >> m_hChromaShift;
-
-                        currStart = intraBCMixedMode.fencYuv->getChromaAddr(ch, partAddr);
-                        currStride = intraBCMixedMode.fencYuv->m_csize;
-                        ref = tmpPredYuv.getChromaAddr(ch, partAddr);
-                        refStride = tmpPredYuv.m_csize;
-                        distAMVPBest += getSAD(ref, refStride, currStart, currStride, tempWidth, tempHeight);
-                    }
-                }
-
-                MV check;
-                for (mvpIdxTemp = 0; mvpIdxTemp < AMVP_NUM_CANDS; mvpIdxTemp++)
-                {
-                    m_me.setMVP(bvPred[mvpIdxTemp]);
-                    bitsAMVPTemp = m_me.bitcost(cMv >> 2, bvPred[mvpIdxTemp]);
-                    if (bitsAMVPTemp < bitsAMVPBest)
-                    {
-                        bitsAMVPBest = bitsAMVPTemp;
-                        mvpIdxBest = mvpIdxTemp;
-                    }
-                }
-
-                bitsAMVPBest++; // for MVP Index bits
-                costAMVPBest = distAMVPBest + m_rdCost.getCost(bitsAMVPBest);
-
-                MVField cMvFieldNeighboursIBC[MRG_MAX_NUM_CANDS][2]; // double length for mv of both lists
-                uint8_t uhInterDirNeighboursIBC[MRG_MAX_NUM_CANDS];
-                int numValidMergeCandIBC = 0;
-
-                if (ePartSize != SIZE_2Nx2N)
-                {
-                    if (log2ParallelMergeLevelMinus2 && ePartSize != SIZE_2Nx2N && 1 << cu.m_log2CUSize[0] >= 8)
-                    {
-                        cu.setPartSizeSubParts(SIZE_2Nx2N);
-                        if (partIdx == 0)
-                        {
-                            numValidMergeCandIBC = cu.getInterMergeCandidates(0, 0, cMvFieldNeighboursIBC, uhInterDirNeighboursIBC);
-                        }
-                        cu.setPartSizeSubParts(ePartSize);
-                    }
-                    else
-                    {
-                        numValidMergeCandIBC = cu.getInterMergeCandidates(pu.puAbsPartIdx, partIdx, cMvFieldNeighboursIBC, uhInterDirNeighboursIBC);
-                    }
-
-                    cu.roundMergeCandidates(cMvFieldNeighboursIBC, numValidMergeCandIBC);
-                    restrictBipredMergeCand(&cu, partIdx, cMvFieldNeighboursIBC, uhInterDirNeighboursIBC, numValidMergeCandIBC);
-
-                    for (mrgIdxTemp = 0; mrgIdxTemp < numValidMergeCandIBC; mrgIdxTemp++)
-                    {
-                        if (uhInterDirNeighboursIBC[mrgIdxTemp] != 1)
-                        {
-                            continue;
-                        }
-                        if (m_slice->m_refPOCList[0][cMvFieldNeighboursIBC[mrgIdxTemp][0].refIdx] != m_slice->m_poc)
-                        {
-                            continue;
-                        }
-
-                        if (!isBlockVectorValid(xCUStart + xStartInCU, yCUStart + yStartInCU, dummyWidth, dummyHeight, &cu,
-                            xStartInCU, yStartInCU, (cMvFieldNeighboursIBC[mrgIdxTemp][0].mv.x >> 2), (cMvFieldNeighboursIBC[mrgIdxTemp][0].mv.y >> 2), m_param->maxCUSize))
-                        {
-                            continue;
-                        }
-                        bitsMergeTemp = mrgIdxTemp == (int)m_param->maxNumMergeCand ? mrgIdxTemp : mrgIdxTemp + 1;
-
-                        distMergeTemp = 0;
-                        cu.setPUMv(0, cMvFieldNeighboursIBC[mrgIdxTemp][0].mv, pu.puAbsPartIdx, partIdx);
-                        cu.setPURefIdx(0, (int8_t)(m_slice->m_numRefIdx[0] - 1), pu.puAbsPartIdx, partIdx);
-                        cu.setPUMv(1, MV(0, 0), pu.puAbsPartIdx, partIdx);
-                        cu.setPURefIdx(1, REF_NOT_VALID, pu.puAbsPartIdx, partIdx);
-                        cu.setPUInterDir(1, pu.puAbsPartIdx, partIdx);
-                        motionCompensation(cu, pu, tmpPredYuv, 1, 1);
-
-                        for (int ch = TEXT_LUMA; ch < MAX_NUM_COMPONENT; ch++)
-                        {
-                            int tempHeight, tempWidth;
-                            if (ch == 0)
-                            {
-                                tempHeight = dummyHeight;
-                                tempWidth = dummyWidth;
-                                ref = tmpPredYuv.getLumaAddr(partAddr);
-                                refStride = tmpPredYuv.m_size;
-                                distMergeTemp += m_me.bufSAD(ref, refStride);
-                            }
-                            else
-                            {
-                                tempHeight = dummyHeight >> m_vChromaShift;
-                                tempWidth = dummyWidth >> m_hChromaShift;
-
-                                currStart = intraBCMixedMode.fencYuv->getChromaAddr(ch, partAddr);
-                                currStride = intraBCMixedMode.fencYuv->m_csize;
-                                ref = tmpPredYuv.getChromaAddr(ch, partAddr);
-                                refStride = tmpPredYuv.m_csize;
-                                distMergeTemp += getSAD(ref, refStride, currStart, currStride, tempWidth, tempHeight);
-                            }
-                        }
-                        costMergeTemp = distMergeTemp + m_rdCost.getCost(bitsMergeTemp);
-
-                        if (costMergeTemp < costMergeBest)
-                        {
-                            costMergeBest = costMergeTemp;
-                            mrgIdxBest = mrgIdxTemp;
-                        }
-                    }
-                }
-
-                if (costMergeBest < costAMVPBest)
-                {
-                    cost[combo] += costMergeBest;
-                    isIBCMergeMode[combo] = true;
-                    bestIBCMvpIdx[combo] = mrgIdxBest;
-
-                    MVField mvField[2];
-                    MV mv(cMvFieldNeighboursIBC[mrgIdxBest][0].mv.x, cMvFieldNeighboursIBC[mrgIdxBest][0].mv.y);
-                    mvField[0].mv = mv;
-                    mvField[0].refIdx = m_slice->m_numRefIdx[0] - 1;   // the current picture is at the last position of list0
-                    mvField[1].mv = cMvZero;
-                    mvField[1].refIdx = REF_NOT_VALID;
-                    cMRGMvFieldIBC[combo][0] = mvField[0];
-                    cMRGMvFieldIBC[combo][1] = mvField[1];
-                }
-                else
-                {
-                    cost[combo] += costAMVPBest;
-                    isIBCMergeMode[combo] = false;
-                    bestIBCMvpIdx[combo] = mvpIdxBest;
-                    cMvPredCand[combo][partIdx].set(bvPred[mvpIdxBest].x << 2, bvPred[mvpIdxBest].y << 2);
-                }
-
-                cu.setPUInterDir(1, pu.puAbsPartIdx, partIdx);  // list 0 prediction
-                if (isIBCMergeMode[combo])
-                {
-                    cu.setPUMv(0, cMRGMvFieldIBC[combo][0].mv, pu.puAbsPartIdx, partIdx);
-                }
-                else
-                {
-                    cu.setPUMv(0, iMvCandList[8 + partIdx], pu.puAbsPartIdx, partIdx);
-                    cu.setPURefIdx(0, (int8_t)(m_slice->m_numRefIdx[0] - 1), pu.puAbsPartIdx, partIdx);
-                    cu.setPURefIdx(1, REF_NOT_VALID, pu.puAbsPartIdx, partIdx);
-                }
-                // ibc merge
-                /////////////////////////////////////////////////////////////
-            }
-            else // is inter PU
-            {
-                uint32_t  costInterTemp = 0;
-                uint32_t  costInterBest = UINT32_MAX;
-                const pixel* currStart;
-                int currStride;
-                pixel* ref;
-                int refStride;
-                MergeData merge;
-                memset(&merge, 0, sizeof(merge));
-                for (int refList = 0; refList < numPredDir; refList++)
-                {
-                    uint32_t numRef = refList ? ((m_slice->m_numRefIdx[1] > 1) ? 2 : 1) : ((m_slice->m_numRefIdx[0] - 1 > 1) ? 2 : 1);
-                    for (uint32_t refIdx = 0; refIdx < numRef; refIdx++)
-                    {
-                        MV cMv = iMvCandList[4 * refList + 2 * refIdx + partIdx];
-
-                        cu.getNeighbourMV(partIdx, pu.puAbsPartIdx, intraBCMixedMode.interNeighbours);
-                        cu.getPMV(intraBCMixedMode.interNeighbours, refList, refIdx, intraBCMixedMode.amvpCand[refList][refIdx], mvc, partIdx, pu.puAbsPartIdx);
-                        int mvpIdx;
-
-                        uint32_t  tempCost0 = 0;
-                        uint32_t  tempCost1 = 0;
-                        mvPred[0] = intraBCMixedMode.amvpCand[refList][refIdx][0];
-                        mvPred[1] = intraBCMixedMode.amvpCand[refList][refIdx][1];
-
-                        m_me.setMVP(mvPred[0]);
-                        tempCost0 = m_me.bitcost(cMv, mvPred[0]);
-                        m_me.setMVP(mvPred[1]);
-                        tempCost1 = m_me.bitcost(cMv, mvPred[1]);
-                        if (tempCost1 < tempCost0)
-                        {
-                            mvpIdx = 1;
-                        }
-                        else
-                        {
-                            mvpIdx = 0;
-                        }
-                        uint32_t bitsTemp = m_listSelBits[refList] + MVP_IDX_BITS;
-                        bitsTemp += getTUBits(refIdx, numRef);
-
-                        m_me.setMVP(mvPred[mvpIdx]);
-                        if (cu.m_slice->m_useIntegerMv)
-                        {
-                            cu.setPUMv(refList, (cMv >> 2) << 2, pu.puAbsPartIdx, partIdx);
-                        }
-                        else
-                        {
-                            cu.setPUMv(refList, cMv, pu.puAbsPartIdx, partIdx);
-                        }
-                        cu.setPURefIdx(refList, refIdx, pu.puAbsPartIdx, partIdx);
-                        cu.setPUInterDir(1 + refList, pu.puAbsPartIdx, partIdx);
-                        motionCompensation(cu, pu, tmpPredYuv, 1, 1);
-
-                        costInterTemp = 0;
-                        for (int ch = TEXT_LUMA; ch < MAX_NUM_COMPONENT; ch++)
-                        {
-                            int tempHeight, tempWidth;
-                            if (ch == 0)
-                            {
-                                tempHeight = dummyHeight;
-                                tempWidth = dummyWidth;
-                                ref = tmpPredYuv.getLumaAddr(partAddr);
-                                refStride = tmpPredYuv.m_size;
-                                costInterTemp += m_me.bufSAD(ref, refStride);
-                            }
-                            else
-                            {
-                                tempHeight = dummyHeight >> m_vChromaShift;
-                                tempWidth = dummyWidth >> m_hChromaShift;
-
-                                currStart = intraBCMixedMode.fencYuv->getChromaAddr(ch, partAddr);
-                                currStride = intraBCMixedMode.fencYuv->m_csize;
-                                ref = tmpPredYuv.getChromaAddr(ch, partAddr);
-                                refStride = tmpPredYuv.m_csize;
-                                costInterTemp += getSAD(ref, refStride, currStart, currStride, tempWidth, tempHeight);
-                            }
-
-                            if (costInterTemp >= costInterBest)
-                            {
-                                break;
-                            }
-                        }
-                        cu.setPURefIdx(refList, REF_NOT_VALID, pu.puAbsPartIdx, partIdx);
-
-                        costInterTemp += m_me.bitcost(cMv, mvPred[mvpIdx]);
-                        costInterTemp += m_rdCost.getCost(bitsTemp);
-
-                        if (costInterTemp < costInterBest)
-                        {
-                            costInterBest = costInterTemp;
-                            bestInterMvpIdx[combo] = mvpIdx;
-                            bestInterDir[combo] = refList;
-                            bestRefIdx[combo] = refIdx;
-                            cMvPredCand[combo][partIdx] = mvPred[mvpIdx];
-                        }
-                    }
-                } // end RefIdx and RefList search
-
-                uint32_t MRGInterDir = 0;
-                uint32_t MRGIndex = 0;
-
-                // find Merge result
-                uint32_t MRGCost = UINT32_MAX;
-                cu.m_mergeFlag[pu.puAbsPartIdx] = true;
-
-                mergeEstimation(cu, cuGeom, pu, partIdx, merge);
-                MRGInterDir = merge.dir;
-                cMRGMvField[combo][0] = merge.mvField[0];
-                cMRGMvField[combo][1] = merge.mvField[1];
-                MRGIndex = merge.index;
-                cu.setPURefIdx(0, REF_NOT_VALID, pu.puAbsPartIdx, partIdx);
-                cu.setPURefIdx(1, REF_NOT_VALID, pu.puAbsPartIdx, partIdx);
-
-                if (MRGCost < costInterBest)
-                {
-                    costInterBest = MRGCost;
-                    isMergeMode[combo] = true;
-                    bestInterMvpIdx[combo] = MRGIndex;
-                    bestInterDir[combo] = MRGInterDir;
-                }
-
-                cost[combo] += costInterBest;
-                if (isMergeMode[combo])
-                {
-                    cu.setPUInterDir(bestInterDir[combo], pu.puAbsPartIdx, partIdx);
-                    cu.setPUMv(0, cMRGMvField[combo][0].mv, pu.puAbsPartIdx, partIdx);
-                    cu.setPURefIdx(0, cMRGMvField[combo][0].refIdx, pu.puAbsPartIdx, partIdx);
-                    cu.setPUMv(1, cMRGMvField[combo][1].mv, pu.puAbsPartIdx, partIdx);
-                    cu.setPURefIdx(1, cMRGMvField[combo][1].refIdx, pu.puAbsPartIdx, partIdx);
-                }
-                else
-                {
-                    int refListOpt = bestInterDir[combo];
-                    int refIdxOpt = bestRefIdx[combo];
-                    if (cu.m_slice->m_useIntegerMv)
-                    {
-                        cu.setPUMv(refListOpt, (iMvCandList[partIdx + 2 * refIdxOpt + 4 * refListOpt] >> 2) << 2, pu.puAbsPartIdx, partIdx);
-                    }
-                    else
-                    {
-                        cu.setPUMv(refListOpt, iMvCandList[partIdx + 2 * refIdxOpt + 4 * refListOpt], pu.puAbsPartIdx, partIdx);
-                    }
-                    cu.setPURefIdx(refListOpt, refIdxOpt, pu.puAbsPartIdx, partIdx);
-                    cu.setPURefIdx(1 - refListOpt, REF_NOT_VALID, pu.puAbsPartIdx, partIdx);
-                    cu.setPUInterDir(1 + refListOpt, pu.puAbsPartIdx, partIdx);
-                    cu.m_mvpIdx[refListOpt][pu.puAbsPartIdx] = bestInterMvpIdx[combo];
-                }
-            }
-        } // for ipartIdx
-    } // for combo
-
-    if (IBCValidFlag > 1)
-    {
-        return false;
-    }
-
-    MV cMvd;
-    MV cMVFinal;
-    if (cost[0] <= cost[1])
-    {
-        int iDummyWidth1, iDummyHeight1;
-        uint32_t partAddr = 0;
-        uint32_t partIdx = 0;
-        cu.getPartIndexAndSize(partIdx, partAddr, iDummyWidth1, iDummyHeight1);
-
-        if (isIBCMergeMode[0])
-        {
-            cu.m_mergeFlag[partAddr] = true;
-            cu.m_mvpIdx[0][partAddr] = bestIBCMvpIdx[0];
-            cu.setPUInterDir(1, partAddr, partIdx);  // list 0 prediction
-            cu.setPUMv(0, cMRGMvFieldIBC[0][0].mv, partAddr, partIdx);
-            cu.setPURefIdx(0, cMRGMvFieldIBC[0][0].refIdx, partAddr, partIdx);
-            cu.setPUMv(1, cMRGMvFieldIBC[0][1].mv, partAddr, partIdx);
-            cu.setPURefIdx(1, cMRGMvFieldIBC[0][1].refIdx, partAddr, partIdx);
-
-            cu.m_mvd[0][partAddr] = cMvZero;
-            cu.m_mvd[1][partAddr] = cMvZero;
-        }
-        else
-        {
-            cu.m_mergeFlag[partAddr] = false;
-
-            cMvd.set((iMvCandList[8].x - cMvPredCand[0][0].x) >> 2, (iMvCandList[8].y - cMvPredCand[0][0].y) >> 2);
-            cu.setPUMv(0, iMvCandList[8], partAddr, partIdx);
-            cu.m_mvd[0][partAddr] = cMvd;
-            cu.m_mvpIdx[0][partAddr] = bestIBCMvpIdx[0];
-            cu.setPURefIdx(0, m_slice->m_numRefIdx[0] - 1, partAddr, partIdx);
-            cu.setPURefIdx(1, REF_NOT_VALID, partAddr, partIdx);
-            cu.setPUInterDir(1, partAddr, partIdx);  // list 0 prediction
-        }
-
-        partIdx = 1;
-        cu.getPartIndexAndSize(partIdx, partAddr, iDummyWidth1, iDummyHeight1);
-
-        if (isMergeMode[0])
-        {
-            cu.m_mergeFlag[partAddr] = true;
-            cu.m_mvpIdx[0][partAddr] = bestInterMvpIdx[0];
-            cu.setPUInterDir(bestInterDir[0], partAddr, partIdx);  // list 0 prediction
-            cu.setPUMv(0, cMRGMvField[0][0].mv, partAddr, partIdx);
-            cu.setPURefIdx(0, cMRGMvField[0][0].refIdx, partAddr, partIdx);
-            cu.setPUMv(1, cMRGMvField[0][1].mv, partAddr, partIdx);
-            cu.setPURefIdx(1, cMRGMvField[0][1].refIdx, partAddr, partIdx);
-
-            cu.m_mvd[0][partAddr] = cMvZero;
-            cu.m_mvd[1][partAddr] = cMvZero;
-        }
-        else
-        {
-            int refListOpt = bestInterDir[0];
-            int refIdxOpt = bestRefIdx[0];
-            if (cu.m_slice->m_useIntegerMv)
-            {
-                cMvd.set(((iMvCandList[1 + 2 * refIdxOpt + 4 * refListOpt].x >> 2) - (cMvPredCand[0][1].x >> 2)), ((iMvCandList[1 + 2 * refIdxOpt + 4 * refListOpt].y >> 2) - (cMvPredCand[0][1].y >> 2)));
-                cu.setPUMv(refListOpt, (iMvCandList[1 + 2 * refIdxOpt + 4 * refListOpt] >> 2) << 2, partAddr, partIdx);
-            }
-            else
-            {
-                cMvd.set(iMvCandList[1 + 2 * refIdxOpt + 4 * refListOpt].x - cMvPredCand[0][1].x, iMvCandList[1 + 2 * refIdxOpt + 4 * refListOpt].y - cMvPredCand[0][1].y);
-                cu.setPUMv(refListOpt, iMvCandList[1 + 2 * refIdxOpt + 4 * refListOpt], partAddr, partIdx);
-            }
-            cu.m_mvd[refListOpt][partAddr] = cMvd;
-            cu.setPURefIdx(refListOpt, refIdxOpt, partAddr, partIdx);
-            cu.setPURefIdx(1 - refListOpt, REF_NOT_VALID, partAddr, partIdx);
-            cu.setPUInterDir(1 + refListOpt, partAddr, partIdx);
-            cu.m_mergeFlag[partAddr] = false;
-            cu.m_mvpIdx[refListOpt][partAddr] = bestInterMvpIdx[0];
-        }
-    }
-    else
-    {
-        int dummyWidth2, dummyHeight2;
-        uint32_t partAddr = 0;
-        uint32_t partIdx = 0;
-
-        cu.getPartIndexAndSize(partIdx, partAddr, dummyWidth2, dummyHeight2);
-
-        if (isMergeMode[1])
-        {
-            cu.m_mergeFlag[partAddr] = true;
-            cu.m_mvpIdx[0][partAddr] = bestInterMvpIdx[1];
-            cu.setPUInterDir(bestInterDir[1], partAddr, partIdx);  // list 0 prediction
-            cu.setPUMv(0, cMRGMvField[1][0].mv, partAddr, partIdx);
-            cu.setPURefIdx(0, cMRGMvField[1][0].refIdx, partAddr, partIdx);
-            cu.setPUMv(1, cMRGMvField[1][1].mv, partAddr, partIdx);
-            cu.setPURefIdx(1, cMRGMvField[1][1].refIdx, partAddr, partIdx);
-
-            cu.m_mvd[0][partAddr] = cMvZero;
-            cu.m_mvd[1][partAddr] = cMvZero;
-        }
-        else
-        {
-            int refListOpt = bestInterDir[1];
-            int refIdxOpt = bestRefIdx[1];
-            if (cu.m_slice->m_useIntegerMv)
-            {
-                cMvd.set((iMvCandList[2 * refIdxOpt + 4 * refListOpt].x >> 2) - (cMvPredCand[1][0].x >> 2), (iMvCandList[2 * refIdxOpt + 4 * refListOpt].y >> 2) - (cMvPredCand[1][0].y >> 2));
-                cu.setPUMv(refListOpt, (iMvCandList[2 * refIdxOpt + 4 * refListOpt] >> 2) << 2, partAddr, partIdx);
-            }
-            else
-            {
-                cMvd.set(iMvCandList[2 * refIdxOpt + 4 * refListOpt].x - cMvPredCand[1][0].x, iMvCandList[2 * refIdxOpt + 4 * refListOpt].y - cMvPredCand[1][0].y);
-                cu.setPUMv(refListOpt, iMvCandList[2 * refIdxOpt + 4 * refListOpt], partAddr, partIdx);
-            }
-            cu.m_mvd[refListOpt][partAddr] = cMvd;
-            cu.setPURefIdx(refListOpt, refIdxOpt, partAddr, partIdx);
-            cu.setPURefIdx(1 - refListOpt, REF_NOT_VALID, partAddr, partIdx);
-            cu.setPUInterDir(1 + refListOpt, partAddr, partIdx);
-            cu.m_mergeFlag[partAddr] = false;
-            cu.m_mvpIdx[refListOpt][partAddr] = bestInterMvpIdx[1];
-        }
-
-        partIdx = 1;
-        cu.getPartIndexAndSize(partIdx, partAddr, dummyWidth2, dummyHeight2);
-
-        if (isIBCMergeMode[1])
-        {
-            cu.m_mergeFlag[partAddr] = true;
-            cu.m_mvpIdx[0][partAddr] = bestIBCMvpIdx[1];
-            cu.setPUInterDir(1, partAddr, partIdx);  // list 0 prediction
-            cu.setPUMv(0, cMRGMvFieldIBC[1][0].mv, partAddr, partIdx);
-            cu.setPURefIdx(0, cMRGMvFieldIBC[1][0].refIdx, partAddr, partIdx);
-            cu.setPUMv(1, cMRGMvFieldIBC[1][1].mv, partAddr, partIdx);
-            cu.setPURefIdx(1, cMRGMvFieldIBC[1][1].refIdx, partAddr, partIdx);
-
-            cu.m_mvd[0][partAddr] = cMvZero;
-            cu.m_mvd[1][partAddr] = cMvZero;
-        }
-        else
-        {
-            cu.m_mergeFlag[partAddr] = false;
-
-            cMvd.set(((iMvCandList[9].x - cMvPredCand[1][1].x) >> 2), (iMvCandList[9].y - cMvPredCand[1][1].y) >> 2);
-            cu.setPUMv(0, iMvCandList[9], partAddr, partIdx);
-            cu.m_mvd[0][partAddr] = cMvd;
-            cu.m_mvpIdx[0][partAddr] = bestIBCMvpIdx[1];
-            cu.setPURefIdx(0, m_slice->m_numRefIdx[0] - 1, partAddr, partIdx);
-            cu.setPURefIdx(1, REF_NOT_VALID, partAddr, partIdx);
-            cu.setPUInterDir(1, partAddr, partIdx);  // list 0 prediction
-        }
-    }
-    for (int partIdx = 0; partIdx < numPart; ++partIdx)
-    {
-        PredictionUnit pu(cu, cuGeom, partIdx);
-        motionCompensation(cu, pu, *predYuv, 1, 1);
-    }
-
-    return true;
-}
-#endif
-
 void Search::getBlkBits(PartSize cuMode, bool bPSlice, int partIdx, uint32_t lastMode, uint32_t blockBit[3])
 {
     if (cuMode == SIZE_2Nx2N)
@@ -4527,15 +2726,6 @@ void Search::setSearchRange(const CUData& cu, const MV& mvp, int merange, MV& mv
     MV dist((int32_t)merange << 2, (int32_t)merange << 2);
     mvmin = mvp - dist;
     mvmax = mvp + dist;
-
-    if (m_vertRestriction)
-    {
-        int mvRestricted = (56 - 1) << 2; // -1 to consider subpel search
-        if (mvmax.y >= mvRestricted)
-        {
-            mvmax.y = mvRestricted; //only positive side is restricted
-        }
-    }
 
     cu.clipMv(mvmin);
     cu.clipMv(mvmax);
@@ -4782,11 +2972,6 @@ void Search::encodeResAndCalcRdInterCU(Mode& interMode, const CUGeom& cuGeom)
     cu.m_distortion[0] = interMode.distortion;
     updateModeCost(interMode);
     checkDQP(interMode, cuGeom);
-
-#if ENABLE_SCC_EXT
-    if (m_param->bEnableSCC)
-        interMode.reconYuv.copyToPicYuv(*m_frame->m_reconPic[1], cu.m_cuAddr, cuGeom.absPartIdx);
-#endif
 }
 
 void Search::residualTransformQuantInter(Mode& mode, const CUGeom& cuGeom, uint32_t absPartIdx, uint32_t tuDepth, const uint32_t depthRange[2])

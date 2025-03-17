@@ -105,8 +105,6 @@ public:
     {
         return x >= _min.x && x <= _max.x && y >= _min.y && y <= _max.y;
     }
-
-    void set(int32_t _x, int32_t _y) { x = _x; y = _y; }
 };
 }
 

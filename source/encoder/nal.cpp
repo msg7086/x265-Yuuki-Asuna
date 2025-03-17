@@ -57,7 +57,7 @@ void NALList::takeContents(NALList& other)
     other.m_buffer = X265_MALLOC(uint8_t, m_allocSize);
 }
 
-void NALList::serialize(NalUnitType nalUnitType, const Bitstream& bs, int layerId, uint8_t temporalID)
+void NALList::serialize(NalUnitType nalUnitType, const Bitstream& bs)
 {
     static const char startCodePrefix[] = { 0, 0, 0, 1 };
 
@@ -114,7 +114,7 @@ void NALList::serialize(NalUnitType nalUnitType, const Bitstream& bs, int layerI
      * nuh_reserved_zero_6bits  6-bits
      * nuh_temporal_id_plus1    3-bits */
     out[bytes++] = (uint8_t)nalUnitType << 1;
-    out[bytes++] = (uint8_t)((layerId << 3) | (temporalID));
+    out[bytes++] = 1 + (nalUnitType == NAL_UNIT_CODED_SLICE_TSA_N);
 
     /* 7.4.1 ...
      * Within the NAL unit, the following three-byte sequences shall not occur at

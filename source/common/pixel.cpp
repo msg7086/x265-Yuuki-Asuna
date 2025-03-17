@@ -266,6 +266,10 @@ int satd4(const pixel* pix1, intptr_t stride_pix1, const pixel* pix2, intptr_t s
 {
     int satd = 0;
 
+#if ENABLE_ASSEMBLY && X265_ARCH_ARM64
+    pixelcmp_t satd_4x4 = x265_pixel_satd_4x4_neon;
+#endif
+
     for (int row = 0; row < h; row += 4)
         for (int col = 0; col < w; col += 4)
             satd += satd_4x4(pix1 + row * stride_pix1 + col, stride_pix1,
@@ -279,6 +283,10 @@ template<int w, int h>
 int satd8(const pixel* pix1, intptr_t stride_pix1, const pixel* pix2, intptr_t stride_pix2)
 {
     int satd = 0;
+
+#if ENABLE_ASSEMBLY && X265_ARCH_ARM64
+    pixelcmp_t satd_8x4 = x265_pixel_satd_8x4_neon;
+#endif
 
     for (int row = 0; row < h; row += 4)
         for (int col = 0; col < w; col += 8)
@@ -616,23 +624,6 @@ void frame_init_lowres_core(const pixel* src0, pixel* dst0, pixel* dsth, pixel* 
         dsth += dst_stride;
         dstv += dst_stride;
         dstc += dst_stride;
-    }
-}
-
-static
-void frame_subsample_luma(const pixel* src0, pixel* dst0, intptr_t src_stride, intptr_t dst_stride, int width, int height)
-{
-    for (int y = 0; y < height; y++, src0 += 2 * src_stride, dst0 += dst_stride)
-    {
-        const pixel *inRow = src0;
-        const pixel *inRowBelow = src0 + src_stride;
-        pixel *target = dst0;
-        for (int x = 0; x < width; x++)
-        {
-            target[x] = (((inRow[0] + inRowBelow[0] + 1) >> 1) + ((inRow[1] + inRowBelow[1] + 1) >> 1) + 1) >> 1;
-            inRow += 2;
-            inRowBelow += 2;
-        }
     }
 }
 
@@ -1364,7 +1355,5 @@ void setupPixelPrimitives_c(EncoderPrimitives &p)
     p.cu[BLOCK_16x16].normFact = normFact_c;
     p.cu[BLOCK_32x32].normFact = normFact_c;
     p.cu[BLOCK_64x64].normFact = normFact_c;
-    /* SubSample Luma*/
-    p.frameSubSampleLuma = frame_subsample_luma;
 }
 }

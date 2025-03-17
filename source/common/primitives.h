@@ -232,8 +232,6 @@ typedef void(*psyRdoQuant_t1)(int16_t *m_resiDctCoeff, int64_t *costUncoded, int
 typedef void(*psyRdoQuant_t2)(int16_t *m_resiDctCoeff, int16_t *m_fencDctCoeff, int64_t *costUncoded, int64_t *totalUncodedCost, int64_t *totalRdCost, int64_t *psyScale, uint32_t blkPos);
 typedef void(*ssimDistortion_t)(const pixel *fenc, uint32_t fStride, const pixel *recon,  intptr_t rstride, uint64_t *ssBlock, int shift, uint64_t *ac_k);
 typedef void(*normFactor_t)(const pixel *src, uint32_t blockSize, int shift, uint64_t *z_k);
-/* SubSampling Luma */
-typedef void (*downscaleluma_t)(const pixel* src0, pixel* dstf, intptr_t src_stride, intptr_t dst_stride, int width, int height);
 /* Function pointers to optimized encoder primitives. Each pointer can reference
  * either an assembly routine, a SIMD intrinsic primitive, or a C function */
 struct EncoderPrimitives
@@ -355,8 +353,6 @@ struct EncoderPrimitives
 
     downscale_t           frameInitLowres;
     downscale_t           frameInitLowerRes;
-    /* Sub Sample Luma */
-    downscaleluma_t        frameSubSampleLuma;
     cutree_propagate_cost propagateCost;
     cutree_fix8_unpack    fix8Unpack;
     cutree_fix8_pack      fix8Pack;
@@ -470,9 +466,12 @@ inline int partitionFromLog2Size(int log2Size)
 }
 
 void setupCPrimitives(EncoderPrimitives &p);
-void setupIntrinsicPrimitives(EncoderPrimitives &p, int cpuMask);
+void setupInstrinsicPrimitives(EncoderPrimitives &p, int cpuMask);
 void setupAssemblyPrimitives(EncoderPrimitives &p, int cpuMask);
 void setupAliasPrimitives(EncoderPrimitives &p);
+#if X265_ARCH_ARM64
+void setupAliasCPrimitives(EncoderPrimitives &cp, EncoderPrimitives &asmp, int cpuMask);
+#endif
 #if HAVE_ALTIVEC
 void setupPixelPrimitives_altivec(EncoderPrimitives &p);
 void setupDCTPrimitives_altivec(EncoderPrimitives &p);
@@ -489,7 +488,7 @@ extern const char* PFX(build_info_str);
 
 #if ENABLE_ASSEMBLY && X265_ARCH_ARM64
 extern "C" {
-#include "aarch64/fun-decls.h"
+#include "aarch64/pixel-util.h"
 }
 #endif
 

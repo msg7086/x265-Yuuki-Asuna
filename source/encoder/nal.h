@@ -35,11 +35,7 @@ class Bitstream;
 class NALList
 {
 public:
-#if ENABLE_MULTIVIEW || ENABLE_ALPHA
-    static const int MAX_NAL_UNITS = 32;
-#else
     static const int MAX_NAL_UNITS = 16;
-#endif
 
 public:
 
@@ -60,7 +56,7 @@ public:
 
     void takeContents(NALList& other);
 
-    void serialize(NalUnitType nalUnitType, const Bitstream& bs, int layerId = 0, uint8_t temporalID = 1);
+    void serialize(NalUnitType nalUnitType, const Bitstream& bs);
 
     uint32_t serializeSubstreams(uint32_t* streamSizeBytes, uint32_t streamCount, const Bitstream* streams);
 };

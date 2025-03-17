@@ -128,9 +128,9 @@ public:
 
     void start(Frame *pic, Entropy& initState);
 
-    void processRow(int row, int layer);
-    void processPostRow(int row, int layer);
-    void computeMEIntegral(int row, int layer);
+    void processRow(int row);
+    void processPostRow(int row);
+    void computeMEIntegral(int row);
 };
 }
 

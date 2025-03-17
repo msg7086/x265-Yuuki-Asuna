@@ -21,7 +21,7 @@
  * For more information, contact us at license @ x265.com.
  *****************************************************************************/
 
-#ifdef X265_YUV_H
+#ifndef X265_YUV_H
 #define X265_YUV_H
 
 #include "output.h"
@@ -46,15 +46,13 @@ protected:
 
     uint32_t frameSize;
 
-    int inputDepth;
-
     char *buf;
 
     std::ofstream ofs;
 
 public:
 
-    YUVOutput(const char *filename, int width, int height, uint32_t bitdepth, int csp, int inputDepth);
+    YUVOutput(const char *filename, int width, int height, uint32_t bitdepth, int csp);
 
     virtual ~YUVOutput();
 

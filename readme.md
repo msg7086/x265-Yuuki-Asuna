@@ -6,7 +6,7 @@
 
 |  Branch             |[Yuuki](https://github.com/msg7086/x265-Yuuki-Asuna/tree/Yuuki)|[Asuna](https://github.com/msg7086/x265-Yuuki-Asuna/tree/Asuna)|
 |---------------------|-------------------|-------------------|
-|  Base branch        | Stable (4.0)      | Old Stable (3.5)  |
+|  Base branch        | Stable (3.5)      | Old Stable (3.4)  |
 |                     | ![](Yuuki.jpg)    | ![](Asuna.jpg)    |
 
 To report a bug due to patches, create a new issue here. To report a x265 bug, please visit their repository or mailing list.

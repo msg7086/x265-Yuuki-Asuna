@@ -28,7 +28,6 @@
 #include "common.h"
 #include "lowres.h"
 #include "threading.h"
-#include "temporalfilter.h"
 
 namespace X265_NS {
 // private namespace
@@ -71,7 +70,6 @@ struct RcStats
     double   count[4];
     double   offset[4];
     double   bufferFillFinal;
-    int64_t  currentSatd;
 };
 
 class Frame
@@ -81,19 +79,12 @@ public:
     /* These two items will be NULL until the Frame begins to be encoded, at which point
      * it will be assigned a FrameData instance, which comes with a reconstructed image PicYuv */
     FrameData*             m_encData;
-    PicYuv*                m_reconPic[NUM_RECON_VERSION];
+    PicYuv*                m_reconPic;
 
     /* Data associated with x265_picture */
     PicYuv*                m_fencPic;
-    PicYuv*                m_fencPicSubsampled2;
-    PicYuv*                m_fencPicSubsampled4;
-
-    PicList                refPicSetInterLayer0;
-    PicList                refPicSetInterLayer1;
-
     int                    m_poc;
     int                    m_encodeOrder;
-    int                    m_gopOffset;
     int64_t                m_pts;                // user provided presentation time stamp
     int64_t                m_reorderedPts;
     int64_t                m_dts;
@@ -141,17 +132,6 @@ public:
     bool                   m_classifyFrame;
     int                    m_fieldNum;
 
-    /*MCSTF*/
-    TemporalFilter*        m_mcstf;
-    int                    m_refPicCnt[2];
-    Frame*                 m_nextMCSTF;           // PicList doubly linked list pointers
-    Frame*                 m_prevMCSTF;
-    int*                   m_isSubSampled;
-    TemporalFilterRefPicInfo m_mcstfRefList[MAX_MCSTF_TEMPORAL_WINDOW_LENGTH];
-    PicYuv*                m_mcstffencPic;
-
-    /*Vbv-End-Flag*/
-    int vbvEndFlag;
     /* aq-mode 4 : Gaussian, edge and theta frames for edge information */
     pixel*                 m_edgePic;
     pixel*                 m_gaussianPic;
@@ -163,29 +143,9 @@ public:
 
     int                    m_isInsideWindow;
 
-    /*Frame's temporal layer info*/
-    uint8_t                m_tempLayer;
-    int8_t                 m_gopId;
-    bool                   m_sameLayerRefPic;
-
-    int                    m_sLayerId;
-    bool                   m_valid;
-
-    int                    m_viewId;
-    Frame*                 m_nextSubDPB;           // PicList doubly linked list pointers
-    Frame*                 m_prevSubDPB;
-
-    /*Target bitrate for this picture*/
-    int64_t                m_targetBitrate;
-    /* target CRF for this picture.*/
-    double                 m_targetCrf;
-    /* target QP for this picture.*/
-    int                    m_targetQp;
-
     Frame();
 
     bool create(x265_param *param, float* quantOffsets);
-    bool createSubSample();
     bool allocEncodeData(x265_param *param, const SPS& sps);
     void reinit(const SPS& sps);
     void destroy();

@@ -8484,13 +8484,7 @@ cglobal costCoeffNxN, 6,11,6
     ; r4 - nonZero
     ; r5 - scanFlagMask
     ; r6 - sum
-
-%if UNIX64
-    mov         r0, [private_prefix %+ _entropyStateBits wrt ..gotpc]
-%else
     lea         r0, [private_prefix %+ _entropyStateBits]
-    ;mov         r0, private_prefix %+ _entropyStateBits
-%endif
     mov         r1, r6mp
     xor         r6d, r6d
     xor         r4d, r4d
@@ -8670,12 +8664,7 @@ cglobal costCoeffNxN, 6,10,5
     ; r6 - sum
     ; {r3,r4} - ctxSig[15-0]
     ; r8m - (numNonZero != 0) || (subPosBase == 0)
-%if UNIX64
-    mov             r0, [private_prefix %+ _entropyStateBits wrt ..gotpc]
-%else
     lea             r0, [private_prefix %+ _entropyStateBits]
-    ;mov             r0, private_prefix %+ _entropyStateBits
-%endif
     mov             r1, r6mp
     xor             r6d, r6d
     xor             r8d, r8d
@@ -8914,12 +8903,7 @@ cglobal costC1C2Flag, 4,12,2
     or          r11d, 0x100                     ; default value setting to 8
     bsf         r11d, r11d
 
-%if UNIX64
-    mov             r5, [private_prefix %+ _entropyStateBits wrt ..gotpc]
-%else
-    lea             r5, [private_prefix %+ _entropyStateBits]
-    ;mov             r5, private_prefix %+ _entropyStateBits
-%endif
+    lea         r5, [private_prefix %+ _entropyStateBits]
     xor         r6d, r6d
     mov         r4d, 0xFFFFFFF9
 

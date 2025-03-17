@@ -141,18 +141,14 @@ public:
     void loadIntraDirModeLuma(const Entropy& src);
     void copyState(const Entropy& other);
 
-#if ENABLE_ALPHA || ENABLE_MULTIVIEW
-    void codeVPS(const VPS& vps, const SPS& sps);
-#else
     void codeVPS(const VPS& vps);
-#endif
-    void codeSPS(const SPS& sps, const ScalingList& scalingList, const ProfileTierLevel& ptl, int layer = 0);
-    void codePPS( const PPS& pps, bool filerAcross, int iPPSInitQpMinus26, int layer = 0);
-    void codeVUI(const VUI& vui, int maxSubTLayers, bool bEmitVUITimingInfo, bool bEmitVUIHRDInfo, int layer = 0);
+    void codeSPS(const SPS& sps, const ScalingList& scalingList, const ProfileTierLevel& ptl);
+    void codePPS( const PPS& pps, bool filerAcross, int iPPSInitQpMinus26 );
+    void codeVUI(const VUI& vui, int maxSubTLayers, bool bEmitVUITimingInfo, bool bEmitVUIHRDInfo);
     void codeAUD(const Slice& slice);
     void codeHrdParameters(const HRDInfo& hrd, int maxSubTLayers);
 
-    void codeSliceHeader(const Slice& slice, FrameData& encData, uint32_t slice_addr, uint32_t slice_addr_bits, int sliceQp, int layer = 0);
+    void codeSliceHeader(const Slice& slice, FrameData& encData, uint32_t slice_addr, uint32_t slice_addr_bits, int sliceQp);
     void codeSliceHeaderWPPEntryPoints(const uint32_t *substreamSizes, uint32_t numSubStreams, uint32_t maxOffset);
     void codeShortTermRefPicSet(const RPS& rps, int idx);
     void finishSlice()                 { encodeBinTrm(1); finish(); dynamic_cast<Bitstream*>(m_bitIf)->writeByteAlignment(); }
@@ -238,7 +234,7 @@ private:
     void writeEpExGolomb(uint32_t symbol, uint32_t count);
     void writeCoefRemainExGolomb(uint32_t symbol, const uint32_t absGoRice);
 
-    void codeProfileTier(const ProfileTierLevel& ptl, int maxTempSubLayers, int layer = 0);
+    void codeProfileTier(const ProfileTierLevel& ptl, int maxTempSubLayers);
     void codeScalingList(const ScalingList&);
     void codeScalingList(const ScalingList& scalingList, uint32_t sizeId, uint32_t listId);
 
