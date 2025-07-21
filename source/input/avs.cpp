@@ -140,29 +140,38 @@ bool AVSInput::readPicture(x265_picture& pic)
     pic.width = _info.width;
     pic.height = _info.height;
 
+    const int frm__height = frm->_height;
+    const int frm__heightUV = frm->_heightUV;
+    const int frm__pitch = frm->_pitch;
+    const int frm__pitchUV = frm->_pitchUV;
+    const int frm__offset = frm->_offset;
+    const int frm__offsetU = frm->_offsetU;
+    const int frm__offsetV = frm->_offsetV;
+    const AVS_VideoFrameBuffer* frm__vfb = frm->_vfb;
+
     if (frame_size == 0 || frame_buffer == nullptr) {
-        frame_size = frm->height * frm->pitch;
+        frame_size = frm__height * frm__pitch;
         if (h->plane_count > 1)
-            frame_size += frm->heightUV * frm->pitchUV * 2;
+            frame_size += frm__heightUV * frm__pitchUV * 2;
         frame_buffer = reinterpret_cast<uint8_t*>(x265_malloc(frame_size));
     }
     pic.framesize = frame_size;
 
     uint8_t* ptr = frame_buffer;
     pic.planes[0] = ptr;
-    pic.stride[0] = frm->pitch;
-    memcpy(pic.planes[0], frm->vfb->data + frm->offset, frm->pitch * frm->height);
+    pic.stride[0] = frm__pitch;
+    memcpy(pic.planes[0], frm__vfb->data + frm__offset, frm__pitch * frm__height);
     if (h->plane_count > 1)
     {
-        ptr += frm->pitch * frm->height;
+        ptr += frm__pitch * frm__height;
         pic.planes[1] = ptr;
-        pic.stride[1] = frm->pitchUV;
-        memcpy(pic.planes[1], frm->vfb->data + frm->offsetU, frm->pitchUV * frm->heightUV);
+        pic.stride[1] = frm__pitchUV;
+        memcpy(pic.planes[1], frm__vfb->data + frm__offsetU, frm__pitchUV * frm__heightUV);
 
-        ptr += frm->pitchUV * frm->heightUV;
+        ptr += frm__pitchUV * frm__heightUV;
         pic.planes[2] = ptr;
-        pic.stride[2] = frm->pitchUV;
-        memcpy(pic.planes[2], frm->vfb->data + frm->offsetV, frm->pitchUV * frm->heightUV);
+        pic.stride[2] = frm__pitchUV;
+        memcpy(pic.planes[2], frm__vfb->data + frm__offsetV, frm__pitchUV * frm__heightUV);
     }
     pic.colorSpace = _info.csp;
     pic.bitDepth = _info.depth;
